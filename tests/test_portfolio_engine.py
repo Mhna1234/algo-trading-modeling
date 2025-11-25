@@ -102,9 +102,9 @@ class TestPortfolioEngine:
         assert len(result.returns_series) > 0
         
         # Check metrics
-        assert 'annual_return' in result.summary_metrics
-        assert 'sharpe_ratio' in result.summary_metrics
-        assert 'max_drawdown' in result.summary_metrics
+        assert 'annual_return' in result.metrics
+        assert 'sharpe_ratio' in result.metrics
+        assert 'max_drawdown' in result.metrics
         
         # Check equity curve is sensible
         assert result.equity_curve.iloc[0] > 0
@@ -136,7 +136,7 @@ class TestPortfolioEngine:
             equal_weight, '2021-01-01', '2022-12-31', 'M'
         )
         
-        metrics = result.summary_metrics
+        metrics = result.metrics
         
         # Check all required metrics exist
         required_metrics = [
@@ -249,7 +249,7 @@ class TestIntegration:
         # Verify complete result
         assert isinstance(result, PortfolioResult)
         assert result.equity_curve.iloc[-1] > 0
-        assert len(result.summary_metrics) > 10
+        assert len(result.metrics) > 10
         
         # Verify can export dashboard data
         dashboard_data = portfolio.get_dashboard_data()

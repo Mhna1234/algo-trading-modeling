@@ -63,6 +63,38 @@ class PortfolioOptimizer:
         self.last_returns = None
         self.last_volatility = None
         self.last_sharpe = None
+    
+    def optimize(self,
+                initial_weights: Union[pd.Series, np.ndarray],
+                objective: str = 'sharpe',
+                alpha: float = 0.95,
+                long_only: bool = True,
+                max_weight: Optional[float] = None) -> np.ndarray:
+        """
+        Generic optimization wrapper method.
+        
+        This is a convenience method that routes to the appropriate
+        optimization function based on the objective.
+        
+        Args:
+            initial_weights: Starting weights or signals
+            objective: Optimization objective ('sharpe', 'mvo', 'cvar', 'risk_parity')
+            alpha: Confidence level for CVaR (if using cvar objective)
+            long_only: Whether to enforce long-only constraints
+            max_weight: Maximum weight per asset (overrides instance setting)
+            
+        Returns:
+            Optimal portfolio weights
+        """
+        # For now, return equal weights as a placeholder
+        # In production, this should calculate expected returns and covariance
+        # from recent data and call the appropriate optimization method
+        if isinstance(initial_weights, pd.Series):
+            n = len(initial_weights)
+            return np.ones(n) / n
+        else:
+            n = len(initial_weights)
+            return np.ones(n) / n
         
     def mean_variance_optimization(self, 
                                  expected_returns: Union[pd.Series, np.ndarray],

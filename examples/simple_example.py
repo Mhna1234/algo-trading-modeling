@@ -41,7 +41,11 @@ print(f"✓ Created {n_assets} assets with {len(dates)} days of data\n")
 # Step 2: Initialize strategy and optimizer
 print("Step 2: Initializing strategy and optimizer...")
 strategy = Strategy(prices)
-optimizer = PortfolioOptimizer(strategy.get_return_matrix())
+optimizer = PortfolioOptimizer(
+    risk_free_rate=0.02,
+    max_weight=0.3,
+    min_weight=0.0
+)
 print("✓ Ready\n")
 
 # Step 3: Create portfolio engine

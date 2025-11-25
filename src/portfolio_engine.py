@@ -401,17 +401,17 @@ class PortfolioEngine:
         if freq == 'D':
             return dates.tolist()
         elif freq == 'W':
-            # End of week
-            weekly = dates.to_period('W').asfreq().to_timestamp(how='end')
-            return sorted(set(dates).intersection(set(weekly)))
+            # Last business day of each week
+            is_week_end = dates.to_series().groupby(dates.to_period('W')).transform('last') == dates
+            return dates[is_week_end].tolist()
         elif freq == 'M':
-            # End of month
-            monthly = dates.to_period('M').asfreq().to_timestamp(how='end')
-            return sorted(set(dates).intersection(set(monthly)))
+            # Last business day of each month
+            is_month_end = dates.to_series().groupby(dates.to_period('M')).transform('last') == dates
+            return dates[is_month_end].tolist()
         elif freq == 'Q':
-            # End of quarter
-            quarterly = dates.to_period('Q').asfreq().to_timestamp(how='end')
-            return sorted(set(dates).intersection(set(quarterly)))
+            # Last business day of each quarter
+            is_quarter_end = dates.to_series().groupby(dates.to_period('Q')).transform('last') == dates
+            return dates[is_quarter_end].tolist()
         else:
             raise ValueError(f"Unknown frequency: {freq}")
     
@@ -419,7 +419,7 @@ class PortfolioEngine:
         """Build PortfolioState object for strategy wrapper."""
         # Get historical data up to current date
         price_history = self._prices.loc[:date]
-        return_history = self._returns.loc[:date[1:]]
+        return_history = self._returns.loc[:date]
         
         # Calculate recent metrics
         recent_sharpe = self._calculate_rolling_sharpe(252) if len(self._returns_history) > 252 else 0.0

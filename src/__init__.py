@@ -75,7 +75,7 @@ from .optimizer import PortfolioOptimizer, optimize_portfolio_forecasted
 
 # Legacy compatibility (UPDATED)
 from .backtester import Backtester, BacktestResults
-from .evaluator import PerformanceEvaluator, evaluate_performance
+from .evaluator import Evaluator, PerformanceEvaluator, evaluate_performance
 
 # Data and utilities (EXISTING)
 from .data_loader import DataLoader, load_data
@@ -115,6 +115,7 @@ __all__ = [
     # Legacy API (Backward Compatible)
     'Backtester',
     'BacktestResults',
+    'Evaluator',
     'PerformanceEvaluator',
     'evaluate_performance',
     

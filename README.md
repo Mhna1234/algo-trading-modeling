@@ -376,15 +376,11 @@ from src import Backtester
 backtester = Backtester(prices)
 results = backtester.run(initial_capital=100000)
 
-# Legacy portfolio class
-from src.portfolio import Portfolio
+# Legacy evaluator
+from src import PerformanceEvaluator
 
-portfolio = Portfolio(prices)
-weights = portfolio.build_target_weights_from_rule(
-    rule=portfolio.equal_weight_rule(),
-    schedule='M'
-)
-result = portfolio.rebalance(weights)
+evaluator = PerformanceEvaluator()
+metrics = evaluator.evaluate_performance(results)
 ```
 
 ## 📚 Documentation
