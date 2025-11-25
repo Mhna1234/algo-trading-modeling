@@ -79,7 +79,7 @@ def create_sample_data(n_periods=500, n_assets=5):
     return prices, signals, returns_df
 
 
-def plot_equity_curves(portfolio_result, benchmark_prices=None, save_path='equity_curves.png'):
+def plot_equity_curves(portfolio_result, benchmark_prices=None, save_path='visualizations/equity_curves.png'):
     """Plot portfolio equity curve with benchmark comparison."""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
     
@@ -128,7 +128,7 @@ def plot_equity_curves(portfolio_result, benchmark_prices=None, save_path='equit
     plt.show()
 
 
-def plot_portfolio_weights(weights_df, save_path='portfolio_weights.png'):
+def plot_portfolio_weights(weights_df, save_path='visualizations/portfolio_weights.png'):
     """Plot portfolio weights allocation over time."""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
     
@@ -187,7 +187,7 @@ def plot_portfolio_weights(weights_df, save_path='portfolio_weights.png'):
     plt.show()
 
 
-def plot_risk_metrics(portfolio_result, save_path='risk_metrics.png'):
+def plot_risk_metrics(portfolio_result, save_path='visualizations/risk_metrics.png'):
     """Plot risk analytics including drawdowns and volatility."""
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
     
@@ -254,7 +254,7 @@ def plot_risk_metrics(portfolio_result, save_path='risk_metrics.png'):
     plt.show()
 
 
-def plot_trading_activity(trades_df, save_path='trading_activity.png'):
+def plot_trading_activity(trades_df, save_path='visualizations/trading_activity.png'):
     """Plot trading activity and turnover."""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
     
@@ -292,7 +292,7 @@ def plot_trading_activity(trades_df, save_path='trading_activity.png'):
     plt.show()
 
 
-def plot_correlation_analysis(prices_df, save_path='correlation_analysis.png'):
+def plot_correlation_analysis(prices_df, save_path='visualizations/correlation_analysis.png'):
     """Plot correlation matrix and rolling correlations."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     
@@ -325,7 +325,7 @@ def plot_correlation_analysis(prices_df, save_path='correlation_analysis.png'):
     plt.show()
 
 
-def plot_monthly_returns_heatmap(portfolio_result, save_path='monthly_returns.png'):
+def plot_monthly_returns_heatmap(portfolio_result, save_path='visualizations/monthly_returns.png'):
     """Plot monthly returns heatmap."""
     equity = portfolio_result.equity_curve
     returns = equity.pct_change().dropna()

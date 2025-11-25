@@ -423,7 +423,7 @@ class AlgorithmicTradingPipeline:
         try:
             # Use backtester's plotting method if available
             if hasattr(self.backtester, 'plot_results'):
-                save_path = "backtest_results.png" if save_plots else None
+                save_path = "visualizations/backtest_results.png" if save_plots else None
                 self.backtester.plot_results(save_path=save_path)
             else:
                 # Create basic plot for Portfolio class results
@@ -490,7 +490,7 @@ class AlgorithmicTradingPipeline:
         plt.tight_layout()
         
         if save_plots:
-            plt.savefig('portfolio_backtest_results.png', dpi=300, bbox_inches='tight')
+            plt.savefig('visualizations/portfolio_backtest_results.png', dpi=300, bbox_inches='tight')
         
         plt.show()
     

@@ -13,6 +13,11 @@ algo-trading-modeling/
 │   ├── raw/                        # Raw downloaded data
 │   └── processed/                  # Cleaned and processed data
 │
+├── visualizations/                # All visualization outputs (NEW)
+│   ├── test_*.png                 # Test suite visualizations
+│   ├── *.png                      # Main pipeline visualizations
+│   └── README.md                  # Visualization documentation
+│
 ├── src/                           # Core modules
 │   ├── data_loader.py             # Data download & preprocessing
 │   ├── feature_engineering.py     # Technical indicators & features
@@ -242,6 +247,35 @@ print(f"Annual Return: {result.perf['ann_return']:.2%}")
 print(f"Sharpe Ratio: {result.perf['sharpe']:.3f}")
 print(f"Max Drawdown: {result.perf['max_drawdown']:.2%}")
 ```
+
+#### Generating Visualizations
+
+```python
+# Generate all portfolio visualizations
+python visualize_portfolio.py
+
+# Or programmatically
+from visualize_portfolio import (
+    plot_equity_curves, 
+    plot_portfolio_weights,
+    plot_risk_metrics,
+    plot_trading_activity,
+    plot_correlation_analysis,
+    plot_monthly_returns_heatmap
+)
+
+# After running backtest
+plot_equity_curves(result, benchmark_prices)
+plot_portfolio_weights(result.weights)
+plot_risk_metrics(result)
+plot_trading_activity(result.trades)
+plot_correlation_analysis(prices)
+plot_monthly_returns_heatmap(result)
+
+# All visualizations are saved to visualizations/ folder
+```
+
+See `visualizations/README.md` for detailed information about each chart type.
 
 ## 🧮 Mathematical Framework
 
