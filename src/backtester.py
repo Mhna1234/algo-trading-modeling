@@ -1,13 +1,16 @@
 """
-Backtesting Engine Module
+Backtesting Engine Module - Legacy Wrapper
 
-This module provides a comprehensive backtesting framework for algorithmic trading strategies.
-It supports:
-- Portfolio rebalancing with transaction costs
-- Rolling window re-estimation
-- Multiple performance metrics tracking
-- Benchmark comparison
-- Position sizing and risk management
+This module provides backward compatibility with the old backtesting API
+while using the new PortfolioEngine architecture underneath.
+
+For new code, use PortfolioEngine and strategy wrappers directly:
+    from src.portfolio_engine import PortfolioEngine
+    from src.strategy_wrapper import MomentumStrategy
+    
+    portfolio = PortfolioEngine(prices)
+    strategy = MomentumStrategy(...)
+    result = portfolio.run_backtest(strategy, ...)
 
 Mathematical Formulations:
 - Portfolio Return: R_p,t = Σ w_{i,t-1} * R_{i,t}
@@ -25,6 +28,8 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
 
+from .portfolio_engine import PortfolioEngine, PortfolioResult
+from .strategy_wrapper import MomentumStrategy, BaseStrategyWrapper
 from .utils import (
     TradingConfig, calculate_returns, rebalance_dates, 
     calculate_sharpe_ratio, calculate_max_drawdown, timing_decorator
@@ -94,38 +99,175 @@ class BacktestResults:
 
 class Backtester:
     """
-    Comprehensive backtesting engine for algorithmic trading strategies.
+    LEGACY WRAPPER - Maintains old API while using new PortfolioEngine.
     
-    This class simulates the execution of a trading strategy over historical data,
-    accounting for transaction costs, rebalancing frequency, and various constraints.
+    For new code, use PortfolioEngine directly:
+        portfolio = PortfolioEngine(prices)
+        strategy = MomentumStrategy(...)
+        result = portfolio.run_backtest(strategy, ...)
+    
+    This class provides backward compatibility with existing code that uses
+    the old Backtester API.
     """
     
     def __init__(self, 
+                 strategy=None,
+                 optimizer=None,
+                 rebal_freq: str = 'M',
+                 tc_bps: float = 5.0,
+                 slippage_bps: float = 1.0,
                  config: Optional[TradingConfig] = None,
-                 initial_capital: float = 100000.0,
-                 transaction_cost: float = 0.001,
+                 initial_capital: float = 1000000.0,
+                 transaction_cost: float = 0.0005,
                  rebalance_frequency: str = 'monthly',
                  benchmark_ticker: str = 'SPY'):
         """
         Initialize Backtester with configuration.
         
         Args:
-            config: Trading configuration object
+            strategy: Strategy object (from strategy.py)
+            optimizer: PortfolioOptimizer object
+            rebal_freq: Rebalancing frequency ('D', 'W', 'M', 'Q')
+            tc_bps: Transaction cost in basis points
+            slippage_bps: Slippage in basis points
+            config: Trading configuration object (legacy)
             initial_capital: Starting portfolio value
-            transaction_cost: Transaction cost rate (e.g., 0.001 = 0.1%)
-            rebalance_frequency: How often to rebalance ('daily', 'weekly', 'monthly')
+            transaction_cost: Transaction cost rate (legacy, converted to bps)
+            rebalance_frequency: How often to rebalance (legacy)
             benchmark_ticker: Benchmark ticker for comparison
         """
+        # New API parameters
+        self.strategy = strategy
+        self.optimizer = optimizer
+        self.rebal_freq = rebal_freq
+        
+        # Convert legacy parameters to new format
+        if tc_bps == 5.0 and transaction_cost != 0.0005:
+            # User provided old transaction_cost
+            tc_bps = transaction_cost * 10000
+        
+        self.tc_bps = tc_bps
+        self.slippage_bps = slippage_bps
+        
+        # Legacy parameters
         self.config = config or TradingConfig()
         self.initial_capital = initial_capital
         self.transaction_cost = transaction_cost
-        self.rebalance_frequency = rebalance_frequency
         self.benchmark_ticker = benchmark_ticker
+        
+        # Map old frequency to new
+        freq_map = {'daily': 'D', 'weekly': 'W', 'monthly': 'M', 'quarterly': 'Q'}
+        if rebalance_frequency.lower() in freq_map:
+            self.rebal_freq = freq_map[rebalance_frequency.lower()]
+        else:
+            self.rebalance_frequency = rebalance_frequency
+        
+        # Portfolio engine (created when needed)
+        self.portfolio = None
+        self._result = None
         
         # Results storage
         self.results = None
         self.is_fitted = False
+        self.weights = None
+        self.trades = None
         
+    def run(self,
+            start_date: str,
+            end_date: Optional[str] = None,
+            objective: str = 'cvar',
+            top_n: int = 10,
+            **kwargs) -> pd.DataFrame:
+        """
+        Legacy run method - converts to new PortfolioEngine API.
+        
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (optional)
+            objective: Optimization objective ('cvar', 'mvo', 'sharpe', etc.)
+            top_n: Number of assets to hold
+            **kwargs: Additional strategy parameters
+        
+        Returns:
+            DataFrame with legacy format (wealth, return columns)
+        """
+        if self.strategy is None or self.optimizer is None:
+            raise ValueError("Must provide strategy and optimizer to use legacy run() method")
+        
+        # Create portfolio engine
+        self.portfolio = PortfolioEngine(
+            prices=self.strategy.prices,
+            initial_capital=self.initial_capital,
+            transaction_cost_bps=self.tc_bps,
+            slippage_bps=self.slippage_bps
+        )
+        
+        # Create strategy wrapper based on objective
+        if objective == 'cvar':
+            from .strategy_wrapper import CVaRMinimizationStrategy
+            wrapper = CVaRMinimizationStrategy(
+                self.strategy, self.optimizer,
+                alpha=kwargs.get('alpha', 0.95),
+                max_weight=kwargs.get('max_weight', 0.4)
+            )
+        elif objective in ['momentum', 'mom']:
+            from .strategy_wrapper import MomentumStrategy
+            wrapper = MomentumStrategy(
+                self.strategy, self.optimizer,
+                top_k=top_n,
+                objective='cvar',
+                **kwargs
+            )
+        else:
+            # Default to momentum with specified objective
+            wrapper = MomentumStrategy(
+                self.strategy, self.optimizer,
+                top_k=top_n,
+                objective=objective,
+                **kwargs
+            )
+        
+        # Run backtest
+        self._result = self.portfolio.run_backtest(
+            wrapper,
+            start_date=start_date,
+            end_date=end_date,
+            rebalance_freq=self.rebal_freq
+        )
+        
+        # Store for legacy methods
+        self.weights = self._result.weights_history
+        self.trades = self._result.trades_history
+        self.is_fitted = True
+        
+        # Convert to legacy DataFrame format
+        return self._build_legacy_dataframe(self._result)
+    
+    def _build_legacy_dataframe(self, result: PortfolioResult) -> pd.DataFrame:
+        """Convert new PortfolioResult to old DataFrame format."""
+        df = pd.DataFrame({
+            'wealth': result.equity_curve,
+            'return': result.returns_series
+        })
+        return df
+    
+    def metrics(self) -> dict:
+        """Return performance metrics (legacy method)."""
+        if self._result is None:
+            raise ValueError("Must call run() first")
+        
+        # Map new metric names to old names for compatibility
+        old_metrics = {
+            'Annual Return': self._result.summary_metrics['annual_return'],
+            'Annual Volatility': self._result.summary_metrics['annual_volatility'],
+            'Sharpe Ratio': self._result.summary_metrics['sharpe_ratio'],
+            'Max Drawdown': self._result.summary_metrics['max_drawdown'],
+            'Calmar Ratio': self._result.summary_metrics.get('calmar_ratio', 0.0),
+            'Total Return': self._result.summary_metrics['total_return'],
+        }
+        
+        return old_metrics
+    
     def calculate_transaction_costs(self, 
                                   old_weights: np.ndarray,
                                   new_weights: np.ndarray,

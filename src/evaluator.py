@@ -1,13 +1,15 @@
 """
-Performance Evaluation Module
+Performance Evaluation Module - Enhanced with PortfolioEngine Support
 
-This module provides comprehensive performance evaluation and analysis tools
-for algorithmic trading strategies. It includes:
-- Risk-adjusted performance metrics
-- Benchmark comparison analysis
-- Risk attribution and decomposition
-- Statistical significance testing
-- Performance visualization and reporting
+This module provides comprehensive performance evaluation using both the new
+PortfolioEngine/PortfolioResult architecture and legacy compatibility.
+
+For new code:
+    from src.portfolio_engine import PortfolioResult
+    from src.evaluator import Evaluator
+    
+    evaluator = Evaluator(portfolio_result)
+    evaluator.compare_strategies(results_dict)
 
 Mathematical Formulations:
 - Sharpe Ratio: SR = (E[R] - R_f) / σ(R)
@@ -28,6 +30,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from .portfolio_engine import PortfolioResult
 from .utils import (
     calculate_returns, annualize_returns, annualize_volatility,
     calculate_sharpe_ratio, calculate_max_drawdown, format_percentage
@@ -35,7 +38,174 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
-class PerformanceEvaluator:
+
+class Evaluator:
+    """
+    Performance evaluation using PortfolioEngine results.
+    
+    Simplified evaluator that uses pre-calculated metrics from PortfolioEngine.
+    """
+    
+    def __init__(self, portfolio_result: PortfolioResult, risk_free_rate: float = 0.02):
+        """
+        Initialize Evaluator with portfolio results.
+        
+        Args:
+            portfolio_result: PortfolioResult from PortfolioEngine
+            risk_free_rate: Annual risk-free rate
+        """
+        self.result = portfolio_result
+        self.risk_free_rate = risk_free_rate
+        self.metrics = portfolio_result.summary_metrics
+    
+    def compare_strategies(self, results_dict: Dict[str, PortfolioResult]) -> pd.DataFrame:
+        """
+        Compare multiple strategy results.
+        
+        Parameters
+        ----------
+        results_dict : dict
+            {strategy_name: PortfolioResult}
+        
+        Returns
+        -------
+        pd.DataFrame
+            Comparison table with key metrics
+        """
+        rows = []
+        for name, result in results_dict.items():
+            row = {'Strategy': name}
+            row.update(result.summary_metrics)
+            rows.append(row)
+        
+        df = pd.DataFrame(rows).set_index('Strategy')
+        
+        # Format for display
+        return df
+    
+    def plot_comparison(self, results_dict: Dict[str, PortfolioResult], figsize=(14, 10)):
+        """
+        Plot equity curves of multiple strategies.
+        
+        Parameters
+        ----------
+        results_dict : dict
+            {strategy_name: PortfolioResult}
+        figsize : tuple
+            Figure size
+        """
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+        
+        # Equity curves
+        ax = axes[0, 0]
+        for name, result in results_dict.items():
+            result.equity_curve.plot(ax=ax, label=name, linewidth=2)
+        ax.set_title("Equity Curves Comparison", fontsize=14, fontweight='bold')
+        ax.set_ylabel("Portfolio Value")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Drawdowns
+        ax = axes[0, 1]
+        for name, result in results_dict.items():
+            result.drawdown_series.plot(ax=ax, label=name, alpha=0.7)
+        ax.set_title("Drawdown Comparison", fontsize=14, fontweight='bold')
+        ax.set_ylabel("Drawdown")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Returns distribution
+        ax = axes[1, 0]
+        for name, result in results_dict.items():
+            result.returns_series.hist(bins=50, alpha=0.5, label=name, ax=ax)
+        ax.set_title("Returns Distribution", fontsize=14, fontweight='bold')
+        ax.set_xlabel("Daily Return")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Metrics comparison
+        ax = axes[1, 1]
+        comparison_df = self.compare_strategies(results_dict)
+        metrics_to_plot = ['sharpe_ratio', 'sortino_ratio', 'calmar_ratio']
+        available_metrics = [m for m in metrics_to_plot if m in comparison_df.columns]
+        
+        if available_metrics:
+            comparison_df[available_metrics].plot(kind='bar', ax=ax)
+            ax.set_title("Risk-Adjusted Returns", fontsize=14, fontweight='bold')
+            ax.set_ylabel("Ratio")
+            ax.legend()
+            ax.grid(True, alpha=0.3, axis='y')
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def generate_report(self, strategy_name: Optional[str] = None) -> str:
+        """
+        Generate text report from portfolio result.
+        
+        Parameters
+        ----------
+        strategy_name : str, optional
+            Name to display in report
+        
+        Returns
+        -------
+        str
+            Formatted performance report
+        """
+        name = strategy_name or self.result.strategy_name
+        
+        report = f"\n{'='*70}\n"
+        report += f"PERFORMANCE REPORT: {name}\n"
+        report += f"{'='*70}\n\n"
+        
+        report += "SUMMARY METRICS\n"
+        report += "-" * 40 + "\n"
+        
+        metrics = self.result.summary_metrics
+        
+        # Returns
+        report += f"Total Return................ {metrics['total_return']:.2%}\n"
+        report += f"Annual Return............... {metrics['annual_return']:.2%}\n"
+        report += f"Annual Volatility........... {metrics['annual_volatility']:.2%}\n"
+        
+        # Risk-adjusted
+        report += f"\nRISK-ADJUSTED METRICS\n"
+        report += "-" * 40 + "\n"
+        report += f"Sharpe Ratio................ {metrics['sharpe_ratio']:.3f}\n"
+        report += f"Sortino Ratio............... {metrics['sortino_ratio']:.3f}\n"
+        report += f"Calmar Ratio................ {metrics['calmar_ratio']:.3f}\n"
+        
+        # Risk
+        report += f"\nRISK METRICS\n"
+        report += "-" * 40 + "\n"
+        report += f"Max Drawdown................ {metrics['max_drawdown']:.2%}\n"
+        report += f"Max DD Duration............. {metrics['max_drawdown_duration_days']} days\n"
+        report += f"VaR 95%..................... {metrics['var_95']:.2%}\n"
+        report += f"CVaR 95%.................... {metrics['cvar_95']:.2%}\n"
+        
+        # Trading
+        report += f"\nTRADING METRICS\n"
+        report += "-" * 40 + "\n"
+        report += f"Total Trades................ {metrics['total_trades']}\n"
+        report += f"Average Turnover............ {metrics['avg_turnover']:.2%}\n"
+        report += f"Total Costs................. ${metrics['total_costs']:,.2f}\n"
+        
+        # Performance
+        report += f"\nPERFORMANCE STATISTICS\n"
+        report += "-" * 40 + "\n"
+        report += f"Win Rate.................... {metrics['win_rate']:.2%}\n"
+        report += f"Profit Factor............... {metrics['profit_factor']:.3f}\n"
+        report += f"Final Equity................ ${metrics['final_equity']:,.2f}\n"
+        
+        report += f"\n{'='*70}\n"
+        
+        return report
+
+
+class PerformanceEvaluator(Evaluator):
+    """Legacy class name for backward compatibility."""
+    pass
     """
     Comprehensive performance evaluation and analysis.
     
