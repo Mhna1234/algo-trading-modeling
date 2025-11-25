@@ -234,13 +234,11 @@ class MomentumStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate momentum-based weights."""
-        # Calculate momentum signals
-        momentum_signals = self.strategy.momentum(window=self.params['lookback'])
-        
-        # Get initial weights (top K assets)
+        # Get initial weights (top K assets with momentum)
         initial_weights = self.strategy.generate_initial_weights(
             method='momentum',
-            top_n=self.params['top_k']
+            top_n=self.params['top_k'],
+            lookback=self.params['lookback']
         )
         
         # Optimize with risk constraints
@@ -249,7 +247,8 @@ class MomentumStrategy(BaseStrategyWrapper):
             objective=self.params['objective'],
             alpha=self.params.get('alpha', 0.95),
             long_only=True,
-            max_weight=self.params['max_weight']
+            max_weight=self.params['max_weight'],
+            returns_data=self.strategy.get_return_matrix()
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -327,7 +326,8 @@ class MeanReversionStrategy(BaseStrategyWrapper):
         # Generate mean reversion signals
         initial_weights = self.strategy.generate_initial_weights(
             method='mean_reversion',
-            top_n=self.params['top_k']
+            top_n=self.params['top_k'],
+            window=self.params['window']
         )
         
         # Optimize
@@ -336,7 +336,8 @@ class MeanReversionStrategy(BaseStrategyWrapper):
             objective=self.params['objective'],
             risk_aversion=self.params.get('risk_aversion', 3.0),
             long_only=True,
-            max_weight=self.params['max_weight']
+            max_weight=self.params['max_weight'],
+            returns_data=self.strategy.get_return_matrix()
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -406,7 +407,8 @@ class InverseVolatilityStrategy(BaseStrategyWrapper):
         """Generate inverse volatility weights."""
         # Generate inverse volatility signals
         initial_weights = self.strategy.generate_initial_weights(
-            method='inv_vol'
+            method='inv_vol',
+            window=self.params['vol_window']
         )
         
         # Optimize with risk parity
@@ -414,7 +416,8 @@ class InverseVolatilityStrategy(BaseStrategyWrapper):
             initial_weights,
             objective=self.params['objective'],
             long_only=True,
-            max_weight=self.params['max_weight']
+            max_weight=self.params['max_weight'],
+            returns_data=self.strategy.get_return_matrix()
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -495,7 +498,8 @@ class CVaRMinimizationStrategy(BaseStrategyWrapper):
             objective='cvar',
             alpha=self.params['alpha'],
             long_only=True,
-            max_weight=self.params['max_weight']
+            max_weight=self.params['max_weight'],
+            returns_data=self.strategy.get_return_matrix()
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -580,10 +584,20 @@ class RegimeSwitchingStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate regime-adaptive weights."""
-        # Use regime-based momentum from strategy
+        # Detect regime based on recent volatility
+        recent_vol = self.strategy.volatility(window=20).iloc[-1].mean()
+        
+        # Choose window based on volatility regime
+        if recent_vol > self.params['vol_threshold']:
+            window = self.params['fast_window']  # High vol = fast momentum
+        else:
+            window = self.params['slow_window']  # Low vol = slow momentum
+        
+        # Use adaptive momentum
         initial_weights = self.strategy.generate_initial_weights(
-            method='regime_momentum',
-            top_n=self.params['top_k']
+            method='momentum',
+            top_n=self.params['top_k'],
+            lookback=window
         )
         
         # Optimize
@@ -592,7 +606,8 @@ class RegimeSwitchingStrategy(BaseStrategyWrapper):
             objective=self.params['objective'],
             alpha=self.params['alpha'],
             long_only=True,
-            max_weight=self.params['max_weight']
+            max_weight=self.params['max_weight'],
+            returns_data=self.strategy.get_return_matrix()
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -680,12 +695,12 @@ class MLRandomForestStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate ML Random Forest weights."""
-        # Generate ML predictions
+        # TODO: Implement actual ML forecasting
+        # For now, use momentum as proxy for ML predictions
         initial_weights = self.strategy.generate_initial_weights(
-            method='ml_random_forest',
+            method='momentum',
             top_n=self.params['top_k'],
-            lookback=self.params.get('lookback', 252),
-            forecast_days=self.params.get('forecast_days', 21)
+            lookback=self.params.get('lookback', 252)
         )
         
         # Optimize
@@ -694,7 +709,8 @@ class MLRandomForestStrategy(BaseStrategyWrapper):
             objective=self.params['objective'],
             alpha=self.params['alpha'],
             long_only=True,
-            max_weight=self.params['max_weight']
+            max_weight=self.params['max_weight'],
+            returns_data=self.strategy.get_return_matrix()
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -777,12 +793,12 @@ class MLGradientBoostingStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate ML Gradient Boosting weights."""
-        # Generate ML predictions
+        # TODO: Implement actual GBM forecasting
+        # For now, use momentum as proxy for ML predictions
         initial_weights = self.strategy.generate_initial_weights(
-            method='ml_gradient_boosting',
+            method='momentum',
             top_n=self.params['top_k'],
-            lookback=self.params.get('lookback', 252),
-            forecast_days=self.params.get('forecast_days', 21)
+            lookback=self.params.get('lookback', 252)
         )
         
         # Optimize
@@ -791,7 +807,8 @@ class MLGradientBoostingStrategy(BaseStrategyWrapper):
             objective=self.params['objective'],
             alpha=self.params['alpha'],
             long_only=True,
-            max_weight=self.params['max_weight']
+            max_weight=self.params['max_weight'],
+            returns_data=self.strategy.get_return_matrix()
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -871,10 +888,12 @@ class ARMAForecastStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate ARMA-based weights."""
-        # Generate ARMA forecasts
+        # TODO: Implement actual ARMA forecasting
+        # For now, use mean reversion as proxy
         initial_weights = self.strategy.generate_initial_weights(
-            method='arma',
-            top_n=self.params['top_k']
+            method='mean_reversion',
+            top_n=self.params['top_k'],
+            window=20
         )
         
         # Optimize
@@ -883,7 +902,8 @@ class ARMAForecastStrategy(BaseStrategyWrapper):
             objective=self.params['objective'],
             risk_aversion=self.params.get('risk_aversion', 3.0),
             long_only=True,
-            max_weight=self.params['max_weight']
+            max_weight=self.params['max_weight'],
+            returns_data=self.strategy.get_return_matrix()
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -958,10 +978,11 @@ class MultiFactorMLStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate multi-factor ML weights."""
-        # Generate multi-factor signals
+        # TODO: Implement actual multi-factor ML
+        # For now, use inverse volatility (risk-based approach)
         initial_weights = self.strategy.generate_initial_weights(
-            method='multi_factor_ml',
-            top_n=self.params['top_k']
+            method='inv_vol',
+            window=60
         )
         
         # Optimize
@@ -970,7 +991,8 @@ class MultiFactorMLStrategy(BaseStrategyWrapper):
             objective=self.params['objective'],
             alpha=self.params['alpha'],
             long_only=True,
-            max_weight=self.params['max_weight']
+            max_weight=self.params['max_weight'],
+            returns_data=self.strategy.get_return_matrix()
         )
         
         return Series(final_weights, index=self.strategy.assets)

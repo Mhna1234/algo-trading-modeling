@@ -16,18 +16,20 @@ The new architecture separates strategy logic from portfolio execution:
 ### 📦 **10 Pre-Built Strategies**
 
 **Basic Strategies:**
-1. **Equal Weight**: Simple 1/N portfolio
-2. **Momentum**: Price momentum with mean reversion filter
-3. **Mean Reversion**: Z-score based reversion trading
+1. **Equal Weight**: Simple 1/N portfolio (no optimization)
+2. **Momentum**: Price momentum with Sharpe ratio optimization
+3. **Mean Reversion**: Z-score based with mean-variance optimization
 4. **Inverse Volatility**: Risk parity approach
 
 **Advanced Strategies:**
-5. **CVaR Minimization**: Downside risk optimization
-6. **Regime Switching**: Market regime detection (bull/bear/sideways)
-7. **ML Random Forest**: Random Forest return predictions
-8. **ML Gradient Boosting**: Gradient Boosting return predictions
-9. **ARMA Forecast**: ARIMA time series forecasting
-10. **Multi-Factor ML**: Ensemble of ML models with multiple factors
+5. **Min Variance**: Mean-variance with high risk aversion
+6. **Regime Switching**: Adaptive momentum with regime detection
+7. **Momentum Fast**: Short-term momentum (21-day Sharpe optimization)
+8. **Momentum Slow**: Long-term momentum (252-day Sharpe optimization)
+9. **Mean Reversion Short**: Very short window (3-day) mean reversion
+10. **Balanced Risk**: Conservative risk parity approach
+
+**Note**: CVaR optimization is available in the optimizer but not used in the current demo strategies. ML/ARMA strategies are work-in-progress with fallback implementations.
 
 ### 📊 **Real-Time Dashboard Support**
 Pre-calculated metrics ready for visualization:
@@ -124,17 +126,19 @@ algo-trading-modeling/
 
 **Basic Strategies** (Easy to understand and implement):
 - **Equal Weight**: 1/N portfolio (baseline strategy)
-- **Momentum**: Buy winners, sell losers with mean reversion filter
-- **Mean Reversion**: Z-score based contrarian trading
+- **Momentum**: Buy winners using Sharpe ratio optimization
+- **Mean Reversion**: Z-score based with mean-variance optimization
 - **Inverse Volatility**: Risk parity / minimum volatility approach
 
-**Advanced Strategies** (Incorporating ML/DL/Time Series):
-- **CVaR Minimization**: Downside risk optimization using CVaR
-- **Regime Switching**: Market regime detection with regime-specific portfolios
-- **ML Random Forest**: Random Forest predictions for expected returns
-- **ML Gradient Boosting**: Gradient Boosting for return forecasting
-- **ARMA Forecast**: ARIMA time series forecasting
-- **Multi-Factor ML**: Ensemble of ML models with multiple technical factors
+**Advanced Strategies** (Various timeframes and objectives):
+- **Min Variance**: Conservative mean-variance with high risk aversion
+- **Regime Switching**: Adaptive momentum based on volatility regimes
+- **Momentum Fast**: Short-term momentum (21-day)
+- **Momentum Slow**: Long-term momentum (252-day)
+- **Mean Reversion Short**: Ultra-short window (3-day) mean reversion
+- **Balanced Risk**: Conservative risk parity with position limits
+
+**Available but not in demo**: CVaR optimization, ML strategies (Random Forest, Gradient Boosting), ARMA forecasting, Multi-Factor ML. These are implemented but use fallback methods pending full ML/time-series integration.
 
 See `docs/STRATEGIES.md` for complete documentation on all strategies.
 
@@ -386,6 +390,14 @@ metrics = evaluator.evaluate_performance(results)
 ## 📚 Documentation
 
 Comprehensive documentation is available in the `docs/` folder:
+
+- **[TRADING_FUNDAMENTALS.md](docs/TRADING_FUNDAMENTALS.md)**: Complete guide to trading concepts (~8000 words) ⭐ **START HERE**
+  - Introduction to algorithmic trading
+  - Trading strategies explained (Momentum, Mean Reversion, Risk Parity, etc.)
+  - Portfolio optimization methods (MVO, Sharpe, CVaR, Black-Litterman)
+  - Performance metrics and their importance (Sharpe, Sortino, Calmar, Drawdown)
+  - Risk management principles
+  - Practical considerations and best practices
 
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**: Complete system architecture, design principles, component descriptions, data flow diagrams, extension points, and best practices (~3000 words)
 
@@ -725,10 +737,12 @@ Special thanks to the quantitative finance and machine learning communities for 
 - [Visualization Guide](visualizations/README.md) - Chart types and customization
 
 ### Learning Resources
+- **[Trading Fundamentals Guide](docs/TRADING_FUNDAMENTALS.md)** - Complete guide to trading concepts, strategies, and metrics
 - **Quantitative Finance**: "Advances in Financial Machine Learning" by Marcos López de Prado
 - **Portfolio Theory**: "Modern Portfolio Theory and Investment Analysis" by Elton et al.
 - **Machine Learning**: "Machine Learning for Asset Managers" by Marcos López de Prado
 - **Time Series**: "Time Series Analysis" by Hamilton
+- **Practical Trading**: "Quantitative Trading" by Ernest Chan
 
 ### Related Projects
 - [QuantLib](https://www.quantlib.org/) - Quantitative finance library

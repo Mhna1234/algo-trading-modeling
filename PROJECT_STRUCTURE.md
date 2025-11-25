@@ -62,7 +62,7 @@ algo-trading-modeling/
 | File | Lines | Description |
 |------|-------|-------------|
 | `portfolio_engine.py` | ~700 | Strategy-agnostic portfolio management engine |
-| `strategy_wrapper.py` | ~1000 | 10 pre-built trading strategies (basic to advanced) |
+| `strategy_wrapper.py` | ~1000 | 10 strategy wrappers (5 core + 5 with ML/time-series fallbacks) |
 
 ### ✅ Updated Components
 
@@ -207,7 +207,9 @@ The following obsolete files were removed to keep the project clean:
 |----------|-------|---------|
 | **Core Files** | 10 | Source code in src/ |
 | **New Components** | 2 | portfolio_engine.py, strategy_wrapper.py |
-| **Strategies** | 10 | Equal Weight to Multi-Factor ML |
+| **Working Strategies** | 10 | Equal Weight, Momentum (3 variants), Mean Reversion (3 variants), Inv Vol (2 variants), Regime Switching |
+| **Strategies with Fallbacks** | 5 | CVaR, ML RF, ML GBM, ARMA, Multi-Factor (implemented but use fallback methods) |
+| **Optimization Methods** | 4 | Sharpe, MVO, Risk Parity, CVaR (all fully implemented) |
 | **Test Files** | 1 | Comprehensive test suite |
 | **Example Scripts** | 2 | Demo and simple example |
 | **Documentation** | 4 | README, ARCHITECTURE, STRATEGIES, this file |

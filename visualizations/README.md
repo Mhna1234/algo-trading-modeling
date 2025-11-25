@@ -58,14 +58,41 @@ python examples/demo_all_strategies.py
 python examples/simple_example.py
 ```
 
+### Current Demo Output
+
+The `demo_all_strategies.py` script generates:
+- **all_strategies_comparison.png** - 6-panel comprehensive comparison:
+  - Equity curves for all 10 strategies
+  - Sharpe ratio comparison
+  - Drawdowns overlay
+  - Risk-Return scatter plot
+  - Max drawdown comparison
+  - Win rate comparison
+- Individual strategy dashboard data (CSV + JSON) in subdirectories
+
+**Demo Strategies** (10 working configurations):
+1. Equal Weight - Baseline
+2. Momentum (126-day Sharpe) - Standard momentum
+3. Mean Reversion (5-day MVO) - Standard mean reversion
+4. Inverse Volatility (21-day Risk Parity) - Standard risk parity
+5. Min Variance (10-day MVO, high RA) - Conservative MVO
+6. Regime Switching (Adaptive Sharpe) - Volatility regime-based
+7. Momentum Fast (21-day Sharpe) - Short-term momentum
+8. Momentum Slow (252-day Sharpe) - Long-term momentum
+9. Mean Reversion Short (3-day MVO) - Ultra-short mean reversion
+10. Balanced Risk (60-day Risk Parity) - Conservative risk parity
+
+Latest demo results: Sharpe 1.19-1.96, Returns 6.48%-21.42%, Drawdowns -4.41% to -7.28%
+
 Or programmatically:
 ```python
-from visualize_portfolio import plot_equity_curves, plot_portfolio_weights, plot_risk_metrics
-
 # After running backtest
-plot_equity_curves(portfolio_result, benchmark_prices)
-plot_portfolio_weights(weights_df)
-plot_risk_metrics(portfolio_result)
+from src import PortfolioEngine
+
+engine = PortfolioEngine(prices, strategy)
+result = engine.run_backtest()
+dashboard_data = engine.get_dashboard_data()
+```
 ```
 
 ## Notes

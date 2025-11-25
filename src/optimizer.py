@@ -37,6 +37,7 @@ class PortfolioOptimizer:
     """
     
     def __init__(self, 
+                 returns: Optional[pd.DataFrame] = None,
                  risk_free_rate: float = 0.02,
                  max_weight: float = 0.3,
                  min_weight: float = 0.0,
@@ -46,12 +47,14 @@ class PortfolioOptimizer:
         Initialize PortfolioOptimizer with configuration parameters.
         
         Args:
+            returns: Historical returns data (optional, can be provided in optimize())
             risk_free_rate: Annual risk-free rate
             max_weight: Maximum weight per asset
             min_weight: Minimum weight per asset (0 for long-only)
             transaction_cost: Transaction cost rate
             turnover_limit: Maximum portfolio turnover per period
         """
+        self.returns = returns
         self.risk_free_rate = risk_free_rate
         self.max_weight = max_weight
         self.min_weight = min_weight
@@ -69,7 +72,11 @@ class PortfolioOptimizer:
                 objective: str = 'sharpe',
                 alpha: float = 0.95,
                 long_only: bool = True,
-                max_weight: Optional[float] = None) -> np.ndarray:
+                max_weight: Optional[float] = None,
+                risk_aversion: float = 1.0,
+                lookback: Optional[int] = None,
+                returns_data: Optional[pd.DataFrame] = None,
+                **kwargs) -> np.ndarray:
         """
         Generic optimization wrapper method.
         
@@ -82,19 +89,62 @@ class PortfolioOptimizer:
             alpha: Confidence level for CVaR (if using cvar objective)
             long_only: Whether to enforce long-only constraints
             max_weight: Maximum weight per asset (overrides instance setting)
+            risk_aversion: Risk aversion parameter (for MVO)
+            lookback: Lookback period (for data windowing)
+            returns_data: Historical returns (overrides instance returns)
+            **kwargs: Additional strategy-specific parameters
             
         Returns:
             Optimal portfolio weights
         """
-        # For now, return equal weights as a placeholder
-        # In production, this should calculate expected returns and covariance
-        # from recent data and call the appropriate optimization method
-        if isinstance(initial_weights, pd.Series):
-            n = len(initial_weights)
-            return np.ones(n) / n
+        # Use provided returns data or fall back to instance returns
+        if returns_data is not None:
+            returns = returns_data
+        elif self.returns is not None:
+            returns = self.returns
         else:
+            # If no returns data available, return equal weights
+            logger.warning("No returns data available, using equal weights")
             n = len(initial_weights)
             return np.ones(n) / n
+        
+        # Use lookback period if specified, otherwise use all available data
+        if lookback is not None and lookback > 0:
+            returns = returns.iloc[-lookback:]
+            
+        # Calculate expected returns and covariance from recent data
+        expected_returns = returns.mean() * 252  # Annualized
+        cov_matrix = returns.cov() * 252  # Annualized
+        
+        # Use max_weight parameter if provided, otherwise use instance setting
+        if max_weight is not None:
+            original_max_weight = self.max_weight
+            self.max_weight = max_weight
+        
+        try:
+            # Route to appropriate optimization method
+            if objective == 'sharpe':
+                weights = self.sharpe_maximization(expected_returns, cov_matrix)
+            elif objective == 'mvo':
+                weights = self.mean_variance_optimization(expected_returns, cov_matrix, 
+                                                         risk_aversion=risk_aversion)
+            elif objective == 'cvar':
+                weights = self.cvar_optimization(returns, alpha=alpha)
+            elif objective == 'risk_parity':
+                weights = self.risk_parity_optimization(cov_matrix)
+            elif objective == 'black_litterman':
+                weights = self.black_litterman_optimization(expected_returns, cov_matrix, **kwargs)
+            else:
+                # Default to equal weights for unknown objectives
+                logger.warning(f"Unknown objective '{objective}', using equal weights")
+                n = len(initial_weights)
+                weights = np.ones(n) / n
+        finally:
+            # Restore original max_weight if it was temporarily changed
+            if max_weight is not None:
+                self.max_weight = original_max_weight
+        
+        return weights
         
     def mean_variance_optimization(self, 
                                  expected_returns: Union[pd.Series, np.ndarray],
@@ -317,6 +367,97 @@ class PortfolioOptimizer:
         self.last_volatility = portfolio_vol
         
         logger.info(f"Risk parity optimization completed. Portfolio vol: {portfolio_vol:.3f}")
+        return optimal_weights
+    
+    def cvar_optimization(self,
+                         returns_data: pd.DataFrame,
+                         alpha: float = 0.95,
+                         previous_weights: Optional[np.ndarray] = None) -> np.ndarray:
+        """
+        Minimize Conditional Value at Risk (CVaR).
+        
+        CVaR (Expected Shortfall) is the expected loss given that the loss
+        exceeds the VaR threshold. It's a coherent risk measure that captures
+        tail risk better than VaR.
+        
+        Mathematical formulation:
+        minimize: CVaR_α(w) = VaR_α + (1/(1-α)) E[(loss - VaR_α)^+]
+        subject to: Σw_i = 1, w_min ≤ w_i ≤ w_max
+        
+        Args:
+            returns_data: Historical returns data (DataFrame)
+            alpha: Confidence level (0.95 = minimize worst 5%)
+            previous_weights: Previous period weights for transaction costs
+            
+        Returns:
+            Optimal portfolio weights
+        """
+        n_assets = returns_data.shape[1]
+        n_scenarios = len(returns_data)
+        
+        # Convert to numpy array
+        returns_matrix = returns_data.values
+        
+        # Decision variables
+        w = cp.Variable(n_assets)  # Portfolio weights
+        var = cp.Variable()  # Value at Risk
+        z = cp.Variable(n_scenarios)  # Auxiliary variables for CVaR
+        
+        # Portfolio returns for each scenario
+        portfolio_returns = returns_matrix @ w
+        
+        # CVaR objective
+        cvar = var + (1 / (n_scenarios * (1 - alpha))) * cp.sum(z)
+        
+        # Constraints
+        constraints = [
+            cp.sum(w) == 1,  # Budget constraint
+            w >= self.min_weight,  # Minimum weight
+            w <= self.max_weight,  # Maximum weight
+            z >= 0,  # Auxiliary variables non-negative
+            z >= -portfolio_returns - var  # Definition of CVaR
+        ]
+        
+        # Transaction costs if previous weights provided
+        if previous_weights is not None and self.transaction_cost > 0:
+            turnover = cp.norm1(w - previous_weights)
+            objective = cvar + self.transaction_cost * turnover
+        else:
+            objective = cvar
+        
+        # Solve optimization problem
+        problem = cp.Problem(cp.Minimize(objective), constraints)
+        
+        try:
+            problem.solve(solver=cp.ECOS)
+        except:
+            # Try alternative solver if ECOS fails
+            try:
+                problem.solve(solver=cp.SCS)
+            except:
+                logger.warning("CVaR optimization failed, using equal weights")
+                return np.ones(n_assets) / n_assets
+        
+        if problem.status not in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+            logger.warning(f"CVaR optimization did not converge: {problem.status}")
+            return np.ones(n_assets) / n_assets
+        
+        optimal_weights = w.value
+        
+        # Handle edge cases
+        if optimal_weights is None or np.any(np.isnan(optimal_weights)):
+            logger.warning("Invalid weights from CVaR optimization, using equal weights")
+            return np.ones(n_assets) / n_assets
+        
+        # Normalize weights
+        optimal_weights = optimal_weights / np.sum(optimal_weights)
+        
+        # Store results
+        self.last_weights = optimal_weights
+        self.last_returns = np.mean(returns_matrix @ optimal_weights) * 252
+        self.last_volatility = np.std(returns_matrix @ optimal_weights) * np.sqrt(252)
+        
+        logger.info(f"CVaR optimization completed. VaR: {var.value:.4f}, CVaR: {cvar.value:.4f}")
         return optimal_weights
     
     def black_litterman_optimization(self, 

@@ -119,16 +119,20 @@ class BaseStrategyWrapper(ABC):
 ```
 
 **10 Pre-Built Strategies:**
-1. **EqualWeightStrategy** - Naive 1/N
-2. **MomentumStrategy** - Trend following
-3. **MeanReversionStrategy** - Contrarian
+1. **EqualWeightStrategy** - Naive 1/N (no optimization)
+2. **MomentumStrategy** - Trend following with Sharpe optimization
+3. **MeanReversionStrategy** - Contrarian with MVO
 4. **InverseVolatilityStrategy** - Risk parity
-5. **CVaRMinimizationStrategy** - Tail risk
-6. **RegimeSwitchingStrategy** - Adaptive
-7. **MLRandomForestStrategy** - ML forecast
-8. **MLGradientBoostingStrategy** - Ensemble ML
-9. **ARMAForecastStrategy** - Time series
-10. **MultiFactorMLStrategy** - Multi-factor
+5. **RegimeSwitchingStrategy** - Adaptive momentum
+
+**Additional Implemented (with fallbacks):**
+6. **CVaRMinimizationStrategy** - Tail risk focus (uses Sharpe/MVO as fallback)
+7. **MLRandomForestStrategy** - ML forecast (uses momentum fallback)
+8. **MLGradientBoostingStrategy** - Ensemble ML (uses momentum fallback)
+9. **ARMAForecastStrategy** - Time series (uses mean reversion fallback)
+10. **MultiFactorMLStrategy** - Multi-factor (uses composite fallback)
+
+**Demo Configuration**: Current demo uses 10 variations of the first 4 strategies with different parameters (lookback periods, windows, risk aversion levels) to demonstrate diverse performance characteristics.
 
 ### 3. PortfolioState (Data Structure)
 

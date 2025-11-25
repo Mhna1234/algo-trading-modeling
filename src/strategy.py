@@ -169,7 +169,10 @@ class Strategy:
     
     def generate_initial_weights(self, method: str = 'equal',
                                  signals: Optional[pd.Series] = None,
-                                 top_n: Optional[int] = None) -> pd.Series:
+                                 top_n: Optional[int] = None,
+                                 lookback: Optional[int] = None,
+                                 window: Optional[int] = None,
+                                 **kwargs) -> pd.Series:
         """
         Generate initial weights before optimization.
         
@@ -179,11 +182,17 @@ class Strategy:
             Weight generation method:
             - 'equal': Equal weights (1/N)
             - 'momentum': Weight by momentum signals
+            - 'mean_reversion': Weight by mean reversion (buy losers)
             - 'inverse_vol': Weight by inverse volatility
+            - 'inv_vol': Alias for inverse_vol
         signals : pd.Series, optional
             Signal values for each asset (used with 'momentum' method)
         top_n : int, optional
-            Number of top assets to select (for momentum method)
+            Number of top assets to select
+        lookback : int, optional
+            Lookback window for signals
+        window : int, optional
+            Window parameter for specific methods
         
         Returns
         -------
@@ -198,7 +207,8 @@ class Strategy:
         elif method == 'momentum':
             # Use momentum as signals if not provided
             if signals is None:
-                signals = self.momentum(window=126).iloc[-1]
+                mom_window = lookback if lookback else 126
+                signals = self.momentum(window=mom_window).iloc[-1]
             
             # Select top N assets if specified
             if top_n is not None and top_n < n:
@@ -213,10 +223,32 @@ class Strategy:
                     weights = positive_signals / positive_signals.sum()
                 else:
                     weights = pd.Series(1.0 / n, index=self.assets)
+        
+        elif method == 'mean_reversion':
+            # Use mean reversion signals (buy losers, sell winners)
+            mr_window = window if window else 5
+            signals = self.mean_reversion(window=mr_window).iloc[-1]
+            
+            # Invert signals (negative z-score = oversold = buy)
+            inverted_signals = -signals
+            
+            # Select top N assets if specified
+            if top_n is not None and top_n < n:
+                top_assets = inverted_signals.nlargest(top_n).index
+                weights = pd.Series(0.0, index=self.assets)
+                weights[top_assets] = 1.0 / top_n
+            else:
+                # Weight by inverted signals
+                positive_signals = inverted_signals.clip(lower=0)
+                if positive_signals.sum() > 0:
+                    weights = positive_signals / positive_signals.sum()
+                else:
+                    weights = pd.Series(1.0 / n, index=self.assets)
                 
-        elif method == 'inverse_vol':
+        elif method in ['inverse_vol', 'inv_vol']:
             # Weight by inverse volatility
-            recent_vol = self.volatility(window=20).iloc[-1]
+            vol_window = window if window else 20
+            recent_vol = self.volatility(window=vol_window).iloc[-1]
             inv_vol = 1.0 / (recent_vol + 1e-8)  # Add small epsilon
             weights = inv_vol / inv_vol.sum()
             

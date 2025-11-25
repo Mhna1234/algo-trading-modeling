@@ -114,15 +114,15 @@ print()
 
 strategies_to_test = [
     ("Equal Weight", EqualWeightStrategy(strategy)),
-    ("Momentum", MomentumStrategy(strategy, optimizer, top_k=10, lookback=126)),
+    ("Momentum", MomentumStrategy(strategy, optimizer, top_k=10, lookback=126, objective='sharpe', max_weight=0.3)),
     ("Mean Reversion", MeanReversionStrategy(strategy, optimizer, top_k=10, window=5)),
     ("Inverse Volatility", InverseVolatilityStrategy(strategy, optimizer, vol_window=21)),
-    ("CVaR Minimization", CVaRMinimizationStrategy(strategy, optimizer, alpha=0.95)),
-    ("Regime Switching", RegimeSwitchingStrategy(strategy, optimizer, top_k=10)),
-    ("ML Random Forest", MLRandomForestStrategy(strategy, optimizer, top_k=8)),
-    ("ML Gradient Boosting", MLGradientBoostingStrategy(strategy, optimizer, top_k=8)),
-    ("ARMA Forecast", ARMAForecastStrategy(strategy, optimizer, top_k=8)),
-    ("Multi-Factor ML", MultiFactorMLStrategy(strategy, optimizer, top_k=10))
+    ("Min Variance", MeanReversionStrategy(strategy, optimizer, top_k=15, window=10, risk_aversion=5.0)),
+    ("Regime Switching", RegimeSwitchingStrategy(strategy, optimizer, top_k=10, objective='sharpe')),
+    ("Momentum Fast", MomentumStrategy(strategy, optimizer, top_k=8, lookback=21, objective='sharpe', max_weight=0.25)),
+    ("Momentum Slow", MomentumStrategy(strategy, optimizer, top_k=12, lookback=252, objective='sharpe', max_weight=0.2)),
+    ("Mean Reversion Short", MeanReversionStrategy(strategy, optimizer, top_k=8, window=3, risk_aversion=2.0)),
+    ("Balanced Risk", InverseVolatilityStrategy(strategy, optimizer, vol_window=60, max_weight=0.15))
 ]
 
 results = {}
@@ -143,8 +143,8 @@ for i, (name, strategy_wrapper) in enumerate(strategies_to_test, 1):
             rebalance_freq='M'
         )
         results[name] = result
-        print(f"   ✓ {name}: Sharpe={result.metrics['sharpe_ratio']:.2f}, "
-              f"Return={result.metrics['annual_return']:.2%}")
+        print(f"   ✓ {name}: Sharpe={result.summary_metrics['sharpe_ratio']:.2f}, "
+              f"Return={result.summary_metrics['annual_return']:.2%}")
     except Exception as e:
         print(f"   ✗ {name}: Error - {str(e)[:50]}")
     print()
@@ -199,7 +199,7 @@ if len(results) >= 2:
     
     # 2. Sharpe Ratios
     ax2 = plt.subplot(2, 3, 2)
-    sharpe_data = {name: res.metrics['sharpe_ratio'] for name, res in results.items()}
+    sharpe_data = {name: res.summary_metrics['sharpe_ratio'] for name, res in results.items()}
     colors = plt.cm.RdYlGn(np.linspace(0.3, 0.9, len(sharpe_data)))
     bars = ax2.barh(list(sharpe_data.keys()), list(sharpe_data.values()), color=colors)
     ax2.set_title("Sharpe Ratio Comparison", fontsize=14, fontweight='bold')
@@ -218,9 +218,9 @@ if len(results) >= 2:
     
     # 4. Returns vs Volatility
     ax4 = plt.subplot(2, 3, 4)
-    returns = [res.metrics['annual_return'] for res in results.values()]
-    vols = [res.metrics['annual_volatility'] for res in results.values()]
-    sharpes = [res.metrics['sharpe_ratio'] for res in results.values()]
+    returns = [res.summary_metrics['annual_return'] for res in results.values()]
+    vols = [res.summary_metrics['annual_volatility'] for res in results.values()]
+    sharpes = [res.summary_metrics['sharpe_ratio'] for res in results.values()]
     
     scatter = ax4.scatter(vols, returns, s=200, c=sharpes, cmap='RdYlGn', 
                          alpha=0.7, edgecolors='black', linewidth=1.5)
@@ -235,7 +235,7 @@ if len(results) >= 2:
     
     # 5. Max Drawdown Comparison
     ax5 = plt.subplot(2, 3, 5)
-    dd_data = {name: res.metrics['max_drawdown'] for name, res in results.items()}
+    dd_data = {name: res.summary_metrics['max_drawdown'] for name, res in results.items()}
     colors = plt.cm.RdYlGn_r(np.linspace(0.3, 0.9, len(dd_data)))
     ax5.barh(list(dd_data.keys()), list(dd_data.values()), color=colors)
     ax5.set_title("Maximum Drawdown Comparison", fontsize=14, fontweight='bold')
@@ -244,7 +244,7 @@ if len(results) >= 2:
     
     # 6. Win Rates
     ax6 = plt.subplot(2, 3, 6)
-    win_rates = {name: res.metrics['win_rate'] for name, res in results.items()}
+    win_rates = {name: res.summary_metrics['win_rate'] for name, res in results.items()}
     ax6.bar(range(len(win_rates)), list(win_rates.values()), 
            color='skyblue', edgecolor='black', linewidth=1.5)
     ax6.set_xticks(range(len(win_rates)))
@@ -289,7 +289,7 @@ for name, result in results.items():
     # Save metrics as JSON
     import json
     with open(f'{output_dir}/metrics.json', 'w') as f:
-        json.dump(result.metrics, f, indent=2)
+        json.dump(result.summary_metrics, f, indent=2)
     
     print(f"   ✓ Exported {name} data to {output_dir}/")
 

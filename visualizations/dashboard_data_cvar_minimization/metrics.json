@@ -1,0 +1,21 @@
+{
+  "total_return": 0.0,
+  "annual_return": 0.0,
+  "annual_volatility": 0.0,
+  "sharpe_ratio": 0.0,
+  "sortino_ratio": 0.0,
+  "max_drawdown": 0.0,
+  "max_drawdown_duration_days": 0,
+  "calmar_ratio": 0.0,
+  "win_rate": 0.0,
+  "profit_factor": 0.0,
+  "var_95": 0.0,
+  "cvar_95": 0.0,
+  "total_trades": 37,
+  "avg_turnover": 0.0,
+  "total_transaction_costs": 0.0,
+  "total_slippage": 0.0,
+  "total_costs": 0.0,
+  "final_equity": 1000000.0,
+  "n_trading_days": 791
+}

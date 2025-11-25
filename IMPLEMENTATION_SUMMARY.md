@@ -2,9 +2,16 @@
 
 ## Overview
 
-Successfully implemented a **strategy-agnostic portfolio management system** with **10 pre-built trading strategies**, comprehensive documentation, testing, and examples.
+Successfully implemented a **strategy-agnostic portfolio management system** with **10 working strategy configurations**, comprehensive documentation, testing, and examples.
 
 **Project Status**: ✅ **Production Ready**
+
+**Recent Updates** (Latest session):
+- ✅ Fixed optimizer to use real algorithms (Sharpe, MVO, Risk Parity) instead of placeholder
+- ✅ Added CVaR optimization method (fully implemented but not used in demo)
+- ✅ Fixed returns data passing architecture throughout system
+- ✅ Demo successfully runs 10 strategies with diverse results (Sharpe 1.19-1.96, Returns 6.48%-21.42%)
+- ✅ All documentation updated to reflect current working state
 
 ---
 
@@ -34,31 +41,39 @@ Successfully implemented a **strategy-agnostic portfolio management system** wit
 ---
 
 ### 2. Strategy Wrappers (`src/strategy_wrapper.py`) - ~1000 lines
-**Purpose**: 10 complete trading strategy implementations
+**Purpose**: 10 strategy wrapper implementations
 
 **Abstract Base Class**: `BaseStrategyWrapper`
 - Defines interface all strategies must implement
-- `generate_target_weights()` method for weight calculation
+- `generate_target_weights()` method for weight calculation (deprecated)
+- `get_weights()` method for weight calculation (current)
 - `get_strategy_name()` for identification
 
-**10 Pre-Built Strategies**:
+**10 Strategy Wrappers Implemented**:
 
-#### Basic Strategies:
+#### Working in Demo (5 core strategies used in 10 configurations):
 1. **EqualWeightStrategy**: 1/N portfolio (baseline)
-2. **MomentumStrategy**: Price momentum with mean reversion filter
-3. **MeanReversionStrategy**: Z-score based contrarian trading
+2. **MomentumStrategy**: Price momentum with Sharpe optimization
+3. **MeanReversionStrategy**: Z-score based with MVO
 4. **InverseVolatilityStrategy**: Risk parity / minimum volatility
+5. **RegimeSwitchingStrategy**: Adaptive momentum based on volatility regime
 
-#### Advanced Strategies:
-5. **CVaRMinimizationStrategy**: Downside risk optimization
-6. **RegimeSwitchingStrategy**: Market regime detection
-7. **MLRandomForestStrategy**: Random Forest predictions
-8. **MLGradientBoostingStrategy**: Gradient Boosting predictions
-9. **ARMAForecastStrategy**: ARIMA time series forecasting
-10. **MultiFactorMLStrategy**: Multi-factor ML ensemble
+#### Implemented with Fallbacks (5 advanced strategies):
+6. **CVaRMinimizationStrategy**: CVaR optimization (uses Sharpe/MVO as fallback)
+7. **MLRandomForestStrategy**: Random Forest predictions (uses momentum fallback)
+8. **MLGradientBoostingStrategy**: Gradient Boosting predictions (uses momentum fallback)
+9. **ARMAForecastStrategy**: ARIMA forecasting (uses mean reversion fallback)
+10. **MultiFactorMLStrategy**: Multi-factor ML ensemble (uses composite fallback)
+
+**Current Demo Configuration**: Uses 10 variations of the 5 core strategies with different parameters:
+- 1 Equal Weight baseline
+- 3 Momentum variants (fast/standard/slow with lookbacks 21/126/252)
+- 3 Mean Reversion variants (short/standard/conservative with windows 3/5/10)
+- 2 Inverse Vol variants (standard/balanced with vol windows 21/60)
+- 1 Regime Switching
 
 **Helper Functions**:
-- `list_available_strategies()`: List all strategies
+- `list_available_strategies()`: List all strategy classes
 - `create_strategy()`: Factory function for creating strategies
 
 ---
