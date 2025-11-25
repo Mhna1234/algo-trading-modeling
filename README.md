@@ -2,6 +2,8 @@
 
 A comprehensive, production-grade Python framework for algorithmic trading research and backtesting. This system integrates time-series forecasting, technical analysis, portfolio optimization, and performance evaluation in a modular, extensible architecture.
 
+**Last Updated:** November 2025
+
 ## 🏗️ System Architecture
 
 ```
@@ -16,21 +18,24 @@ algo-trading-modeling/
 │   ├── feature_engineering.py     # Technical indicators & features
 │   ├── forecasting.py             # ARIMA + GARCH forecasting
 │   ├── signal_generator.py        # Trading signal generation
-│   ├── optimizer.py               # Portfolio optimization
-│   ├── backtester.py              # Backtesting engine
+│   ├── optimizer.py               # Legacy portfolio optimization
+│   ├── portfolio.py               # Advanced Portfolio class
+│   ├── portfolio_manager.py       # Portfolio management system (NEW)
+│   ├── portfolio_optimization.py  # Portfolio optimization methods
+│   ├── backtester.py              # Legacy backtesting engine
 │   ├── evaluator.py               # Performance evaluation
-│   ├── online_learning.py         # Online/streaming ML models
-│   ├── rl_agent.py                # Reinforcement learning agents
-│   ├── visualizer.py              # Visualization utilities
 │   └── utils.py                   # Helper functions & config
 │
 ├── notebooks/                     # Jupyter notebooks
-│   ├── exploratory_analysis.ipynb # Data exploration
-│   └── rl_training_demo.ipynb     # RL agent training
+│   └── exploratory_analysis.ipynb # Data exploration & analysis
 │
 ├── main.py                        # Main pipeline orchestrator
+├── visualize_portfolio.py         # Portfolio visualization dashboard (NEW)
+├── test_portfolio_integration.py  # Integration tests (NEW)
 ├── requirements.txt               # Python dependencies
-└── README.md                      # This file
+├── README.md                      # This file
+├── PIPELINE.md                    # Pipeline documentation (NEW)
+└── PORTFOLIO_MANAGEMENT.md        # Portfolio system documentation (NEW)
 ```
 
 ## 🎯 Key Features
@@ -39,19 +44,21 @@ algo-trading-modeling/
 - **Multi-source data loading** via yfinance with robust error handling
 - **Automatic data cleaning** and missing value imputation
 - **Risk-free rate integration** for performance calculations
-- **Caching system** for faster subsequent runs
+- **Efficient caching system** for faster subsequent runs
 
 ### 🔧 **Feature Engineering**
 - **Technical Indicators**: MA, EMA, RSI, MACD, Bollinger Bands
 - **Statistical Features**: Rolling volatility, skewness, kurtosis
 - **Momentum Indicators**: Multi-period momentum calculations
 - **Correlation Analysis**: Asset correlation matrices
+- **Custom Feature Support**: Extensible framework for new indicators
 
 ### 🔮 **Time Series Forecasting**
 - **ARIMA Models**: Autoregressive Integrated Moving Average
 - **GARCH Models**: Volatility forecasting with GARCH(p,q)
 - **Combined ARIMA-GARCH**: Mean and volatility forecasting
 - **Automatic Order Selection**: AIC-based model selection
+- **Multi-step Forecasting**: Configurable forecast horizons
 
 ### 📡 **Signal Generation**
 - **Momentum Signals**: MA crossovers, MACD signals
@@ -59,27 +66,41 @@ algo-trading-modeling/
 - **Forecast-based Signals**: Using ARIMA-GARCH predictions
 - **Volatility Breakout**: Volatility-based signal generation
 - **Signal Combination**: Weighted ensemble of multiple strategies
+- **Custom Strategy Support**: Easy integration of new signal generators
 
-### 📈 **Portfolio Optimization**
-- **Mean-Variance Optimization**: Classic Markowitz framework
-- **Sharpe Ratio Maximization**: Risk-adjusted return optimization
+### 📈 **Advanced Portfolio Class** (NEW)
+- **Tangency Portfolio**: Maximum Sharpe ratio optimization
+- **Target Return MVO**: Mean-variance with target return constraints
 - **Risk Parity**: Equal risk contribution portfolios
-- **Transaction Cost Integration**: Realistic cost modeling
-- **Constraint Handling**: Position limits, turnover constraints
+- **Rule-Based Construction**: Flexible custom portfolio rules
+- **Cash Management**: Explicit cash position modeling with risk-free returns
+- **Pure Python Implementation**: No external optimization dependencies required
+- **Transaction Cost & Slippage**: Realistic cost modeling built-in
 
-### 🔄 **Backtesting Engine**
-- **Realistic Simulation**: Transaction costs, bid-ask spreads
-- **Rolling Rebalancing**: Configurable rebalancing frequencies
-- **Performance Tracking**: NAV, drawdowns, turnover monitoring
-- **Benchmark Comparison**: Multi-benchmark analysis
-- **Walk-Forward Analysis**: Out-of-sample validation
+### 🔄 **Dual Backtesting Systems**
+- **New Portfolio Class** (Default):
+  - Comprehensive transaction cost and slippage modeling
+  - Flexible rebalancing schedules (daily, weekly, monthly, quarterly)
+  - Multiple optimization methods without external dependencies
+  - Enhanced performance analytics
+- **Legacy Backtester** (Optional):
+  - Original implementation with cvxpy/PyPortfolioOpt support
+  - Backward compatibility maintained
+  - Available via `--use-legacy-backtester` flag
 
-### 📊 **Performance Evaluation**
-- **Risk Metrics**: Sharpe, Sortino, Calmar ratios
+### 📊 **Performance Evaluation & Visualization**
+- **Risk Metrics**: Sharpe, Sortino, Calmar ratios, CAGR
 - **Drawdown Analysis**: Maximum drawdown, recovery periods
 - **Value at Risk**: VaR and Conditional VaR calculations
 - **Statistical Tests**: Significance testing vs benchmarks
 - **Rolling Analytics**: Time-varying performance metrics
+- **Comprehensive Visualizations** (NEW):
+  - Interactive equity curves with benchmark comparison
+  - Portfolio weight allocation over time
+  - Risk analytics (drawdowns, volatility, rolling metrics)
+  - Trading activity and turnover analysis
+  - Correlation heatmaps and rolling correlations
+  - Monthly returns heatmap
 
 ## 🛠️ Installation
 
@@ -113,18 +134,21 @@ Core packages installed:
 - **Data & Analysis**: pandas, numpy, scipy
 - **Financial Data**: yfinance, pandas-datareader  
 - **Time Series**: statsmodels, arch (GARCH)
-- **Optimization**: cvxpy, PyPortfolioOpt
+- **Optimization**: cvxpy (optional), PyPortfolioOpt (optional)
+  - *Note: New Portfolio class eliminates need for external optimizers*
 - **Machine Learning**: scikit-learn, river
 - **Reinforcement Learning**: gymnasium, stable-baselines3, torch
 - **Visualization**: matplotlib, seaborn, plotly
+- **Configuration**: pyyaml
 - **Development**: jupyter, pytest, black, flake8
+- **Utilities**: tqdm, python-dotenv
 
 ## 🚀 Quick Start
 
 ### Basic Usage
 
-```python
-# Run with default settings
+```bash
+# Run with default settings (uses new Portfolio class)
 python main.py
 
 # Custom tickers and date range
@@ -133,8 +157,14 @@ python main.py --tickers AAPL MSFT GOOGL AMZN SPY --start 2020-01-01 --end 2024-
 # Different optimization methods
 python main.py --method sharpe --rebalance monthly
 
+# Use legacy backtester (optional)
+python main.py --use-legacy-backtester
+
 # Custom configuration file
 python main.py --config my_config.yaml
+
+# Generate comprehensive visualizations
+python visualize_portfolio.py
 ```
 
 ### Command Line Options
@@ -143,18 +173,21 @@ python main.py --config my_config.yaml
 python main.py [OPTIONS]
 
 Options:
-  --config PATH              Configuration file path (.yaml or .json)
-  --tickers [TICKERS ...]    List of ticker symbols (default: AAPL MSFT SPY QQQ IWM)
-  --start DATE              Start date YYYY-MM-DD (default: 2020-01-01)
-  --end DATE                End date YYYY-MM-DD (default: 2024-01-01)
-  --benchmark TICKER        Benchmark ticker (default: SPY)
+  --config PATH                     Configuration file path (.yaml or .json)
+  --tickers [TICKERS ...]           List of ticker symbols (default: AAPL MSFT SPY QQQ IWM)
+  --start DATE                      Start date YYYY-MM-DD (default: 2020-01-01)
+  --end DATE                        End date YYYY-MM-DD (default: 2024-01-01)
+  --benchmark TICKER                Benchmark ticker (default: SPY)
   --method {sharpe,mean_variance,risk_parity}  Optimization method
   --rebalance {daily,weekly,monthly,quarterly}  Rebalancing frequency
-  --log-level {DEBUG,INFO,WARNING,ERROR}       Logging verbosity
-  --no-plots                Skip plot generation
+  --log-level {DEBUG,INFO,WARNING,ERROR}        Logging verbosity
+  --no-plots                        Skip plot generation
+  --use-legacy-backtester           Use legacy backtester instead of Portfolio class (NEW)
 ```
 
 ### Programmatic Usage
+
+#### Using the Full Pipeline
 
 ```python
 from src.utils import TradingConfig
@@ -167,6 +200,7 @@ config.start_date = '2020-01-01'
 config.end_date = '2024-01-01'
 config.optimization_method = 'sharpe'
 config.rebalance_frequency = 'monthly'
+config.use_portfolio_class = True  # Use new Portfolio class (default)
 
 # Run pipeline
 pipeline = AlgorithmicTradingPipeline(config)
@@ -176,6 +210,37 @@ results = pipeline.run_full_pipeline()
 print(f"Total Return: {results.total_return:.2%}")
 print(f"Sharpe Ratio: {results.sharpe_ratio:.3f}")
 print(f"Max Drawdown: {results.max_drawdown:.2%}")
+```
+
+#### Using Portfolio Class Directly (NEW)
+
+```python
+from src.portfolio import Portfolio
+import pandas as pd
+
+# Load price data
+prices = pd.read_csv('prices.csv', index_col=0, parse_dates=True)
+
+# Initialize Portfolio
+portfolio = Portfolio(
+    prices=prices,
+    rf=0.02/252,  # 2% annual risk-free rate (daily)
+    trading_cost_bps=10.0,  # 10 basis points trading costs
+    slippage_bps=2.0  # 2 basis points slippage
+)
+
+# Create equal weight strategy
+equal_weight_rule = portfolio.equal_weight_rule()
+weights = portfolio.build_target_weights_from_rule(
+    rule=equal_weight_rule,
+    schedule='M'  # Monthly rebalancing
+)
+
+# Run backtest
+result = portfolio.rebalance(weights, initial_equity=100000)
+print(f"Annual Return: {result.perf['ann_return']:.2%}")
+print(f"Sharpe Ratio: {result.perf['sharpe']:.3f}")
+print(f"Max Drawdown: {result.perf['max_drawdown']:.2%}")
 ```
 
 ## 🧮 Mathematical Framework
@@ -385,20 +450,27 @@ signal_generator.generate_signals(
 - [x] Technical indicator computation
 - [x] ARIMA + GARCH forecasting
 - [x] Signal generation framework
-- [x] Portfolio optimization
-- [x] Backtesting engine
+- [x] Portfolio optimization (dual systems)
+- [x] Advanced Portfolio class with multiple optimization methods
+- [x] Backtesting engine (legacy and new)
 - [x] Performance evaluation
+- [x] Comprehensive visualization dashboard
+- [x] Portfolio class integration with adapters
 - [x] Comprehensive documentation
+- [x] Integration testing suite
 
 ### Planned Features 🚧
+- [ ] Black-Litterman optimization integration
 - [ ] Advanced online learning models
 - [ ] Reinforcement learning agents
-- [ ] Advanced visualization dashboard
 - [ ] Real-time trading simulation
+- [ ] Live trading API integration
 - [ ] Alternative data integration
-- [ ] Multi-asset class support
+- [ ] Multi-asset class support (equities, bonds, commodities)
 - [ ] Options and derivatives modeling
 - [ ] ESG factor integration
+- [ ] Performance attribution analysis
+- [ ] Interactive web dashboard
 
 ## ⚠️ Disclaimers
 

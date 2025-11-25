@@ -1,8 +1,8 @@
-# Portfolio Class Integration
+# Portfolio Management System
 
 **Last Updated:** November 2025
 
-The algorithmic trading system has been enhanced with a powerful new Portfolio class that provides advanced backtesting and optimization capabilities. This integration represents a significant upgrade to the system's portfolio management capabilities while maintaining full backward compatibility.
+The algorithmic trading system features a comprehensive portfolio management system that integrates forecasting, signals, and backtesting into a unified, production-ready framework.
 
 ## New Features
 

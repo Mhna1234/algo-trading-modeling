@@ -27,9 +27,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 # Import modules for testing
 try:
     from src.portfolio import Portfolio, PortfolioResult
-    from src.portfolio_adapter import (
-        BacktesterAdapter, ForecastPortfolioAdapter, 
-        SignalPortfolioAdapter, ConfigurationAdapter
+    from src.portfolio_manager import (
+        PortfolioBacktester, ForecastManager, 
+        SignalManager, ConfigManager
     )
     from src.utils import TradingConfig, setup_logging
     print("✓ Successfully imported Portfolio integration modules")
@@ -165,10 +165,10 @@ def test_configuration_adapter():
         config.leverage_cap = 1.5
         
         # Test configuration conversion
-        portfolio_params = ConfigurationAdapter.trading_config_to_portfolio_params(config)
+        portfolio_params = ConfigManager.trading_config_to_portfolio_params(config)
         print(f"✓ Portfolio params: {portfolio_params}")
         
-        optimization_params = ConfigurationAdapter.trading_config_to_optimization_params(config)
+        optimization_params = ConfigManager.trading_config_to_optimization_params(config)
         print(f"✓ Optimization params: {optimization_params}")
         
         # Verify conversions
@@ -184,7 +184,7 @@ def test_configuration_adapter():
         return False
 
 
-def test_forecast_adapter():
+def test_forecast_manager():
     """Test forecast adapter functionality."""
     print("\n" + "="*50)
     print("Testing Forecast Adapter")
@@ -195,12 +195,12 @@ def test_forecast_adapter():
         prices, signals, returns = create_test_data()
         config = TradingConfig()
         
-        # Initialize Portfolio and adapter
-        portfolio_params = ConfigurationAdapter.trading_config_to_portfolio_params(config)
+        # Initialize Portfolio and manager
+        portfolio_params = ConfigManager.trading_config_to_portfolio_params(config)
         portfolio = Portfolio(prices, **portfolio_params)
         
-        forecast_adapter = ForecastPortfolioAdapter(portfolio, config)
-        print("✓ Forecast adapter initialized")
+        forecast_manager = ForecastManager(portfolio, config)
+        print("✓ Forecast manager initialized")
         
         # Create mock forecaster
         class MockForecaster:
@@ -213,11 +213,11 @@ def test_forecast_adapter():
         mock_forecaster = MockForecaster()
         
         # Test rule creation
-        forecast_rule = forecast_adapter.create_forecast_rule(mock_forecaster)
+        forecast_rule = forecast_manager.create_forecast_rule(mock_forecaster)
         print("✓ Forecast rule created")
         
         # Test weight generation
-        weights = forecast_adapter.generate_weights_from_forecasts(
+        weights = forecast_manager.generate_weights_from_forecasts(
             forecaster=mock_forecaster,
             schedule='M'
         )
@@ -234,7 +234,7 @@ def test_forecast_adapter():
         return False
 
 
-def test_signal_adapter():
+def test_signal_manager():
     """Test signal adapter functionality."""
     print("\n" + "="*50)
     print("Testing Signal Adapter")
@@ -246,19 +246,19 @@ def test_signal_adapter():
         config = TradingConfig()
         config.signal_threshold = 0.001
         
-        # Initialize Portfolio and adapter
-        portfolio_params = ConfigurationAdapter.trading_config_to_portfolio_params(config)
+        # Initialize Portfolio and manager
+        portfolio_params = ConfigManager.trading_config_to_portfolio_params(config)
         portfolio = Portfolio(prices, **portfolio_params)
         
-        signal_adapter = SignalPortfolioAdapter(portfolio, config)
-        print("✓ Signal adapter initialized")
+        signal_manager = SignalManager(portfolio, config)
+        print("✓ Signal manager initialized")
         
         # Test rule creation
-        signal_rule = signal_adapter.create_signal_rule(signals)
+        signal_rule = signal_manager.create_signal_rule(signals)
         print("✓ Signal rule created")
         
         # Test weight generation
-        weights = signal_adapter.generate_weights_from_signals(
+        weights = signal_manager.generate_weights_from_signals(
             signals_data=signals,
             schedule='M'
         )
@@ -275,7 +275,7 @@ def test_signal_adapter():
         return False
 
 
-def test_backtester_adapter():
+def test_backtester():
     """Test backtester adapter functionality."""
     print("\n" + "="*50)
     print("Testing Backtester Adapter")
@@ -289,7 +289,7 @@ def test_backtester_adapter():
         config.use_portfolio_class = True
         
         # Initialize adapter
-        adapter = BacktesterAdapter(config)
+        backtester = PortfolioBacktester(config)
         print("✓ Backtester adapter initialized")
         
         # Create target weights (equal weight)
@@ -300,14 +300,14 @@ def test_backtester_adapter():
         )
         
         # Run backtest
-        results = adapter.run_backtest(
+        results = backtester.run_backtest(
             price_data=prices,
             weight_data=weights,
             benchmark_data=prices[['SPY']],
             signals_data=signals
         )
         
-        print("✓ Backtest completed via adapter")
+        print("✓ Backtest completed via backtester")
         print(f"  Final equity: ${results.portfolio_nav.iloc[-1]:,.2f}")
         print(f"  Total return: {results.total_return:.2%}")
         print(f"  Sharpe ratio: {results.sharpe_ratio:.3f}")
@@ -346,15 +346,15 @@ def test_end_to_end_pipeline():
         print(f"✓ Configuration created: {config.optimization_method} method")
         
         # Initialize Portfolio system
-        portfolio_params = ConfigurationAdapter.trading_config_to_portfolio_params(config)
+        portfolio_params = ConfigManager.trading_config_to_portfolio_params(config)
         portfolio = Portfolio(prices, **portfolio_params)
         
-        # Create adapters
-        forecast_adapter = ForecastPortfolioAdapter(portfolio, config)
-        signal_adapter = SignalPortfolioAdapter(portfolio, config)
-        backtester_adapter = BacktesterAdapter(config)
+        # Create managers
+        forecast_manager = ForecastManager(portfolio, config)
+        signal_manager = SignalManager(portfolio, config)
+        backtester = PortfolioBacktester(config)
         
-        print("✓ All adapters initialized")
+        print("✓ All managers initialized")
         
         # Mock forecaster
         class SimpleForecaster:
@@ -366,13 +366,13 @@ def test_end_to_end_pipeline():
         forecaster = SimpleForecaster()
         
         # Generate weights using forecasts
-        forecast_weights = forecast_adapter.generate_weights_from_forecasts(
+        forecast_weights = forecast_manager.generate_weights_from_forecasts(
             forecaster=forecaster,
             schedule='M'
         )
         
         # Generate weights using signals
-        signal_weights = signal_adapter.generate_weights_from_signals(
+        signal_weights = signal_manager.generate_weights_from_signals(
             signals_data=signals,
             schedule='M'
         )
@@ -384,7 +384,7 @@ def test_end_to_end_pipeline():
         combined_weights = combined_weights.div(combined_weights.sum(axis=1), axis=0)
         
         # Run backtest
-        results = backtester_adapter.run_backtest(
+        results = backtester.run_backtest(
             price_data=prices,
             weight_data=combined_weights,
             benchmark_data=prices[['SPY']],
@@ -417,9 +417,9 @@ def run_all_tests():
     tests = [
         ("Portfolio Class", test_portfolio_class),
         ("Configuration Adapter", test_configuration_adapter),
-        ("Forecast Adapter", test_forecast_adapter),
-        ("Signal Adapter", test_signal_adapter),
-        ("Backtester Adapter", test_backtester_adapter),
+        ("Forecast Adapter", test_forecast_manager),
+        ("Signal Adapter", test_signal_manager),
+        ("Backtester Adapter", test_backtester),
         ("End-to-End Pipeline", test_end_to_end_pipeline)
     ]
     

@@ -41,9 +41,9 @@ from src.utils import TradingConfig, setup_logging, timing_decorator, rebalance_
 
 # Import new Portfolio system
 from src.portfolio import Portfolio
-from src.portfolio_adapter import (
-    BacktesterAdapter, ForecastPortfolioAdapter, 
-    SignalPortfolioAdapter, ConfigurationAdapter, AdapterResult
+from src.portfolio_manager import (
+    PortfolioBacktester, ForecastManager, 
+    SignalManager, ConfigManager, BacktestResult
 )
 
 # Suppress warnings for cleaner output
@@ -93,8 +93,8 @@ class AlgorithmicTradingPipeline:
         
         # Initialize backtesting system (choose between old and new)
         if config.use_portfolio_class:
-            self.backtester = BacktesterAdapter(config=config)
-            logger.info("Using new Portfolio class for backtesting")
+            self.backtester = PortfolioBacktester(config=config)
+            self.logger.info("Using new Portfolio class for backtesting")
         else:
             self.backtester = Backtester(
                 config=config,
@@ -103,7 +103,7 @@ class AlgorithmicTradingPipeline:
                 rebalance_frequency=config.rebalance_frequency,
                 benchmark_ticker=config.benchmark
             )
-            logger.info("Using legacy Backtester class")
+            self.logger.info("Using legacy Backtester class")
         
         self.evaluator = PerformanceEvaluator(
             risk_free_rate=config.risk_free_rate
@@ -235,15 +235,15 @@ class AlgorithmicTradingPipeline:
             self._optimize_with_legacy_method()
     
     def _optimize_with_portfolio_class(self) -> None:
-        """Optimize using new Portfolio class and adapters."""
+        """Optimize using new Portfolio class and managers."""
         self.logger.info("Using Portfolio class for optimization")
         
         # Initialize Portfolio instance
-        portfolio_params = ConfigurationAdapter.trading_config_to_portfolio_params(self.config)
+        portfolio_params = ConfigManager.trading_config_to_portfolio_params(self.config)
         portfolio = Portfolio(self.data['price_data'], **portfolio_params)
         
-        # Create forecast adapter
-        forecast_adapter = ForecastPortfolioAdapter(portfolio, self.config)
+        # Create forecast manager
+        forecast_manager = ForecastManager(portfolio, self.config)
         
         # Generate weights using forecasts
         schedule_map = {
@@ -256,7 +256,7 @@ class AlgorithmicTradingPipeline:
         
         try:
             # Generate weights using forecaster
-            weights_df = forecast_adapter.generate_weights_from_forecasts(
+            weights_df = forecast_manager.generate_weights_from_forecasts(
                 forecaster=self.forecaster,
                 schedule=schedule
             )
@@ -265,9 +265,9 @@ class AlgorithmicTradingPipeline:
             if hasattr(self, 'signals') and 'combined' in self.signals:
                 self.logger.info("Combining forecast and signal-based weights")
                 
-                # Create signal adapter
-                signal_adapter = SignalPortfolioAdapter(portfolio, self.config)
-                signal_weights = signal_adapter.generate_weights_from_signals(
+                # Create signal manager
+                signal_manager = SignalManager(portfolio, self.config)
+                signal_weights = signal_manager.generate_weights_from_signals(
                     signals_data=self.signals['combined'],
                     schedule=schedule
                 )

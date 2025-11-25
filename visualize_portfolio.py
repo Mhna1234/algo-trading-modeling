@@ -27,9 +27,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 # Import portfolio modules
 from src.portfolio import Portfolio, PortfolioResult
-from src.portfolio_adapter import (
-    BacktesterAdapter, ForecastPortfolioAdapter, 
-    ConfigurationAdapter
+from src.portfolio_manager import (
+    PortfolioBacktester, ForecastManager, 
+    ConfigManager
 )
 from src.utils import TradingConfig, setup_logging
 
