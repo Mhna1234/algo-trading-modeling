@@ -67,6 +67,7 @@ algo-trading-modeling/
 ├── src/                           # Core modules
 │   ├── portfolio_engine.py        # Strategy-agnostic portfolio engine (NEW v2.0)
 │   ├── strategy_wrapper.py        # 10 pre-built strategies (NEW v2.0)
+│   ├── backtesting_methods.py     # 5 advanced backtesting methods (NEW v2.0)
 │   ├── strategy.py                # Signal generation & ML/DL models
 │   ├── optimizer.py               # Portfolio optimization algorithms
 │   ├── backtester.py              # Legacy backtester (backward compatible)
@@ -83,6 +84,7 @@ algo-trading-modeling/
 │
 ├── examples/                      # Example scripts (NEW v2.0)
 │   ├── demo_all_strategies.py     # Demo all 10 strategies with comparison
+│   ├── demo_backtesting_methods.py # Demo all 5 backtesting methods (NEW)
 │   └── simple_example.py          # Quick-start guide
 │
 ├── tests/                         # Test suite (NEW v2.0)
@@ -90,6 +92,7 @@ algo-trading-modeling/
 │
 ├── docs/                          # Documentation (NEW v2.0)
 │   ├── ARCHITECTURE.md            # System architecture & design
+│   ├── BACKTESTING_METHODS.md     # Advanced backtesting guide (NEW)
 │   └── STRATEGIES.md              # Complete strategy guide (all 10)
 │
 ├── visualizations/                # Visualization outputs
@@ -178,6 +181,16 @@ See `docs/STRATEGIES.md` for complete documentation on all strategies.
 - **Cash Management**: Explicit cash position modeling with risk-free returns
 - **Pure Python Implementation**: No external optimization dependencies required
 - **Transaction Cost & Slippage**: Realistic cost modeling built-in
+
+### 🔄 **Advanced Backtesting Methods** (NEW v2.0)
+Multiple backtesting methodologies to reduce overfitting and validate robustness:
+- **Vanilla Backtest**: Traditional single-run backtest
+- **Walk-Forward Analysis**: Rolling/expanding window with train/test splits
+- **Cross-Validation**: Time-series k-fold validation
+- **Monte Carlo Simulation**: Synthetic data generation (bootstrap, parametric, GBM)
+- **Randomized Backtest**: Multiple randomized trials for statistical significance
+
+See `docs/BACKTESTING_METHODS.md` for complete guide and `examples/demo_backtesting_methods.py` for usage.
 
 ### 🔄 **Dual Backtesting Systems**
 - **New Portfolio Class** (Default):
@@ -401,6 +414,15 @@ Comprehensive documentation is available in the `docs/` folder:
 
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**: Complete system architecture, design principles, component descriptions, data flow diagrams, extension points, and best practices (~3000 words)
 
+- **[BACKTESTING_METHODS.md](docs/BACKTESTING_METHODS.md)**: Comprehensive guide to 5 backtesting methodologies (~5000 words) ⭐ **ESSENTIAL FOR VALIDATION**
+  - Vanilla Backtest - Traditional single-run
+  - Walk-Forward Analysis - Rolling/expanding windows
+  - Cross-Validation - Time-series k-fold validation
+  - Monte Carlo Simulation - Synthetic data generation
+  - Randomized Backtest - Statistical significance testing
+  - Method comparison and selection guide
+  - Best practices and common pitfalls
+
 - **[STRATEGIES.md](docs/STRATEGIES.md)**: Detailed guide for all 10 pre-built strategies including:
   - Strategy descriptions and theory
   - Parameter specifications
@@ -615,9 +637,10 @@ Tracking Error:      4.23%
 ### Version 2.0 Features ✅
 - [x] Strategy-agnostic portfolio engine
 - [x] 10 pre-built trading strategies (basic to advanced)
+- [x] 5 advanced backtesting methodologies (Vanilla, Walk-Forward, CV, Monte Carlo, Randomized)
 - [x] Real-time metric calculation during backtests
 - [x] Dashboard-ready data export
-- [x] Comprehensive documentation (ARCHITECTURE.md, STRATEGIES.md)
+- [x] Comprehensive documentation (ARCHITECTURE.md, STRATEGIES.md, BACKTESTING_METHODS.md)
 - [x] Unit and integration test suite
 - [x] Example scripts with visualizations
 - [x] Backward compatibility with legacy code
@@ -629,8 +652,6 @@ Tracking Error:      4.23%
 - [ ] Risk management enhancements (stop-loss, position sizing)
 - [ ] Multi-asset class support (bonds, commodities, crypto)
 - [ ] Options and derivatives modeling
-- [ ] Walk-forward optimization
-- [ ] Monte Carlo simulation for robustness testing
 - [ ] Live trading API integration (paper trading)
 - [ ] Performance attribution analysis
 - [ ] ESG factor integration

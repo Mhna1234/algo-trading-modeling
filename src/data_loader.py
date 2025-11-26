@@ -170,6 +170,11 @@ class DataLoader:
         Returns:
             DataFrame with adjusted close prices for each ticker
         """
+        # Check if data has MultiIndex columns
+        if data.columns.nlevels == 1:
+            # Data is already just prices, return as-is
+            return data
+            
         tickers = data.columns.get_level_values(0).unique().tolist()
         
         # Filter out 'RF' if it exists (it's not a ticker)
@@ -178,10 +183,15 @@ class DataLoader:
         closes = pd.DataFrame(index=data.index)
         
         for ticker in tickers:
-            if 'Close' in data[ticker].columns:
-                closes[ticker] = data[ticker]['Close']
-            elif 'Adj Close' in data[ticker].columns:
-                closes[ticker] = data[ticker]['Adj Close']
+            ticker_data = data[ticker]
+            if isinstance(ticker_data, pd.DataFrame):
+                if 'Close' in ticker_data.columns:
+                    closes[ticker] = ticker_data['Close']
+                elif 'Adj Close' in ticker_data.columns:
+                    closes[ticker] = ticker_data['Adj Close']
+            else:
+                # Single series, assume it's the close price
+                closes[ticker] = ticker_data
                 
         return closes
     

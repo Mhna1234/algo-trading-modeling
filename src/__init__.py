@@ -73,6 +73,9 @@ from .strategy import Strategy
 # Portfolio optimization (EXISTING)
 from .optimizer import PortfolioOptimizer, optimize_portfolio_forecasted
 
+# Advanced backtesting methods (NEW v2.0)
+from .backtesting_methods import BacktestingMethods, BacktestMethodResult
+
 # Legacy compatibility (UPDATED)
 from .backtester import Backtester, BacktestResults
 from .evaluator import Evaluator, PerformanceEvaluator, evaluate_performance
@@ -111,6 +114,10 @@ __all__ = [
     # Portfolio Optimization
     'PortfolioOptimizer',
     'optimize_portfolio_forecasted',
+    
+    # Advanced Backtesting Methods (v2.0)
+    'BacktestingMethods',
+    'BacktestMethodResult',
     
     # Legacy API (Backward Compatible)
     'Backtester',
