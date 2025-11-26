@@ -16,13 +16,14 @@ Available Strategies:
 8. MLGradientBoostingStrategy - Ensemble learning
 9. ARMAForecastStrategy - Time series forecasting
 10. MultiFactorMLStrategy - Multi-factor combination
+11. GlobalMinimumVarianceStrategy - Pure risk minimization (GMVP)
 
 Author: Portfolio Engine Team
 Date: November 2025
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 import numpy as np
 import pandas as pd
 from pandas import Series, DataFrame
@@ -998,6 +999,231 @@ class MultiFactorMLStrategy(BaseStrategyWrapper):
         return Series(final_weights, index=self.strategy.assets)
 
 
+class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
+    """
+    11. Global Minimum Variance Portfolio (GMVP) - Pure Risk Minimization
+    
+    Computes the portfolio with the absolute minimum variance (risk) possible
+    without any return forecasts. Uses analytical solution:
+        w = Σ^{-1} 1 / (1^T Σ^{-1} 1)
+    
+    Optionally supports integer rebalancing for practical implementation
+    with discrete share purchases.
+    
+    Properties:
+    - Analytical solution (no optimization needed)
+    - Pure risk minimization
+    - No return forecasts required
+    - Optimal for risk-averse investors
+    - Integer share support for real trading
+    
+    Parameters
+    ----------
+    strategy : Strategy
+        Signal generator (used for covariance estimation)
+    optimizer : PortfolioOptimizer, optional
+        Optimizer (unused for GMVP analytical solution)
+    lookback : int, default=252
+        Historical window for covariance estimation (1 year = 252 trading days)
+    use_integer_rebalance : bool, default=False
+        If True, solve for integer shares respecting budget constraints
+    total_capital : float, default=1_000_000
+        Total capital available (only used if use_integer_rebalance=True)
+    max_weight : float, default=0.5
+        Maximum weight per asset (concentration limit)
+    
+    References
+    ----------
+    Markowitz, H. (1952).
+    "Portfolio Selection."
+    Journal of Finance, 7(1), 77-91.
+    
+    Merton, R. C. (1972).
+    "An analytic derivation of the efficient portfolio frontier."
+    Journal of Financial and Quantitative Analysis, 7(4), 1851-1872.
+    
+    Examples
+    --------
+    >>> gmvp = GlobalMinimumVarianceStrategy(
+    ...     strategy, optimizer,
+    ...     lookback=252,
+    ...     use_integer_rebalance=False
+    ... )
+    """
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 252,
+        use_integer_rebalance: bool = False,
+        total_capital: float = 1_000_000,
+        max_weight: float = 0.5
+    ):
+        """Initialize Global Minimum Variance strategy."""
+        super().__init__(
+            "Global Minimum Variance",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            use_integer_rebalance=use_integer_rebalance,
+            total_capital=total_capital,
+            max_weight=max_weight
+        )
+    
+    def _compute_gmvp_weights(self, cov: np.ndarray) -> np.ndarray:
+        """
+        Compute GMVP weights using analytical formula.
+        
+        Formula: w = Σ^{-1} 1 / (1^T Σ^{-1} 1)
+        
+        Parameters
+        ----------
+        cov : np.ndarray
+            Covariance matrix (N x N)
+            
+        Returns
+        -------
+        np.ndarray
+            GMVP weights (N,)
+        """
+        from numpy.linalg import inv
+        
+        cov = np.asarray(cov)
+        n = cov.shape[0]
+        ones = np.ones((n, 1))
+        
+        try:
+            inv_cov = inv(cov)
+        except np.linalg.LinAlgError:
+            # If covariance matrix is singular, use pseudo-inverse
+            inv_cov = np.linalg.pinv(cov)
+        
+        num = inv_cov @ ones
+        den = float(ones.T @ inv_cov @ ones)
+        
+        if den == 0:
+            # Fallback to equal weights if computation fails
+            w = np.ones(n) / n
+        else:
+            w = (num / den).flatten()
+        
+        return w
+    
+    def _integer_rebalance(
+        self, 
+        prices: np.ndarray, 
+        target_weights: np.ndarray, 
+        total_capital: float
+    ) -> Tuple[np.ndarray, float]:
+        """
+        Find integer number of shares close to target weights.
+        
+        Uses Mixed Integer Linear Programming (MILP) to minimize
+        L1 distance from target dollar allocation while respecting
+        budget constraints.
+        
+        Parameters
+        ----------
+        prices : np.ndarray
+            Current asset prices (N,)
+        target_weights : np.ndarray
+            Target continuous weights (N,)
+        total_capital : float
+            Total capital to invest
+            
+        Returns
+        -------
+        shares : np.ndarray
+            Integer shares for each asset (N,)
+        used_capital : float
+            Total capital actually used
+        """
+        try:
+            import pulp
+        except ImportError:
+            # Fallback to continuous weights if pulp not available
+            return None, None
+        
+        prices = np.asarray(prices)
+        target_weights = np.asarray(target_weights)
+        n = len(prices)
+        
+        # Target dollar allocation per asset
+        target_dollars = target_weights * total_capital
+        
+        # MILP model: minimize L1 distance from target dollars
+        model = pulp.LpProblem("IntegerRebalance", pulp.LpMinimize)
+        
+        # Integer shares
+        x = [pulp.LpVariable(f"x_{i}", lowBound=0, cat=pulp.LpInteger) for i in range(n)]
+        # Auxiliary vars for absolute deviation
+        z = [pulp.LpVariable(f"z_{i}", lowBound=0) for i in range(n)]
+        
+        # Budget constraint: sum(shares * price) <= total_capital
+        model += pulp.lpSum([x[i] * prices[i] for i in range(n)]) <= total_capital
+        
+        # Deviation constraints: |x_i * p_i - target_i| <= z_i
+        for i in range(n):
+            model += x[i] * prices[i] - target_dollars[i] <= z[i]
+            model += target_dollars[i] - x[i] * prices[i] <= z[i]
+        
+        # Objective: minimize sum of deviations
+        model += pulp.lpSum(z)
+        
+        # Solve
+        _ = model.solve(pulp.PULP_CBC_CMD(msg=False))
+        
+        shares = np.array([int(x[i].value()) if x[i].value() is not None else 0 for i in range(n)])
+        used_capital = float(np.dot(shares, prices))
+        
+        return shares, used_capital
+    
+    def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
+        """Generate GMVP weights."""
+        # Get historical returns for covariance estimation
+        returns_data = self.strategy.get_return_matrix()
+        
+        # Use lookback window
+        lookback = self.params.get('lookback', 252)
+        if len(returns_data) > lookback:
+            returns_data = returns_data.iloc[-lookback:]
+        
+        # Compute covariance matrix
+        cov = returns_data.cov().values
+        
+        # Compute GMVP weights
+        gmvp_weights = self._compute_gmvp_weights(cov)
+        
+        # Apply maximum weight constraint
+        max_weight = self.params.get('max_weight', 0.5)
+        gmvp_weights = np.clip(gmvp_weights, 0, max_weight)
+        
+        # Renormalize to sum to 1
+        gmvp_weights = gmvp_weights / gmvp_weights.sum()
+        
+        # Optional: Integer rebalancing for practical implementation
+        if self.params.get('use_integer_rebalance', False):
+            try:
+                # Get current prices
+                current_prices = self.strategy.prices.loc[date].values
+                total_capital = self.params.get('total_capital', 1_000_000)
+                
+                shares, used_capital = self._integer_rebalance(
+                    current_prices, gmvp_weights, total_capital
+                )
+                
+                if shares is not None and used_capital > 0:
+                    # Realized weights after integer constraints
+                    realized_weights = (shares * current_prices) / used_capital
+                    gmvp_weights = realized_weights
+            except Exception as e:
+                # If integer rebalancing fails, fall back to continuous weights
+                pass
+        
+        return Series(gmvp_weights, index=self.strategy.assets)
+
+
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
@@ -1026,7 +1252,8 @@ def list_available_strategies() -> Dict[str, type]:
         'ml_random_forest': MLRandomForestStrategy,
         'ml_gradient_boosting': MLGradientBoostingStrategy,
         'arma_forecast': ARMAForecastStrategy,
-        'multi_factor_ml': MultiFactorMLStrategy
+        'multi_factor_ml': MultiFactorMLStrategy,
+        'gmvp': GlobalMinimumVarianceStrategy
     }
 
 

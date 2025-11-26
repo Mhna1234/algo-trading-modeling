@@ -33,7 +33,8 @@ from src.strategy_wrapper import (
     MLRandomForestStrategy,
     MLGradientBoostingStrategy,
     ARMAForecastStrategy,
-    MultiFactorMLStrategy
+    MultiFactorMLStrategy,
+    GlobalMinimumVarianceStrategy
 )
 from src.strategy import Strategy
 from src.optimizer import PortfolioOptimizer
@@ -109,7 +110,7 @@ print()
 # 3. RUN ALL STRATEGIES
 # ============================================================================
 
-print("3. Running backtests for all 10 strategies...")
+print("3. Running backtests for all 11 strategies...")
 print()
 
 strategies_to_test = [
@@ -118,6 +119,7 @@ strategies_to_test = [
     ("Mean Reversion", MeanReversionStrategy(strategy, optimizer, top_k=10, window=5)),
     ("Inverse Volatility", InverseVolatilityStrategy(strategy, optimizer, vol_window=21)),
     ("Min Variance", MeanReversionStrategy(strategy, optimizer, top_k=15, window=10, risk_aversion=5.0)),
+    ("GMVP", GlobalMinimumVarianceStrategy(strategy, optimizer, lookback=252, use_integer_rebalance=False, max_weight=0.4)),
     ("Regime Switching", RegimeSwitchingStrategy(strategy, optimizer, top_k=10, objective='sharpe')),
     ("Momentum Fast", MomentumStrategy(strategy, optimizer, top_k=8, lookback=21, objective='sharpe', max_weight=0.25)),
     ("Momentum Slow", MomentumStrategy(strategy, optimizer, top_k=12, lookback=252, objective='sharpe', max_weight=0.2)),
@@ -134,7 +136,7 @@ portfolio = PortfolioEngine(
 )
 
 for i, (name, strategy_wrapper) in enumerate(strategies_to_test, 1):
-    print(f"   [{i}/10] Running {name}...")
+    print(f"   [{i}/11] Running {name}...")
     try:
         result = portfolio.run_backtest(
             strategy_wrapper,
@@ -149,7 +151,7 @@ for i, (name, strategy_wrapper) in enumerate(strategies_to_test, 1):
         print(f"   ✗ {name}: Error - {str(e)[:50]}")
     print()
 
-print(f"✓ Completed {len(results)}/10 strategy backtests")
+print(f"✓ Completed {len(results)}/11 strategy backtests")
 print()
 
 # ============================================================================

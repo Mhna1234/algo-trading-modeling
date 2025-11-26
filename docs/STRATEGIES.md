@@ -2,20 +2,21 @@
 
 This guide provides detailed information about the trading strategies included in the Portfolio Engine.
 
-## Current Demo Strategies (10 Working Strategies)
+## Current Demo Strategies (11 Working Strategies)
 
-The current `examples/demo_all_strategies.py` demonstrates these 10 working strategies:
+The current `examples/demo_all_strategies.py` demonstrates these 11 working strategies:
 
 1. **Equal Weight** - 1/N baseline portfolio
 2. **Momentum** - 126-day momentum with Sharpe optimization
 3. **Mean Reversion** - 5-day window with MVO
 4. **Inverse Volatility** - 21-day vol window, risk parity
 5. **Min Variance** - 10-day mean reversion with high risk aversion (5.0)
-6. **Regime Switching** - Adaptive momentum based on volatility regimes
-7. **Momentum Fast** - 21-day momentum with Sharpe optimization
-8. **Momentum Slow** - 252-day momentum with Sharpe optimization
-9. **Mean Reversion Short** - 3-day ultra-short mean reversion
-10. **Balanced Risk** - 60-day vol window, conservative risk parity
+6. **GMVP** - Global Minimum Variance Portfolio (analytical solution)
+7. **Regime Switching** - Adaptive momentum based on volatility regimes
+8. **Momentum Fast** - 21-day momentum with Sharpe optimization
+9. **Momentum Slow** - 252-day momentum with Sharpe optimization
+10. **Mean Reversion Short** - 3-day ultra-short mean reversion
+11. **Balanced Risk** - 60-day vol window, conservative risk parity
 
 All strategies completed successfully in the last demo run with diverse results:
 - Returns ranging from 6.48% to 21.42%
@@ -341,6 +342,85 @@ cvar = CVaRMinimizationStrategy(
 
 ---
 
+## 5.5. Global Minimum Variance Portfolio (GMVP)
+
+### Description
+Computes the portfolio with the absolute minimum variance possible using an analytical solution. No return forecasts needed - purely risk-based allocation. Uses the formula: w = Σ^{-1} 1 / (1^T Σ^{-1} 1). Optionally supports integer rebalancing for practical implementation with discrete share purchases.
+
+### Properties
+- **Type:** Risk Minimization
+- **Complexity:** Low
+- **Data Requirements:** Returns (for covariance)
+- **Turnover:** Low
+- **Best For:** Risk-averse investors, defensive portfolios
+
+### Parameters
+```python
+lookback : int = 252               # Covariance window (1 year)
+use_integer_rebalance : bool = False  # Integer shares
+total_capital : float = 1_000_000  # Capital (if integer)
+max_weight : float = 0.5           # Max position size
+```
+
+### Usage
+```python
+from src.strategy_wrapper import GlobalMinimumVarianceStrategy
+
+gmvp = GlobalMinimumVarianceStrategy(
+    strategy, optimizer,
+    lookback=252,
+    use_integer_rebalance=False,
+    max_weight=0.4
+)
+
+result = portfolio.run_backtest(
+    gmvp,
+    start_date='2020-01-01',
+    rebalance_freq='M'
+)
+```
+
+### When to Use
+- Maximum risk reduction is priority
+- No reliable return forecasts available
+- Defensive market stance
+- Low-volatility preference
+- Real trading with integer shares
+
+### Pros & Cons
+✅ **Pros:**
+- Analytical solution (fast, no optimization)
+- Pure risk minimization
+- No return forecasts needed
+- Mathematically optimal for variance
+- Integer share support for real trading
+- Handles singular covariance matrices
+
+❌ **Cons:**
+- Ignores expected returns completely
+- May underperform in strong trends
+- Concentrated in low-volatility assets
+- Sensitive to covariance estimation
+- May not maximize Sharpe ratio
+
+### Optimal Parameters
+- **Lookback:** 126-252 days (6-12 months)
+- **Max Weight:** 0.3-0.5 (concentration control)
+- **Integer Rebalancing:** Use for real money management
+
+### Implementation Details
+The strategy uses:
+1. **Analytical GMVP Formula:** Direct matrix inversion, no iterative optimization
+2. **Pseudo-inverse Fallback:** Handles singular covariance matrices
+3. **Weight Constraints:** Clips weights to [0, max_weight] and renormalizes
+4. **Integer Rebalancing (Optional):** MILP formulation minimizing L1 distance from target allocation
+
+### Research References
+- Markowitz, H. (1952) "Portfolio Selection" - Journal of Finance
+- Merton, R. C. (1972) "An analytic derivation of the efficient portfolio frontier"
+
+---
+
 ## 6. Regime Switching
 
 ### Description
@@ -655,6 +735,7 @@ multi_factor = MultiFactorMLStrategy(
 | Mean Reversion | ⭐⭐ | High | MVO | Sideways | 1.59-1.60 |
 | Inverse Vol | ⭐⭐ | Low | Risk Parity | Volatile | 1.24 |
 | Min Variance | ⭐⭐ | Medium | MVO (high RA) | Defensive | 1.59 |
+| GMVP | ⭐⭐ | Low | Analytical | Defensive | TBD |
 | Regime Switch | ⭐⭐⭐ | Medium | Sharpe | Variable | 1.96 |
 | Momentum Fast | ⭐⭐ | High | Sharpe | Short-term | 1.96 |
 | Momentum Slow | ⭐⭐ | Low | Sharpe | Long-term | 1.96 |

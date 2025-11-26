@@ -1,19 +1,26 @@
 # 🚀 Algorithmic Trading & Portfolio Management System
 
-A comprehensive, production-grade Python framework for algorithmic trading strategy development, backtesting, and portfolio management. This system features a **strategy-agnostic portfolio engine** with **10 pre-built trading strategies** ranging from basic (equal weight) to advanced (ML/DL models), complete with visualization dashboards and performance analytics.
+A comprehensive, production-grade Python framework for algorithmic trading strategy development, backtesting, and portfolio management. This system features a **strategy-agnostic portfolio engine** with **11 pre-built trading strategies** ranging from basic (equal weight) to advanced (ML/DL models), complete with visualization dashboards and performance analytics.
 
-**Version:** 2.0.0  
-**Last Updated:** January 2025
+**Version:** 2.0.1  
+**Last Updated:** November 2025
 
-## 🎯 What's New in v2.0
+## 🎯 What's New in v2.0.1
+
+### 🆕 **New GMVP Strategy**
+Added Global Minimum Variance Portfolio (GMVP) strategy:
+- Pure risk minimization using analytical solution
+- No return forecasts needed
+- Optional integer rebalancing for real trading
+- Handles singular covariance matrices automatically
 
 ### 🏗️ **Strategy-Agnostic Portfolio Engine**
-The new architecture separates strategy logic from portfolio execution:
+The architecture separates strategy logic from portfolio execution:
 - **PortfolioEngine**: Manages rebalancing, costs, metrics, and state
 - **StrategyWrapper**: Abstract interface for pluggable strategies
 - **Backward Compatibility**: Legacy code still works via adapter layer
 
-### 📦 **10 Pre-Built Strategies**
+### 📦 **11 Pre-Built Strategies**
 
 **Basic Strategies:**
 1. **Equal Weight**: Simple 1/N portfolio (no optimization)
@@ -23,11 +30,12 @@ The new architecture separates strategy logic from portfolio execution:
 
 **Advanced Strategies:**
 5. **Min Variance**: Mean-variance with high risk aversion
-6. **Regime Switching**: Adaptive momentum with regime detection
-7. **Momentum Fast**: Short-term momentum (21-day Sharpe optimization)
-8. **Momentum Slow**: Long-term momentum (252-day Sharpe optimization)
-9. **Mean Reversion Short**: Very short window (3-day) mean reversion
-10. **Balanced Risk**: Conservative risk parity approach
+6. **GMVP**: Global Minimum Variance Portfolio (analytical solution)
+7. **Regime Switching**: Adaptive momentum with regime detection
+8. **Momentum Fast**: Short-term momentum (21-day Sharpe optimization)
+9. **Momentum Slow**: Long-term momentum (252-day Sharpe optimization)
+10. **Mean Reversion Short**: Very short window (3-day) mean reversion
+11. **Balanced Risk**: Conservative risk parity approach
 
 **Note**: CVaR optimization is available in the optimizer but not used in the current demo strategies. ML/ARMA strategies are work-in-progress with fallback implementations.
 
@@ -66,7 +74,7 @@ algo-trading-modeling/
 │
 ├── src/                           # Core modules
 │   ├── portfolio_engine.py        # Strategy-agnostic portfolio engine (NEW v2.0)
-│   ├── strategy_wrapper.py        # 10 pre-built strategies (NEW v2.0)
+│   ├── strategy_wrapper.py        # 11 pre-built strategies (NEW v2.0.1)
 │   ├── backtesting_methods.py     # 5 advanced backtesting methods (NEW v2.0)
 │   ├── strategy.py                # Signal generation & ML/DL models
 │   ├── optimizer.py               # Portfolio optimization algorithms
@@ -83,7 +91,7 @@ algo-trading-modeling/
 │   └── utils.py                   # Helper functions & config
 │
 ├── examples/                      # Example scripts (NEW v2.0)
-│   ├── demo_all_strategies.py     # Demo all 10 strategies with comparison
+│   ├── demo_all_strategies.py     # Demo all 11 strategies with comparison
 │   ├── demo_backtesting_methods.py # Demo all 5 backtesting methods (NEW)
 │   └── simple_example.py          # Quick-start guide
 │
@@ -93,7 +101,7 @@ algo-trading-modeling/
 ├── docs/                          # Documentation (NEW v2.0)
 │   ├── ARCHITECTURE.md            # System architecture & design
 │   ├── BACKTESTING_METHODS.md     # Advanced backtesting guide (NEW)
-│   └── STRATEGIES.md              # Complete strategy guide (all 10)
+│   └── STRATEGIES.md              # Complete strategy guide (all 11)
 │
 ├── visualizations/                # Visualization outputs
 │   ├── *.png                      # Generated charts
@@ -125,7 +133,7 @@ algo-trading-modeling/
 - **Transaction Costs**: Realistic modeling of costs and slippage
 - **State Management**: Comprehensive tracking of portfolio state over time
 
-### 📦 **10 Pre-Built Trading Strategies** (NEW v2.0)
+### 📦 **11 Pre-Built Trading Strategies** (NEW v2.0.1)
 
 **Basic Strategies** (Easy to understand and implement):
 - **Equal Weight**: 1/N portfolio (baseline strategy)
