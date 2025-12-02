@@ -1,0 +1,1368 @@
+# Team Tasks & Roadmap v2.2.0
+
+**Project:** Algorithmic Trading & Portfolio Management System  
+**Version:** 2.2.0  
+**Last Updated:** December 2, 2025  
+**Status:** Production Ready - Enhancement Phase
+
+---
+
+## 👥 Team Structure
+
+- **Team Leader:** Eman - Project coordination, integration, quality assurance
+- **Data Engineer:** Awawdy - AWS/S3 data infrastructure, real-time streaming
+- **Quantitative Strategist:** Mhna - Strategy development, optimization, backtesting
+- **Dashboard Developer:** John - Visualization, UI/UX, real-time dashboards
+
+---
+
+## 📋 Team Leader Tasks - Eman
+
+### 🎯 Priority 1: Project Integration & Coordination
+
+#### Task 1.1: Data Pipeline Integration Planning
+**Objective:** Coordinate integration of Awawdy's AWS/S3 data infrastructure with current system
+
+**Action Items:**
+- [ ] Meet with Awawdy to review AWS/S3 architecture design
+- [ ] Define data schema requirements from modeling team (Mhna)
+- [ ] Establish data quality standards (missing data thresholds, latency requirements)
+- [ ] Create integration specification document:
+  - Historical data loading from S3
+  - Daily streaming data ingestion
+  - Data validation checkpoints
+  - Error handling procedures
+- [ ] Set timeline for phased integration (historical first, then streaming)
+
+**Deliverable:** Integration specification document with timeline  
+**Deadline:** Week 1  
+**Dependencies:** Awawdy's AWS setup, Mhna's data requirements
+
+---
+
+#### Task 1.2: Strategy Performance Review & Optimization Roadmap
+**Objective:** Analyze current v2.2.0 results and guide next iteration
+
+**Action Items:**
+- [ ] Review fast demo results (5-year weekly backtest):
+  - Maximum Diversification: +1091% (best performer)
+  - CVaR Minimization: +243%
+  - Mean Reversion: +211%
+  - Identify what made Max Diversification so successful
+- [ ] Conduct team meeting to discuss:
+  - Why certain strategies outperformed
+  - Market regime analysis (trending vs mean-reverting periods)
+  - Transaction cost sensitivity
+- [ ] Work with Mhna to prioritize:
+  - Integer stock holding implementation
+  - Fee optimization in portfolio construction
+  - Champion strategy development
+- [ ] Set performance benchmarks for next iteration
+
+**Deliverable:** Strategy optimization roadmap document  
+**Deadline:** Week 1  
+**Dependencies:** v2.2.0 validation results
+
+---
+
+#### Task 1.3: Dashboard Requirements Definition
+**Objective:** Define comprehensive dashboard requirements with John
+
+**Action Items:**
+- [ ] Organize requirements gathering session with John
+- [ ] Define key user personas:
+  - Portfolio manager (high-level metrics)
+  - Quantitative analyst (detailed analytics)
+  - Risk manager (risk metrics focus)
+- [ ] Prioritize dashboard features:
+  - Real-time portfolio monitoring
+  - Historical performance analytics
+  - Risk attribution analysis
+  - Transaction cost tracking
+- [ ] Establish data refresh requirements (real-time vs daily)
+- [ ] Define alert/notification requirements
+
+**Deliverable:** Dashboard requirements specification  
+**Deadline:** Week 1  
+**Dependencies:** John's technical capabilities assessment
+
+---
+
+#### Task 1.4: Quality Assurance Framework
+**Objective:** Establish testing and validation procedures for production deployment
+
+**Action Items:**
+- [ ] Define QA checkpoints for each component:
+  - Data pipeline: accuracy, completeness, latency
+  - Strategies: out-of-sample validation, regime testing
+  - Dashboard: performance, accuracy, user testing
+- [ ] Create production deployment checklist:
+  - Code review process
+  - Testing requirements (unit, integration, system)
+  - Performance benchmarks
+  - Rollback procedures
+- [ ] Establish monitoring procedures:
+  - Strategy performance tracking
+  - System health metrics
+  - Alert escalation procedures
+- [ ] Schedule weekly team syncs to track progress
+
+**Deliverable:** QA framework document and deployment checklist  
+**Deadline:** Week 2  
+**Dependencies:** None
+
+---
+
+#### Task 1.5: Documentation & Knowledge Management
+**Objective:** Maintain comprehensive project documentation
+
+**Action Items:**
+- [ ] Review current v2.2.0 documentation for completeness
+- [ ] Establish documentation standards:
+  - Code documentation (docstrings, comments)
+  - API documentation
+  - User guides
+  - Troubleshooting guides
+- [ ] Create team knowledge base:
+  - Architecture decisions and rationale
+  - Lessons learned from v2.2.0 bugs
+  - Best practices for each component
+- [ ] Set up documentation review process
+
+**Deliverable:** Documentation standards and knowledge base  
+**Deadline:** Week 2  
+**Dependencies:** Team input
+
+---
+
+### 🎯 Priority 2: Cross-Team Collaboration
+
+#### Task 2.1: Weekly Integration Meetings
+**Objective:** Ensure smooth coordination across all team members
+
+**Action Items:**
+- [ ] Schedule recurring weekly meetings
+- [ ] Create meeting agenda template:
+  - Progress updates from each member
+  - Blockers and dependencies
+  - Integration status
+  - Next week's priorities
+- [ ] Track action items and follow-ups
+- [ ] Maintain meeting notes and decisions log
+
+**Deliverable:** Meeting schedule and tracking system  
+**Deadline:** Week 1  
+**Dependencies:** None
+
+---
+
+#### Task 2.2: Risk Management
+**Objective:** Identify and mitigate project risks
+
+**Action Items:**
+- [ ] Conduct risk assessment:
+  - Data infrastructure risks (AWS availability, S3 costs)
+  - Strategy risks (overfitting, regime changes)
+  - Integration risks (API compatibility, data schema mismatches)
+  - Timeline risks (dependencies, resource availability)
+- [ ] Create risk register with mitigation plans
+- [ ] Establish escalation procedures
+- [ ] Review risks weekly in team meetings
+
+**Deliverable:** Risk register and mitigation plans  
+**Deadline:** Week 2  
+**Dependencies:** Team input
+
+---
+
+## 🗄️ Data Engineer Tasks - Awawdy
+
+### 🎯 Priority 1: AWS/S3 Infrastructure Documentation
+
+#### Task 1.1: Architecture Documentation
+**Objective:** Document AWS/S3 data infrastructure for team integration
+
+**Action Items:**
+- [ ] Create detailed architecture diagram showing:
+  - S3 bucket structure and naming conventions
+  - Historical data storage format and organization
+  - Daily streaming data pipeline
+  - Data processing/transformation steps
+  - Access patterns and authentication
+- [ ] Document data schema:
+  - Historical price data format (columns, data types)
+  - Real-time streaming data format
+  - Metadata and data quality flags
+  - Timestamp standards (UTC, timezone handling)
+- [ ] Provide example data files:
+  - Sample historical dataset (1 month)
+  - Sample daily streaming data (1 week)
+  - Data dictionary with field descriptions
+
+**Deliverable:** Architecture document with diagrams and sample data  
+**Deadline:** Week 1  
+**Dependencies:** None
+
+---
+
+#### Task 1.2: Data Access Implementation
+**Objective:** Create Python interface for team to access AWS/S3 data
+
+**Action Items:**
+- [ ] Develop Python module `data_server.py` with functions:
+  ```python
+  # Historical data loading
+  def load_historical_data(tickers, start_date, end_date):
+      """Load historical price data from S3"""
+      
+  # Daily data streaming
+  def get_daily_data(tickers, date):
+      """Get latest daily data from S3"""
+      
+  # Data validation
+  def validate_data(data):
+      """Check data quality and completeness"""
+  ```
+- [ ] Implement AWS credentials management:
+  - Use AWS SDK (boto3)
+  - Environment variables for credentials
+  - IAM roles and permissions documentation
+- [ ] Add data caching mechanism:
+  - Local cache to reduce S3 API calls
+  - Cache invalidation strategy
+  - Offline mode for development/testing
+- [ ] Create comprehensive usage examples:
+  - Loading data for backtesting
+  - Real-time data updates
+  - Error handling and retries
+
+**Deliverable:** `data_server.py` module with documentation and examples  
+**Deadline:** Week 2  
+**Dependencies:** AWS infrastructure complete
+
+---
+
+#### Task 1.3: Integration with Current DataLoader
+**Objective:** Integrate AWS/S3 backend with existing `src/data_loader.py`
+
+**Action Items:**
+- [ ] Analyze current `data_loader.py` implementation:
+  - Understand current API and interface
+  - Identify integration points
+  - Plan backward compatibility
+- [ ] Extend DataLoader with AWS/S3 backend:
+  ```python
+  class DataLoader:
+      def __init__(self, source='yfinance'):
+          # source = 'yfinance' | 'aws_s3'
+          
+      def load_data(self, tickers, start_date, end_date):
+          if self.source == 'aws_s3':
+              return self._load_from_s3(tickers, start_date, end_date)
+          else:
+              return self._load_from_yfinance(tickers, start_date, end_date)
+  ```
+- [ ] Implement seamless fallback:
+  - Try S3 first, fall back to yfinance if unavailable
+  - Log data source for transparency
+- [ ] Add configuration file support:
+  ```yaml
+  data_source:
+    primary: aws_s3
+    fallback: yfinance
+    cache_enabled: true
+    s3_bucket: algo-trading-data
+  ```
+
+**Deliverable:** Enhanced DataLoader with AWS/S3 integration  
+**Deadline:** Week 3  
+**Dependencies:** Task 1.2 complete, team review of current DataLoader
+
+---
+
+#### Task 1.4: Real-Time Data Streaming Setup
+**Objective:** Implement daily data streaming pipeline
+
+**Action Items:**
+- [ ] Design streaming architecture:
+  - Data source → S3 pipeline
+  - Update frequency (market hours, after-hours)
+  - Data latency targets (< 5 minutes for daily close)
+  - Error handling and data quality checks
+- [ ] Implement streaming data ingestion:
+  - Automated daily data updates
+  - Market hours monitoring
+  - Holiday calendar integration
+  - Data validation before storage
+- [ ] Create monitoring and alerting:
+  - Data arrival monitoring
+  - Data quality alerts (missing tickers, outliers)
+  - Pipeline failure notifications
+  - Cost monitoring (S3 storage, API calls)
+- [ ] Document streaming data access:
+  ```python
+  # Get latest available data
+  def get_latest_data(tickers):
+      """Get most recent data from streaming pipeline"""
+      
+  # Subscribe to updates
+  def subscribe_to_updates(tickers, callback):
+      """Real-time notification of new data"""
+  ```
+
+**Deliverable:** Real-time streaming pipeline with monitoring  
+**Deadline:** Week 4  
+**Dependencies:** Historical data pipeline stable
+
+---
+
+#### Task 1.5: Cost Optimization & Performance
+**Objective:** Optimize AWS/S3 costs and data access performance
+
+**Action Items:**
+- [ ] Analyze current AWS costs:
+  - S3 storage costs
+  - Data transfer costs (egress)
+  - API request costs
+  - Identify cost optimization opportunities
+- [ ] Implement cost optimization strategies:
+  - S3 Intelligent-Tiering for historical data
+  - Lifecycle policies (move old data to Glacier)
+  - Compression (parquet format for columnar data)
+  - Request batching to reduce API calls
+- [ ] Optimize data access performance:
+  - Implement data partitioning (by date, by ticker)
+  - Use S3 Select for query pushdown
+  - Parallel data loading for multiple tickers
+  - Benchmark and profile data loading times
+- [ ] Create cost and performance dashboard:
+  - Monthly cost breakdown
+  - Data loading performance metrics
+  - Storage growth trends
+
+**Deliverable:** Cost optimization report and performance benchmarks  
+**Deadline:** Week 4  
+**Dependencies:** Data pipeline in production use
+
+---
+
+### 🎯 Priority 2: Team Enablement
+
+#### Task 2.1: Data Server Usage Guide
+**Objective:** Enable team to use AWS/S3 data infrastructure
+
+**Action Items:**
+- [ ] Create comprehensive usage guide:
+  - Setup instructions (AWS credentials, permissions)
+  - Quick start examples
+  - API reference with all functions
+  - Troubleshooting common issues
+- [ ] Conduct team training session:
+  - Live demo of data loading
+  - Walkthrough of architecture
+  - Q&A session
+  - Hands-on exercise
+- [ ] Create troubleshooting FAQ:
+  - Connection issues
+  - Authentication errors
+  - Data quality problems
+  - Performance optimization tips
+
+**Deliverable:** Usage guide and training session  
+**Deadline:** Week 3  
+**Dependencies:** Task 1.2 complete
+
+---
+
+#### Task 2.2: Data Quality Reporting
+**Objective:** Provide transparency on data quality and availability
+
+**Action Items:**
+- [ ] Implement data quality metrics:
+  - Ticker coverage (% of requested tickers available)
+  - Data completeness (missing values)
+  - Data freshness (time since last update)
+  - Historical data depth (start date for each ticker)
+- [ ] Create automated quality reports:
+  - Daily data quality summary
+  - Weekly data coverage report
+  - Alert on quality degradation
+- [ ] Set up data quality dashboard:
+  - Real-time quality metrics
+  - Historical quality trends
+  - Ticker-level details
+
+**Deliverable:** Data quality monitoring system  
+**Deadline:** Week 4  
+**Dependencies:** Data pipeline operational
+
+---
+
+## 📊 Quantitative Strategist Tasks - Mhna
+
+### 🎯 Priority 1: Transaction Cost Optimization
+
+#### Task 1.1: Integer Stock Holding Implementation
+**Objective:** Implement discrete (integer) share allocation using linear algebra
+
+**Background:**
+- Current implementation uses fractional shares (continuous weights)
+- Real trading requires integer shares
+- Rounding introduces tracking error vs optimal weights
+
+**Action Items:**
+- [ ] Research integer programming approaches:
+  - **Linear Algebra Method:** Use rounding with rebalancing constraint
+  - **Greedy Algorithm:** Iteratively allocate to minimize tracking error
+  - **Mixed Integer Quadratic Programming (MIQP):** Exact solution via optimization
+- [ ] Implement efficient integer allocation algorithm:
+  ```python
+  def allocate_integer_shares(target_weights, total_capital, prices):
+      """
+      Convert continuous weights to integer shares
+      
+      Parameters:
+      - target_weights: Target portfolio weights (sum to 1.0)
+      - total_capital: Total portfolio value ($)
+      - prices: Current stock prices per share
+      
+      Returns:
+      - shares: Integer shares per stock
+      - residual_cash: Unallocated cash
+      - tracking_error: Deviation from target weights
+      """
+      # Step 1: Initial allocation (floor)
+      target_dollars = target_weights * total_capital
+      initial_shares = np.floor(target_dollars / prices).astype(int)
+      
+      # Step 2: Allocate residual (greedy or LP)
+      residual = total_capital - (initial_shares * prices).sum()
+      # ... implement residual allocation logic
+      
+      return shares, residual_cash, tracking_error
+  ```
+- [ ] Add to PortfolioEngine:
+  - New parameter: `use_integer_shares=True/False`
+  - Track integer allocation impact on performance
+  - Compare continuous vs integer in backtests
+- [ ] Analyze impact on strategy performance:
+  - Tracking error by portfolio size ($10k, $100k, $1M)
+  - Impact on transaction costs
+  - Effect on Sharpe ratio and returns
+
+**Deliverable:** Integer share allocation implementation with analysis report  
+**Deadline:** Week 2  
+**Dependencies:** None
+
+---
+
+#### Task 1.2: Fee-Aware Portfolio Optimization
+**Objective:** Incorporate transaction costs directly into optimization objective
+
+**Background:**
+- Current: Optimize weights → apply costs afterward
+- Better: Optimize considering costs in objective function
+
+**Action Items:**
+- [ ] Implement fee-aware mean-variance optimization:
+  ```python
+  def optimize_with_transaction_costs(
+      expected_returns, 
+      cov_matrix, 
+      current_weights,
+      transaction_cost_bps,
+      risk_aversion
+  ):
+      """
+      Minimize: risk - return + transaction_cost_penalty
+      
+      Objective:
+      minimize 0.5 * w^T * Sigma * w  (risk)
+             - lambda * mu^T * w        (return)
+             + c * |w - w_old|          (transaction costs)
+      """
+      # Formulate as quadratic program with L1 penalty
+      # Use cvxpy or scipy.optimize
+  ```
+- [ ] Implement turnover constraints:
+  - Maximum turnover per rebalance (e.g., 50%)
+  - Minimize unnecessary trades
+  - Trade-off between optimality and costs
+- [ ] Add to Optimizer class:
+  - `optimize_with_costs()` method
+  - Integrate with existing MVO, Sharpe, Risk Parity methods
+  - Benchmark against current approach
+- [ ] Analyze cost-aware optimization impact:
+  - Reduction in turnover
+  - Net return improvement (after costs)
+  - Strategy-specific benefits
+
+**Deliverable:** Fee-aware optimization implementation with comparison analysis  
+**Deadline:** Week 3  
+**Dependencies:** None (can work in parallel with Task 1.1)
+
+---
+
+#### Task 1.3: Rebalancing Frequency Optimization
+**Objective:** Determine optimal rebalancing frequency considering costs
+
+**Action Items:**
+- [ ] Conduct rebalancing frequency study:
+  - Test frequencies: Daily, Weekly, Bi-Weekly, Monthly, Quarterly
+  - Measure for all 12 strategies:
+    - Gross returns (before costs)
+    - Net returns (after costs)
+    - Turnover per rebalance
+    - Total transaction costs
+- [ ] Analyze trade-offs:
+  - Responsiveness vs cost
+  - Strategy-specific optimal frequencies
+  - Market regime dependency (volatile vs stable)
+- [ ] Implement adaptive rebalancing:
+  ```python
+  def adaptive_rebalancing(current_weights, target_weights, threshold=0.05):
+      """
+      Rebalance only if drift exceeds threshold
+      
+      Rebalance when: |current_weights - target_weights| > threshold
+      """
+  ```
+- [ ] Create rebalancing recommendations by strategy:
+  - High-turnover strategies: Less frequent (monthly)
+  - Low-turnover strategies: More frequent (weekly)
+  - Adaptive threshold approach
+
+**Deliverable:** Rebalancing frequency analysis and recommendations  
+**Deadline:** Week 3  
+**Dependencies:** Access to backtest data
+
+---
+
+### 🎯 Priority 2: Champion Strategy Development
+
+#### Task 2.1: Analyze Top Performers
+**Objective:** Deep dive into why Maximum Diversification (+1091%) outperformed
+
+**Action Items:**
+- [ ] Decompose Maximum Diversification performance:
+  - Analyze monthly returns by asset
+  - Identify which positions contributed most
+  - Compare weight evolution vs Equal Weight
+  - Correlation structure analysis
+- [ ] Study other top performers:
+  - CVaR Minimization (+243%): Tail risk avoidance benefit
+  - Mean Reversion (+211%): Market regime analysis
+  - Linear Regression (+189%): Factor exposure
+- [ ] Identify common success factors:
+  - Market regime (trending vs mean-reverting)
+  - Volatility levels
+  - Correlation patterns
+  - Sector/asset class dynamics
+- [ ] Document insights for champion strategy:
+  - What to incorporate
+  - What to avoid
+  - Market conditions for each approach
+
+**Deliverable:** Performance analysis report with actionable insights  
+**Deadline:** Week 2  
+**Dependencies:** Access to detailed backtest results
+
+---
+
+#### Task 2.2: Ensemble Strategy Development
+**Objective:** Combine top strategies into robust ensemble approach
+
+**Strategy Ideas:**
+
+**Option A: Adaptive Ensemble**
+```python
+class AdaptiveEnsembleStrategy:
+    """
+    Dynamically weight strategies based on recent performance
+    """
+    def __init__(self):
+        self.strategies = {
+            'max_div': MaximumDiversificationStrategy(),
+            'cvar': CVaRMinimizationStrategy(),
+            'mean_rev': MeanReversionStrategy(),
+            'momentum': MomentumStrategy()
+        }
+        self.lookback = 60  # days for performance evaluation
+        
+    def generate_target_weights(self, prices, current_weights, current_date):
+        # 1. Get weights from each strategy
+        strategy_weights = {}
+        for name, strategy in self.strategies.items():
+            strategy_weights[name] = strategy.generate_target_weights(...)
+        
+        # 2. Weight strategies by recent performance
+        strategy_performance = self._compute_recent_performance()
+        strategy_allocation = self._softmax(strategy_performance)
+        
+        # 3. Combine strategy weights
+        combined_weights = sum(
+            strategy_allocation[name] * strategy_weights[name]
+            for name in self.strategies
+        )
+        
+        return combined_weights
+```
+
+**Option B: Regime-Switching Ensemble**
+```python
+class RegimeSwitchingStrategy:
+    """
+    Switch between strategies based on market regime
+    """
+    def detect_regime(self, prices):
+        # High vol → Mean Reversion
+        # Low vol + trending → Momentum
+        # Crisis (high correlation) → CVaR
+        volatility = self._compute_volatility(prices)
+        trend_strength = self._compute_trend(prices)
+        avg_correlation = self._compute_avg_correlation(prices)
+        
+        if avg_correlation > 0.8:  # Crisis
+            return 'cvar'
+        elif volatility > threshold_high:  # High vol
+            return 'mean_reversion'
+        elif trend_strength > threshold:  # Strong trend
+            return 'momentum'
+        else:  # Normal
+            return 'max_diversification'
+    
+    def generate_target_weights(self, ...):
+        regime = self.detect_regime(prices)
+        active_strategy = self.strategies[regime]
+        return active_strategy.generate_target_weights(...)
+```
+
+**Action Items:**
+- [ ] Implement 2-3 ensemble approaches:
+  - Adaptive weighting (Option A)
+  - Regime switching (Option B)
+  - Equal-weight ensemble (simple baseline)
+- [ ] Backtest ensemble strategies:
+  - Compare vs individual strategies
+  - Analyze robustness (lower drawdowns?)
+  - Transaction cost implications (more turnover?)
+- [ ] Optimize ensemble parameters:
+  - Lookback periods
+  - Regime detection thresholds
+  - Strategy weights
+- [ ] Select champion ensemble strategy
+
+**Deliverable:** 2-3 ensemble strategies with backtest results and champion selection  
+**Deadline:** Week 4  
+**Dependencies:** Task 2.1 complete (performance analysis)
+
+---
+
+#### Task 2.3: Factor-Based Strategy Enhancement
+**Objective:** Enhance Linear Regression strategy with additional factors
+
+**Current:** Linear Regression uses historical returns  
+**Enhancement:** Multi-factor model with market/fundamental factors
+
+**Action Items:**
+- [ ] Research factor candidates:
+  - **Momentum Factor:** 12-month price momentum
+  - **Value Factor:** Price-to-book, earnings yield
+  - **Quality Factor:** ROE, profit margins
+  - **Low Volatility Factor:** Historical volatility
+  - **Size Factor:** Market capitalization
+- [ ] Implement multi-factor model:
+  ```python
+  class MultiFactorStrategy:
+      def compute_factor_exposures(self, prices, fundamentals):
+          # Compute factor scores for each asset
+          momentum_scores = self._compute_momentum(prices)
+          value_scores = self._compute_value(fundamentals)
+          quality_scores = self._compute_quality(fundamentals)
+          
+          # Combine factors (factor tilting)
+          combined_scores = (
+              0.3 * momentum_scores +
+              0.3 * value_scores +
+              0.2 * quality_scores +
+              0.2 * low_vol_scores
+          )
+          
+          # Optimize portfolio with factor constraints
+          return self._optimize_with_factors(combined_scores, cov_matrix)
+  ```
+- [ ] Backtest multi-factor approach:
+  - Compare vs simple Linear Regression
+  - Analyze factor contributions
+  - Test different factor combinations
+- [ ] Note: May require fundamental data (currently only have prices)
+  - Document data requirements for Awawdy
+  - Implement with available price-based factors first
+
+**Deliverable:** Enhanced multi-factor strategy (price-based factors initially)  
+**Deadline:** Week 4  
+**Dependencies:** None (can use price data only)
+
+---
+
+#### Task 2.4: Risk-Aware Strategy Enhancements
+**Objective:** Add risk controls to high-performing strategies
+
+**Action Items:**
+- [ ] Implement dynamic position limits:
+  ```python
+  def apply_position_limits(weights, max_position=0.20):
+      """
+      Limit single position size to reduce concentration risk
+      """
+      weights = np.clip(weights, 0, max_position)
+      return weights / weights.sum()  # Renormalize
+  ```
+- [ ] Add stop-loss / profit-taking:
+  ```python
+  def apply_stop_loss(current_weights, position_returns, stop_loss=-0.15):
+      """
+      Exit positions with large drawdowns
+      """
+      for asset in current_weights:
+          if position_returns[asset] < stop_loss:
+              current_weights[asset] = 0  # Exit position
+      return current_weights / current_weights.sum()
+  ```
+- [ ] Implement volatility targeting:
+  ```python
+  def volatility_targeting(weights, cov_matrix, target_vol=0.15):
+      """
+      Scale portfolio to target volatility level
+      """
+      portfolio_vol = np.sqrt(weights @ cov_matrix @ weights)
+      scaling_factor = target_vol / portfolio_vol
+      return weights * scaling_factor
+  ```
+- [ ] Backtest risk-enhanced strategies:
+  - Compare Sharpe ratios
+  - Analyze drawdown reduction
+  - Transaction cost impact
+
+**Deliverable:** Risk-enhanced strategy variants with comparison analysis  
+**Deadline:** Week 5  
+**Dependencies:** None
+
+---
+
+### 🎯 Priority 3: Strategy Validation & Testing
+
+#### Task 3.1: Out-of-Sample Validation
+**Objective:** Validate strategies on recent 2024-2025 data
+
+**Action Items:**
+- [ ] Split data into train/test:
+  - Train: 2019-2023 (used for parameter tuning)
+  - Test: 2024-2025 (out-of-sample validation)
+- [ ] Run all strategies on out-of-sample period:
+  - No parameter changes allowed
+  - Same configuration as v2.2.0
+  - Measure performance degradation (if any)
+- [ ] Analyze out-of-sample results:
+  - Which strategies remain robust?
+  - Which strategies overfit training period?
+  - Correlation between in-sample and out-of-sample performance
+- [ ] Document findings and adjust strategy selection
+
+**Deliverable:** Out-of-sample validation report  
+**Deadline:** Week 3  
+**Dependencies:** Access to 2024-2025 data (may need from Awawdy)
+
+---
+
+#### Task 3.2: Stress Testing
+**Objective:** Test strategy behavior in adverse market conditions
+
+**Action Items:**
+- [ ] Identify historical stress periods:
+  - COVID-19 crash (Feb-Mar 2020)
+  - 2022 bear market
+  - High inflation period (2021-2022)
+- [ ] Run strategies through stress periods:
+  - Measure max drawdowns
+  - Recovery times
+  - Turnover during crisis
+- [ ] Analyze strategy resilience:
+  - Which strategies protect in crashes?
+  - Which strategies recover quickly?
+  - Transaction cost impact during volatility
+- [ ] Create stress test framework for future use
+
+**Deliverable:** Stress test results and resilience rankings  
+**Deadline:** Week 4  
+**Dependencies:** Historical data access
+
+---
+
+## 📊 Dashboard Developer Tasks - John
+
+### 🎯 Priority 1: Dashboard Design & Requirements
+
+#### Task 1.1: User Research & Requirements Gathering
+**Objective:** Understand what users need to see in the dashboard
+
+**Action Items:**
+- [ ] Interview stakeholders (Eman, Mhna) to understand use cases:
+  - **Portfolio Manager View:**
+    - High-level portfolio value and returns
+    - Daily P&L
+    - Key risk metrics
+    - Alerts and notifications
+  - **Quantitative Analyst View:**
+    - Strategy performance comparison
+    - Detailed analytics and metrics
+    - Attribution analysis
+    - Backtest results
+  - **Risk Manager View:**
+    - Risk metrics (VaR, CVaR, max drawdown)
+    - Position concentrations
+    - Correlation analysis
+    - Stress test results
+- [ ] Create user personas and use cases
+- [ ] Define dashboard sections and hierarchy
+- [ ] Prioritize features (MVP vs future enhancements)
+
+**Deliverable:** Dashboard requirements document with wireframes  
+**Deadline:** Week 1  
+**Dependencies:** Team interviews
+
+---
+
+#### Task 1.2: Data Requirements Mapping
+**Objective:** Understand what data is available from PortfolioEngine
+
+**Action Items:**
+- [ ] Study PortfolioEngine data outputs:
+  ```python
+  # Review BacktestResult structure
+  class BacktestResult:
+      equity_history: pd.Series          # Portfolio value over time
+      weights_history: pd.DataFrame      # Asset weights over time
+      trades_history: pd.DataFrame       # Trade log
+      summary_metrics: dict              # Sharpe, returns, drawdown, etc.
+      daily_returns: pd.Series          # Daily return series
+  ```
+- [ ] Map data to dashboard visualizations:
+  - Equity curve → Line chart (time series)
+  - Weights history → Stacked area chart / bar chart
+  - Summary metrics → KPI cards / tables
+  - Daily returns → Histogram / distribution
+  - Drawdowns → Line chart with fill
+- [ ] Identify data transformations needed:
+  - Rolling metrics (30-day Sharpe, volatility)
+  - Benchmark comparison (alpha, beta)
+  - Sector/asset class aggregations
+- [ ] Create data extraction utilities:
+  ```python
+  def extract_dashboard_data(backtest_result):
+      """
+      Transform BacktestResult into dashboard-ready format
+      """
+      return {
+          'equity_curve': ...,
+          'kpi_metrics': ...,
+          'weights_data': ...,
+          'risk_metrics': ...
+      }
+  ```
+
+**Deliverable:** Data mapping document and extraction utilities  
+**Deadline:** Week 2  
+**Dependencies:** Access to PortfolioEngine code and sample results
+
+---
+
+#### Task 1.3: Technology Stack Selection
+**Objective:** Choose appropriate dashboard framework
+
+**Options to Evaluate:**
+
+**Option A: Streamlit** (Current implementation)
+- ✅ Pros: Already implemented, Python-native, fast prototyping
+- ❌ Cons: Less customizable, not true web app architecture
+
+**Option B: Plotly Dash**
+- ✅ Pros: More customizable, better for production, reactive callbacks
+- ❌ Cons: Steeper learning curve, more boilerplate
+
+**Option C: React + FastAPI**
+- ✅ Pros: Full control, modern web stack, scalable
+- ❌ Cons: Requires frontend development, more complex deployment
+
+**Action Items:**
+- [ ] Evaluate each option against requirements:
+  - Real-time updates capability
+  - Customization needs
+  - Deployment complexity
+  - Team skillset
+  - Development speed
+- [ ] Create proof-of-concept for top 2 options
+- [ ] Present recommendations to team (Eman)
+- [ ] Get team approval on technology choice
+
+**Deliverable:** Technology recommendation with POC demos  
+**Deadline:** Week 1  
+**Dependencies:** Requirements from Task 1.1
+
+---
+
+### 🎯 Priority 2: Core Dashboard Implementation
+
+#### Task 2.1: Portfolio Overview Dashboard
+**Objective:** High-level portfolio monitoring (Portfolio Manager View)
+
+**Key Visualizations:**
+
+1. **KPI Cards (Top Row)**
+   ```
+   [Total Value: $X]  [Total Return: +X%]  [Sharpe: X.XX]  [Max DD: -X%]
+   ```
+   - Large, clear numbers
+   - Color-coded (green/red) for gains/losses
+   - Comparison to benchmark (SPY)
+
+2. **Equity Curve (Main Chart)**
+   - Time series line chart
+   - Overlay benchmark comparison
+   - Drawdown visualization (shaded areas)
+   - Annotations for major events
+
+3. **Daily P&L Chart**
+   - Bar chart of daily returns
+   - Color-coded (green/red)
+   - Rolling 30-day average line
+
+4. **Current Positions Table**
+   - Asset | Weight | Value | Return | P&L
+   - Sortable by each column
+   - Visual indicators (bars for weights)
+
+**Action Items:**
+- [ ] Implement KPI calculation functions:
+  ```python
+  def compute_kpis(backtest_result):
+      return {
+          'total_value': ...,
+          'total_return': ...,
+          'sharpe_ratio': ...,
+          'max_drawdown': ...,
+          'ytd_return': ...,
+          'win_rate': ...
+      }
+  ```
+- [ ] Create equity curve visualization:
+  - Use Plotly for interactivity (zoom, hover)
+  - Add benchmark overlay
+  - Drawdown shading
+- [ ] Build current positions table:
+  - Real-time weight display
+  - Position P&L calculation
+  - Export to CSV functionality
+- [ ] Implement refresh mechanism (if real-time data available)
+
+**Deliverable:** Portfolio Overview dashboard page  
+**Deadline:** Week 3  
+**Dependencies:** Data extraction utilities (Task 1.2)
+
+---
+
+#### Task 2.2: Strategy Performance Dashboard
+**Objective:** Compare multiple strategies (Quantitative Analyst View)
+
+**Key Visualizations:**
+
+1. **Strategy Comparison Table**
+   ```
+   Strategy          | Return | Sharpe | Max DD | Turnover | Total Costs
+   Equal Weight      | +145%  | 1.10   | -12.3% | Low      | $X
+   Max Diversif.     | +1091% | 2.85   | -8.7%  | Medium   | $X
+   ...
+   ```
+   - Sortable by any metric
+   - Color-coded performance tiers
+   - Clickable rows for details
+
+2. **Equity Curve Comparison**
+   - Multi-line chart with all strategies
+   - Toggle strategies on/off
+   - Normalized to same starting value ($100k)
+   - Hover for details
+
+3. **Risk-Return Scatter Plot**
+   - X-axis: Volatility (risk)
+   - Y-axis: Return
+   - Bubble size: Sharpe ratio
+   - Efficient frontier overlay (if applicable)
+
+4. **Rolling Metrics Charts**
+   - Rolling 30/60/90-day Sharpe ratio
+   - Rolling volatility
+   - Rolling max drawdown
+
+**Action Items:**
+- [ ] Implement strategy comparison logic:
+  ```python
+  def compare_strategies(results_dict):
+      """
+      results_dict = {
+          'Strategy1': BacktestResult,
+          'Strategy2': BacktestResult,
+          ...
+      }
+      """
+      comparison_df = pd.DataFrame({
+          'Strategy': results_dict.keys(),
+          'Total Return': [r.summary_metrics['total_return'] for r in results_dict.values()],
+          'Sharpe': [r.summary_metrics['sharpe_ratio'] for r in results_dict.values()],
+          ...
+      })
+      return comparison_df
+  ```
+- [ ] Create multi-strategy equity curve visualization
+- [ ] Build risk-return scatter plot
+- [ ] Implement rolling metrics calculations and charts
+- [ ] Add strategy selection/filtering UI
+
+**Deliverable:** Strategy Performance dashboard page  
+**Deadline:** Week 4  
+**Dependencies:** Multiple strategy backtest results
+
+---
+
+#### Task 2.3: Risk Analytics Dashboard
+**Objective:** Deep dive into risk metrics (Risk Manager View)
+
+**Key Visualizations:**
+
+1. **Risk Metrics Panel**
+   ```
+   Value at Risk (95%):           -X.XX%
+   Conditional VaR (95%):         -X.XX%
+   Downside Deviation:            X.XX%
+   Sortino Ratio:                 X.XX
+   Tail Ratio (95%/5%):          X.XX
+   ```
+
+2. **Drawdown Analysis**
+   - Underwater plot (time spent in drawdown)
+   - Top 5 drawdown periods table
+   - Recovery time analysis
+
+3. **Correlation Heatmap**
+   - Asset correlation matrix
+   - Color-coded (red = high correlation)
+   - Interactive hover for values
+
+4. **Returns Distribution**
+   - Histogram of daily returns
+   - Normal distribution overlay
+   - Skewness and kurtosis annotations
+   - VaR/CVaR markers
+
+5. **Rolling Correlation Chart**
+   - Time series of average portfolio correlation
+   - Identify diversification breakdown periods
+
+**Action Items:**
+- [ ] Implement risk metric calculations:
+  ```python
+  def compute_risk_metrics(returns_series):
+      var_95 = returns_series.quantile(0.05)
+      cvar_95 = returns_series[returns_series <= var_95].mean()
+      downside_dev = returns_series[returns_series < 0].std()
+      sortino = returns_series.mean() / downside_dev
+      # ... more metrics
+      return {'var_95': var_95, 'cvar_95': cvar_95, ...}
+  ```
+- [ ] Create drawdown visualization:
+  - Underwater plot
+  - Identify drawdown periods
+  - Calculate recovery times
+- [ ] Build correlation heatmap (use seaborn or plotly)
+- [ ] Create returns distribution visualization:
+  - Histogram with KDE
+  - Normal distribution fit
+  - VaR/CVaR markers
+- [ ] Implement rolling correlation chart
+
+**Deliverable:** Risk Analytics dashboard page  
+**Deadline:** Week 4  
+**Dependencies:** Data extraction utilities
+
+---
+
+#### Task 2.4: Transaction Cost Analysis Dashboard
+**Objective:** Monitor and analyze transaction costs (important after v2.2.0 fix!)
+
+**Key Visualizations:**
+
+1. **Cost Summary KPIs**
+   ```
+   Total Transaction Costs:       $X,XXX
+   Average Cost per Trade:        $XX
+   Cost as % of Returns:          X.XX%
+   Total Turnover:                XXX%
+   Number of Trades:              XXX
+   ```
+
+2. **Costs Over Time**
+   - Bar chart of monthly transaction costs
+   - Cumulative cost line chart
+   - Compare across strategies
+
+3. **Turnover Analysis**
+   - Turnover by rebalancing period
+   - Asset-level turnover breakdown
+   - Correlation between turnover and returns
+
+4. **Cost-Adjusted Performance**
+   - Gross returns vs Net returns comparison
+   - Strategy ranking before/after costs
+   - Break-even analysis (what turnover is acceptable?)
+
+**Action Items:**
+- [ ] Extract transaction cost data from PortfolioEngine:
+  ```python
+  # Already available in BacktestResult
+  trades_history = result.trades_history
+  # Columns: date, ticker, shares, price, cost
+  ```
+- [ ] Calculate cost metrics:
+  ```python
+  def analyze_transaction_costs(trades_history, returns):
+      total_costs = trades_history['cost'].sum()
+      num_trades = len(trades_history)
+      avg_cost = total_costs / num_trades
+      cost_pct_returns = total_costs / returns.sum()
+      # ... more calculations
+  ```
+- [ ] Create cost visualizations:
+  - Monthly cost bar chart
+  - Cumulative cost line
+  - Cost breakdown by asset
+- [ ] Build cost-adjusted performance comparison:
+  - Gross vs net returns chart
+  - Strategy ranking changes
+
+**Deliverable:** Transaction Cost Analysis dashboard page  
+**Deadline:** Week 5  
+**Dependencies:** Access to trades_history data
+
+---
+
+### 🎯 Priority 3: Advanced Features
+
+#### Task 3.1: Real-Time Data Integration
+**Objective:** Enable real-time portfolio monitoring (when Awawdy's streaming is ready)
+
+**Action Items:**
+- [ ] Design real-time architecture:
+  - Data update frequency (every minute? every hour?)
+  - Backend: FastAPI endpoints for data streaming
+  - Frontend: WebSocket or polling for updates
+- [ ] Implement data refresh mechanism:
+  ```python
+  # Option 1: Polling (simpler)
+  @st.cache(ttl=60)  # Refresh every 60 seconds
+  def get_latest_portfolio_data():
+      # Fetch from Awawdy's data server
+      return latest_data
+  
+  # Option 2: WebSocket (real-time)
+  async def stream_portfolio_updates():
+      async for update in data_stream:
+          yield update
+  ```
+- [ ] Add real-time indicators:
+  - "Last updated: X seconds ago"
+  - Auto-refresh toggle
+  - Manual refresh button
+- [ ] Handle data latency and errors:
+  - Show stale data warning
+  - Graceful degradation if stream fails
+  - Fallback to cached data
+
+**Deliverable:** Real-time data integration (depends on Awawdy's progress)  
+**Deadline:** Week 6+  
+**Dependencies:** Awawdy's streaming data ready (Task 1.4)
+
+---
+
+#### Task 3.2: Interactive Backtesting UI
+**Objective:** Allow users to run custom backtests from dashboard
+
+**Action Items:**
+- [ ] Create backtest configuration UI:
+  - Strategy selection dropdown
+  - Date range picker
+  - Parameter inputs (sliders for lookback, thresholds, etc.)
+  - Rebalancing frequency selector
+  - Transaction cost input
+- [ ] Implement backend backtest execution:
+  ```python
+  def run_backtest_from_ui(config):
+      # Extract config parameters
+      strategy_name = config['strategy']
+      start_date = config['start_date']
+      # ...
+      
+      # Create strategy and engine
+      strategy = create_strategy(strategy_name, **config['params'])
+      engine = PortfolioEngine(prices, strategy, ...)
+      
+      # Run backtest
+      result = engine.run_backtest()
+      return result
+  ```
+- [ ] Add progress indicator:
+  - Show "Running backtest..." spinner
+  - Estimated time remaining
+  - Cancel button
+- [ ] Display results:
+  - Generate all visualizations for custom backtest
+  - Compare to benchmark
+  - Export results
+
+**Deliverable:** Interactive backtesting UI  
+**Deadline:** Week 6+  
+**Dependencies:** Core dashboard complete
+
+---
+
+#### Task 3.3: Alert System
+**Objective:** Notify users of important events
+
+**Action Items:**
+- [ ] Define alert triggers:
+  - Drawdown exceeds threshold (-10%, -15%, -20%)
+  - Volatility spike (> 2x average)
+  - Position concentration (single asset > 25%)
+  - Strategy underperformance (below benchmark by X%)
+- [ ] Implement alert logic:
+  ```python
+  def check_alerts(current_state, thresholds):
+      alerts = []
+      
+      if current_state['drawdown'] < thresholds['max_drawdown']:
+          alerts.append({
+              'severity': 'HIGH',
+              'message': f"Drawdown {current_state['drawdown']:.1%} exceeds threshold"
+          })
+      
+      # ... more checks
+      return alerts
+  ```
+- [ ] Create alert display:
+  - Alert banner at top of dashboard
+  - Color-coded by severity (red/yellow/green)
+  - Alert history table
+- [ ] Optional: Email/SMS notifications (future enhancement)
+
+**Deliverable:** Alert system  
+**Deadline:** Week 6+  
+**Dependencies:** None
+
+---
+
+#### Task 3.4: Export & Reporting
+**Objective:** Enable users to export data and generate reports
+
+**Action Items:**
+- [ ] Implement data export functionality:
+  - CSV export for all tables
+  - Excel export with multiple sheets
+  - JSON export for programmatic access
+- [ ] Create PDF report generation:
+  - Summary page with key metrics
+  - Equity curve and performance charts
+  - Risk analysis section
+  - Transaction cost summary
+- [ ] Add scheduling (future):
+  - Daily/weekly automated reports
+  - Email delivery
+  - S3 storage for historical reports
+
+**Deliverable:** Export and reporting functionality  
+**Deadline:** Week 7+  
+**Dependencies:** Core dashboard complete
+
+---
+
+## 📅 Timeline Summary
+
+### Week 1 (Weeks of Dec 2-8, 2025)
+- **Eman:** Integration planning, strategy review, dashboard requirements
+- **Awawdy:** Architecture documentation
+- **Mhna:** Analyze top performers, start integer allocation
+- **John:** User research, tech stack selection, data mapping
+
+### Week 2
+- **Eman:** QA framework
+- **Awawdy:** Data access Python interface
+- **Mhna:** Complete integer allocation, start fee-aware optimization
+- **John:** Data extraction utilities, start Portfolio Overview
+
+### Week 3
+- **Eman:** Team coordination, risk management
+- **Awawdy:** DataLoader integration, team training
+- **Mhna:** Rebalancing optimization, out-of-sample validation
+- **John:** Complete Portfolio Overview, start Strategy Performance dashboard
+
+### Week 4
+- **Eman:** Ongoing coordination
+- **Awawdy:** Real-time streaming, cost optimization
+- **Mhna:** Ensemble strategies, stress testing
+- **John:** Complete Strategy Performance, Risk Analytics dashboards
+
+### Week 5
+- **Eman:** Documentation, final integration
+- **Awawdy:** Data quality monitoring
+- **Mhna:** Risk-enhanced strategies
+- **John:** Transaction Cost Analysis dashboard
+
+### Week 6+
+- **Team:** Real-time integration, advanced features, production deployment
+
+---
+
+## 🎯 Success Metrics
+
+### Data Infrastructure (Awawdy)
+- [ ] Historical data loading from S3 < 10 seconds for 5 years
+- [ ] Daily streaming data latency < 5 minutes
+- [ ] Data quality: > 99% ticker coverage, < 0.1% missing values
+- [ ] AWS costs within budget (< $X/month)
+
+### Strategy Performance (Mhna)
+- [ ] Integer allocation tracking error < 2% for $100k portfolio
+- [ ] Fee-aware optimization reduces turnover by > 20%
+- [ ] Champion ensemble strategy: Sharpe > 2.0, Max DD < 15%
+- [ ] Out-of-sample performance within 20% of in-sample
+
+### Dashboard (John)
+- [ ] Page load time < 3 seconds
+- [ ] Real-time update latency < 10 seconds
+- [ ] User satisfaction: 4+/5 rating from team
+- [ ] All key metrics accessible within 2 clicks
+
+### Team Integration (Eman)
+- [ ] All components integrated and working together
+- [ ] Zero critical bugs in production
+- [ ] Documentation complete and up-to-date
+- [ ] Team velocity: deliver tasks on schedule
+
+---
+
+## 📝 Notes
+
+- **Dependencies:** Many tasks depend on Awawdy's data infrastructure. Prioritize his Tasks 1.1-1.2 for team unblocking.
+- **Communication:** Daily standups (async) + weekly sync meetings to track progress.
+- **Flexibility:** Timeline is ambitious. Adjust based on actual progress and priorities.
+- **Documentation:** Each team member should document their work for knowledge sharing.
+
+**Let's build something great! 🚀**
