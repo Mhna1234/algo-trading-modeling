@@ -16,12 +16,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Tuple
 import warnings
+import logging
 
 import numpy as np
 import pandas as pd
 from pandas import DataFrame, Series
 
 warnings.filterwarnings('ignore')
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -336,14 +338,20 @@ class PortfolioEngine:
                     
                     # Ensure weights are valid
                     if new_weights.sum() > 1.01:  # Allow small tolerance
-                        print(f"Warning: Weights sum to {new_weights.sum():.3f} on {date.date()}, normalizing")
+                        logger.warning(f"Weights sum to {new_weights.sum():.3f} on {date.date()}, normalizing")
                         new_weights = new_weights / new_weights.sum()
                     
                     # Execute rebalance
                     self._execute_rebalance(date, new_weights)
                     self._last_rebalance_date = date
                     
+                except (ValueError, KeyError, IndexError) as e:
+                    logger.error(f"Strategy error on {date.date()}: {e}", exc_info=True)
+                    print(f"Warning: Strategy error on {date.date()}: {e}")
+                    # Keep previous weights
+                    new_weights = self._current_weights.drop(self.cash_symbol, errors='ignore')
                 except Exception as e:
+                    logger.error(f"Unexpected error on {date.date()}: {e}", exc_info=True)
                     print(f"Error getting weights on {date.date()}: {e}")
                     # Keep previous weights
                     new_weights = self._current_weights.drop(self.cash_symbol, errors='ignore')

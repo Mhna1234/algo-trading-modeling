@@ -524,7 +524,11 @@ class CVaRMinimizationStrategy(BaseStrategyWrapper):
         return Series(final_weights, index=self.strategy.assets)
 
 
-class RegimeSwitchingStrategy(BaseStrategyWrapper):
+# ============================================================================
+# EXTENDED STRATEGIES
+# ============================================================================
+
+class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
     """
     6. Regime Switching Momentum - Adaptive Strategy
     
@@ -629,14 +633,7 @@ class RegimeSwitchingStrategy(BaseStrategyWrapper):
             returns_data=self.strategy.get_return_matrix()
         )
         
-        return Series(final_weights, index=self.strategy.assets)
 
-
-# ============================================================================
-# ADVANCED ML/TS STRATEGIES
-# ============================================================================
-
-class MLRandomForestStrategy(BaseStrategyWrapper):
     """
     7. ML Random Forest - Machine Learning Forecast
     
@@ -714,28 +711,92 @@ class MLRandomForestStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate ML Random Forest weights."""
-        # TODO: Implement actual ML forecasting
-        # For now, use momentum as proxy for ML predictions
-        initial_weights = self.strategy.generate_initial_weights(
-            method='momentum',
-            top_n=self.params['top_k'],
-            lookback=self.params.get('lookback', 252)
-        )
-        
-        # Optimize
-        final_weights = self.optimizer.optimize(
-            initial_weights,
-            objective=self.params['objective'],
-            alpha=self.params['alpha'],
-            long_only=True,
-            max_weight=self.params['max_weight'],
-            returns_data=self.strategy.get_return_matrix()
-        )
-        
-        return Series(final_weights, index=self.strategy.assets)
+        try:
+            from sklearn.ensemble import RandomForestRegressor
+            
+            lookback = self.params.get('lookback', 252)
+            forecast_days = self.params.get('forecast_days', 21)
+            top_k = self.params['top_k']
+            
+            # Get training data
+            date_idx = self.strategy.prices.index.get_loc(date)
+            if date_idx < lookback + forecast_days:
+                # Not enough data, use momentum fallback
+                initial_weights = self.strategy.generate_initial_weights(
+                    method='momentum', top_n=top_k, lookback=min(126, date_idx)
+                )
+            else:
+                # Train RF model for each asset and predict
+                predictions = Series(0.0, index=self.strategy.assets)
+                
+                for asset in self.strategy.assets:
+                    # Get historical returns and features
+                    returns = self.strategy.returns[asset].iloc[date_idx-lookback-forecast_days:date_idx]
+                    
+                    # Create features: lagged returns, rolling stats
+                    X_list, y_list = [], []
+                    for i in range(len(returns) - forecast_days - 5):
+                        features = [
+                            returns.iloc[i],  # lag 1
+                            returns.iloc[max(0, i-4):i+1].mean(),  # 5-day avg
+                            returns.iloc[max(0, i-19):i+1].std(),  # 20-day vol
+                        ]
+                        target = returns.iloc[i+forecast_days]
+                        X_list.append(features)
+                        y_list.append(target)
+                    
+                    if len(X_list) < 50:
+                        predictions[asset] = 0
+                        continue
+                    
+                    X = np.array(X_list)
+                    y = np.array(y_list)
+                    
+                    # Train model
+                    model = RandomForestRegressor(
+                        n_estimators=self.params.get('n_estimators', 100),
+                        max_depth=5, random_state=42, n_jobs=-1
+                    )
+                    model.fit(X, y)
+                    
+                    # Predict current
+                    recent_returns = returns.iloc[-5:]
+                    current_features = np.array([[
+                        recent_returns.iloc[-1],
+                        recent_returns.mean(),
+                        recent_returns.std()
+                    ]])
+                    predictions[asset] = model.predict(current_features)[0]
+                
+                # Select top K by prediction
+                top_assets = predictions.nlargest(top_k).index
+                initial_weights = Series(0.0, index=self.strategy.assets)
+                initial_weights[top_assets] = 1.0 / top_k
+            
+            # Optimize
+            final_weights = self.optimizer.optimize(
+                initial_weights,
+                objective=self.params['objective'],
+                alpha=self.params['alpha'],
+                long_only=True,
+                max_weight=self.params['max_weight'],
+                returns_data=self.strategy.get_return_matrix()
+            )
+            
+            return Series(final_weights, index=self.strategy.assets)
+            
+        except Exception as e:
+            # Fallback to momentum on any error
+            initial_weights = self.strategy.generate_initial_weights(
+                method='momentum', top_n=self.params['top_k'], lookback=126
+            )
+            final_weights = self.optimizer.optimize(
+                initial_weights, objective=self.params['objective'],
+                alpha=self.params['alpha'], long_only=True,
+                max_weight=self.params['max_weight'],
+                returns_data=self.strategy.get_return_matrix()
+            )
 
-
-class MLGradientBoostingStrategy(BaseStrategyWrapper):
     """
     8. ML Gradient Boosting - Sequential Ensemble Learning
     
@@ -812,28 +873,80 @@ class MLGradientBoostingStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate ML Gradient Boosting weights."""
-        # TODO: Implement actual GBM forecasting
-        # For now, use momentum as proxy for ML predictions
-        initial_weights = self.strategy.generate_initial_weights(
-            method='momentum',
-            top_n=self.params['top_k'],
-            lookback=self.params.get('lookback', 252)
-        )
-        
-        # Optimize
-        final_weights = self.optimizer.optimize(
-            initial_weights,
-            objective=self.params['objective'],
-            alpha=self.params['alpha'],
-            long_only=True,
-            max_weight=self.params['max_weight'],
-            returns_data=self.strategy.get_return_matrix()
-        )
-        
-        return Series(final_weights, index=self.strategy.assets)
+        try:
+            from sklearn.ensemble import GradientBoostingRegressor
+            
+            lookback = self.params.get('lookback', 252)
+            forecast_days = self.params.get('forecast_days', 21)
+            top_k = self.params['top_k']
+            learning_rate = self.params.get('learning_rate', 0.05)
+            
+            date_idx = self.strategy.prices.index.get_loc(date)
+            if date_idx < lookback + forecast_days:
+                initial_weights = self.strategy.generate_initial_weights(
+                    method='momentum', top_n=top_k, lookback=min(126, date_idx)
+                )
+            else:
+                predictions = Series(0.0, index=self.strategy.assets)
+                
+                for asset in self.strategy.assets:
+                    returns = self.strategy.returns[asset].iloc[date_idx-lookback-forecast_days:date_idx]
+                    
+                    X_list, y_list = [], []
+                    for i in range(len(returns) - forecast_days - 5):
+                        features = [
+                            returns.iloc[i],
+                            returns.iloc[max(0, i-4):i+1].mean(),
+                            returns.iloc[max(0, i-19):i+1].std(),
+                            returns.iloc[max(0, i-4):i+1].skew() if i >= 4 else 0,
+                        ]
+                        target = returns.iloc[i+forecast_days]
+                        X_list.append(features)
+                        y_list.append(target)
+                    
+                    if len(X_list) < 50:
+                        predictions[asset] = 0
+                        continue
+                    
+                    X, y = np.array(X_list), np.array(y_list)
+                    
+                    model = GradientBoostingRegressor(
+                        n_estimators=100, learning_rate=learning_rate,
+                        max_depth=3, random_state=42
+                    )
+                    model.fit(X, y)
+                    
+                    recent_returns = returns.iloc[-5:]
+                    current_features = np.array([[
+                        recent_returns.iloc[-1],
+                        recent_returns.mean(),
+                        recent_returns.std(),
+                        recent_returns.skew()
+                    ]])
+                    predictions[asset] = model.predict(current_features)[0]
+                
+                top_assets = predictions.nlargest(top_k).index
+                initial_weights = Series(0.0, index=self.strategy.assets)
+                initial_weights[top_assets] = 1.0 / top_k
+            
+            final_weights = self.optimizer.optimize(
+                initial_weights, objective=self.params['objective'],
+                alpha=self.params['alpha'], long_only=True,
+                max_weight=self.params['max_weight'],
+                returns_data=self.strategy.get_return_matrix()
+            )
+            return Series(final_weights, index=self.strategy.assets)
+        except Exception as e:
+            initial_weights = self.strategy.generate_initial_weights(
+                method='momentum', top_n=self.params['top_k'], lookback=126
+            )
+            final_weights = self.optimizer.optimize(
+                initial_weights, objective=self.params['objective'],
+                alpha=self.params['alpha'], long_only=True,
+                max_weight=self.params['max_weight'],
+                returns_data=self.strategy.get_return_matrix()
+            )
 
-
-class ARMAForecastStrategy(BaseStrategyWrapper):
     """
     9. ARMA Time Series Forecast - Classical Statistical Approach
     
@@ -907,28 +1020,75 @@ class ARMAForecastStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate ARMA-based weights."""
-        # TODO: Implement actual ARMA forecasting
-        # For now, use mean reversion as proxy
-        initial_weights = self.strategy.generate_initial_weights(
-            method='mean_reversion',
-            top_n=self.params['top_k'],
-            window=20
-        )
-        
-        # Optimize
-        final_weights = self.optimizer.optimize(
-            initial_weights,
-            objective=self.params['objective'],
-            risk_aversion=self.params.get('risk_aversion', 3.0),
-            long_only=True,
-            max_weight=self.params['max_weight'],
-            returns_data=self.strategy.get_return_matrix()
-        )
-        
-        return Series(final_weights, index=self.strategy.assets)
+        try:
+            from statsmodels.tsa.arima.model import ARIMA
+            
+            arma_order = self.params.get('arma_order', (2, 1))
+            forecast_steps = self.params.get('forecast_steps', 5)
+            top_k = self.params['top_k']
+            
+            date_idx = self.strategy.prices.index.get_loc(date)
+            if date_idx < 50:  # Need minimum data
+                initial_weights = self.strategy.generate_initial_weights(
+                    method='mean_reversion', top_n=top_k, window=20
+                )
+            else:
+                predictions = Series(0.0, index=self.strategy.assets)
+                
+                for asset in self.strategy.assets:
+                    try:
+                        # Get recent returns
+                        returns = self.strategy.returns[asset].iloc[max(0, date_idx-252):date_idx]
+                        
+                        if len(returns) < 30:
+                            predictions[asset] = 0
+                            continue
+                        
+                        # Fit ARIMA model (ARMA is ARIMA with d=0)
+                        p, q = arma_order
+                        model = ARIMA(returns.values, order=(p, 0, q))
+                        fitted_model = model.fit(method_kwargs={'warn_convergence': False})
+                        
+                        # Forecast
+                        forecast = fitted_model.forecast(steps=forecast_steps)
+                        # Use mean forecast as prediction
+                        predictions[asset] = forecast.mean()
+                        
+                    except Exception:
+                        # If ARMA fails for this asset, use mean reversion signal
+                        predictions[asset] = -self.strategy.mean_reversion(window=20).loc[date, asset]
+                
+                # Select top K by forecast
+                top_assets = predictions.nlargest(top_k).index
+                initial_weights = Series(0.0, index=self.strategy.assets)
+                initial_weights[top_assets] = 1.0 / top_k
+            
+            # Optimize
+            final_weights = self.optimizer.optimize(
+                initial_weights,
+                objective=self.params['objective'],
+                risk_aversion=self.params.get('risk_aversion', 3.0),
+                long_only=True,
+                max_weight=self.params['max_weight'],
+                returns_data=self.strategy.get_return_matrix()
+            )
+            
+            return Series(final_weights, index=self.strategy.assets)
+            
+        except Exception as e:
+            # Fallback to mean reversion
+            initial_weights = self.strategy.generate_initial_weights(
+                method='mean_reversion', top_n=self.params['top_k'], window=20
+            )
+            final_weights = self.optimizer.optimize(
+                initial_weights,
+                objective=self.params['objective'],
+                risk_aversion=self.params.get('risk_aversion', 3.0),
+                long_only=True,
+                max_weight=self.params['max_weight'],
+                returns_data=self.strategy.get_return_matrix()
+            )
 
-
-class MultiFactorMLStrategy(BaseStrategyWrapper):
     """
     10. Multi-Factor ML - Factor Combination with ML
     
@@ -997,12 +1157,36 @@ class MultiFactorMLStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate multi-factor ML weights."""
-        # TODO: Implement actual multi-factor ML
-        # For now, use inverse volatility (risk-based approach)
-        initial_weights = self.strategy.generate_initial_weights(
-            method='inv_vol',
-            window=60
-        )
+        lookback = self.params.get('lookback', 252)
+        top_k = self.params['top_k']
+        
+        # Compute multiple factors
+        momentum_signal = self.strategy.momentum(window=126).loc[date]
+        mean_rev_signal = -self.strategy.mean_reversion(window=20).loc[date]  # Inverted
+        vol_signal = 1.0 / (self.strategy.volatility(window=60).loc[date] + 1e-8)  # Inverse vol
+        
+        # Standardize each factor (z-score)
+        def standardize(s):
+            return (s - s.mean()) / (s.std() + 1e-8)
+        
+        momentum_z = standardize(momentum_signal)
+        mean_rev_z = standardize(mean_rev_signal)
+        vol_z = standardize(vol_signal)
+        
+        # Combine factors with equal weights (can be ML-learned in future)
+        combined_score = (momentum_z * 0.4 + mean_rev_z * 0.3 + vol_z * 0.3)
+        
+        # Select top K assets
+        top_assets = combined_score.nlargest(top_k).index
+        initial_weights = Series(0.0, index=self.strategy.assets)
+        
+        # Weight by combined scores (proportional to scores)
+        top_scores = combined_score[top_assets]
+        positive_scores = top_scores.clip(lower=0)
+        if positive_scores.sum() > 0:
+            initial_weights[top_assets] = positive_scores / positive_scores.sum()
+        else:
+            initial_weights[top_assets] = 1.0 / len(top_assets)
         
         # Optimize
         final_weights = self.optimizer.optimize(
@@ -1837,59 +2021,6 @@ class LinearRegressionStrategy(BaseStrategyWrapper):
         return weights
 
 
-class GMRPStrategy(BaseStrategyWrapper):
-    """Global Maximum Return Portfolio (GMRP)"""
-    
-    def __init__(
-        self,
-        strategy,
-        optimizer=None,
-        lookback: int = 126,
-        return_forecast_method: str = 'momentum',
-        max_weight: float = 0.5,
-        min_assets: int = 3
-    ):
-        super().__init__(
-            "Global Maximum Return",
-            strategy,
-            optimizer,
-            lookback=lookback,
-            return_forecast_method=return_forecast_method,
-            max_weight=max_weight,
-            min_assets=min_assets
-        )
-    
-    def get_weights(
-        self,
-        date: pd.Timestamp,
-        portfolio_state: PortfolioState
-    ) -> Series:
-        lookback = self.params.get('lookback', 126)
-        return_method = self.params.get('return_forecast_method', 'momentum')
-        max_weight = self.params.get('max_weight', 0.5)
-        min_assets = self.params.get('min_assets', 3)
-        
-        if return_method == 'momentum':
-            expected_returns = self.strategy.momentum(window=lookback).loc[date]
-        else:
-            date_idx = self.strategy.prices.index.get_loc(date)
-            start_idx = max(0, date_idx - lookback)
-            returns_window = self.strategy.returns.iloc[start_idx:date_idx]
-            expected_returns = returns_window.mean() * 252
-        
-        sorted_returns = expected_returns.sort_values(ascending=False)
-        weights = Series(0.0, index=self.strategy.assets)
-        
-        n_allocate = max(min_assets, int(np.ceil(1.0 / max_weight)))
-        top_assets = sorted_returns.iloc[:n_allocate].index
-        
-        weight_per_asset = min(1.0 / len(top_assets), max_weight)
-        weights[top_assets] = weight_per_asset
-        weights = weights / weights.sum()
-        
-        return weights
-
-
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
@@ -1914,16 +2045,10 @@ def list_available_strategies() -> Dict[str, type]:
         'mean_reversion': MeanReversionStrategy,
         'inverse_volatility': InverseVolatilityStrategy,
         'cvar_minimization': CVaRMinimizationStrategy,
-        'regime_switching': RegimeSwitchingStrategy,
-        'ml_random_forest': MLRandomForestStrategy,
-        'ml_gradient_boosting': MLGradientBoostingStrategy,
-        'arma_forecast': ARMAForecastStrategy,
-        'multi_factor_ml': MultiFactorMLStrategy,
         'gmvp': GlobalMinimumVarianceStrategy,
         # Extended strategies
         'buy_and_hold': BuyAndHoldStrategy,
         'quintile_factor': QuintileFactorStrategy,
-        'gmrp': GMRPStrategy,
         'max_diversification': MaximumDiversificationStrategy,
         'max_decorrelation': MaximumDecorrelationStrategy,
         'time_series_momentum': TimeSeriesMomentumStrategy,

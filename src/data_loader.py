@@ -119,7 +119,7 @@ class DataLoader:
         # Forward fill missing values for each ticker
         for ticker in tickers:
             # Forward fill missing values
-            data[ticker] = data[ticker].fillna(method='ffill')
+            data[ticker] = data[ticker].ffill()
             
             # Drop remaining NaN values at the beginning
             first_valid_idx = data[ticker].first_valid_index()

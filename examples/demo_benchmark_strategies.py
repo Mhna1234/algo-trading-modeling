@@ -33,7 +33,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from datetime import datetime
 
 # Import project modules
 from src.data_loader import load_data
@@ -78,7 +77,7 @@ def run_benchmark_comparison():
     end_date = '2024-01-01'
     
     # load_data returns (full_data, price_data) tuple
-    full_data, prices = load_data(tickers, start_date, end_date)
+    _, prices = load_data(tickers, start_date, end_date)
     print(f"Loaded {len(tickers)} assets from {start_date} to {end_date}")
     print(f"Data shape: {prices.shape}")
     print()
@@ -98,7 +97,7 @@ def run_benchmark_comparison():
         'Mean Reversion': MeanReversionStrategy(strategy, optimizer, window=21, top_k=4),
         'Inverse Volatility': InverseVolatilityStrategy(strategy, optimizer, vol_window=63),
         'GMVP': GlobalMinimumVarianceStrategy(strategy, optimizer, lookback=252),
-        'CVaR Minimization': CVaRMinimizationStrategy(strategy, optimizer, lookback=126, alpha=0.05),
+        'CVaR Minimization': CVaRMinimizationStrategy(strategy, optimizer, lookback=126, alpha=0.95),
         'Max Diversification': MaximumDiversificationStrategy(strategy, optimizer, lookback=252, max_weight=0.4),
         'Time-Series Momentum': TimeSeriesMomentumStrategy(strategy, optimizer, lookback=126, long_only=True),
         'MA Crossover': MovingAverageCrossoverStrategy(strategy, optimizer, fast_window=50, slow_window=200),
@@ -190,7 +189,7 @@ def run_benchmark_comparison():
     plt.style.use('seaborn-v0_8-darkgrid')
     sns.set_palette("husl")
     
-    fig = plt.figure(figsize=(20, 12))
+    plt.figure(figsize=(20, 12))
     
     # 1. Equity Curves
     ax1 = plt.subplot(2, 3, 1)
@@ -260,10 +259,8 @@ def run_benchmark_comparison():
     ax6.legend(loc='best', fontsize=8)
     ax6.grid(True, alpha=0.3)
     
-    # plt.tight_layout()
     plt.savefig('visualizations/benchmark_strategies_comparison.png', dpi=150, bbox_inches='tight')
     print("Saved: visualizations/benchmark_strategies_comparison.png")
-    plt.show()
     
     print()
     print("=" * 80)
