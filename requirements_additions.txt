@@ -1,0 +1,50 @@
+# Additional Requirements for Extended Strategies
+#
+# This file lists additional dependencies that may be needed for the extended
+# strategies module (strategies_extended.py). Most dependencies are already
+# included in the main requirements.txt file.
+#
+# Install with: pip install -r requirements_additions.txt
+
+# Scientific Computing (Already in main requirements.txt)
+# numpy>=1.21.0
+# pandas>=1.3.0
+# scipy>=1.7.0
+
+# Machine Learning (Already in main requirements.txt)
+# scikit-learn>=1.0.0
+
+# Optimization (Already in main requirements.txt)
+# cvxpy>=1.2.0
+
+# Statistical Analysis (Already in main requirements.txt)
+# statsmodels>=0.13.0
+
+# Additional packages if needed for advanced features:
+
+# For advanced portfolio optimization
+# PyPortfolioOpt>=1.5.0  # Already in main requirements
+
+# For advanced statistical tests
+# arch>=5.3.0  # Already in main requirements (for GARCH)
+
+# For parallel processing (optional, for faster backtesting)
+# joblib>=1.1.0  # Included with scikit-learn
+
+# For better progress bars (optional)
+# tqdm>=4.60.0  # Already in main requirements
+
+# For advanced visualization (optional)
+# plotly>=5.0.0  # Already in main requirements
+# seaborn>=0.11.0  # Already in main requirements
+
+# All required dependencies are already in requirements.txt!
+# No additional installations needed.
+
+# Optional: For GPU acceleration (if using large portfolios with 100+ assets)
+# cupy>=10.0.0  # CUDA-enabled NumPy alternative
+# Note: Requires NVIDIA GPU and CUDA toolkit
+
+# Optional: For distributed computing (if backtesting 1000+ strategies)
+# dask[complete]>=2021.10.0
+# dask-ml>=2021.10.0

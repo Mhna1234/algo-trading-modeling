@@ -6,6 +6,7 @@ wrap signal generation and optimization into a clean interface. Each strategy
 implements the BaseStrategyWrapper interface and returns execution-ready weights.
 
 Available Strategies:
+Core Strategies:
 1. EqualWeightStrategy - Naive 1/N diversification
 2. MomentumStrategy - Trend following (top K winners)
 3. MeanReversionStrategy - Contrarian (buy losers)
@@ -18,8 +19,19 @@ Available Strategies:
 10. MultiFactorMLStrategy - Multi-factor combination
 11. GlobalMinimumVarianceStrategy - Pure risk minimization (GMVP)
 
+Extended Strategies:
+12. BuyAndHoldStrategy - Passive benchmark
+13. QuintileFactorStrategy - Factor-based quintile portfolios
+14. GMRPStrategy - Global Maximum Return Portfolio
+15. MaximumDiversificationStrategy - MDP
+16. MaximumDecorrelationStrategy - MDCP
+17. TimeSeriesMomentumStrategy - Individual asset momentum
+18. MovingAverageCrossoverStrategy - MA crossover signals
+19. MarkowitzMVOStrategy - Classic mean-variance optimization
+20. LinearRegressionStrategy - Linear regression forecasting
+
 Author: Portfolio Engine Team
-Date: November 2025
+Date: December 2025
 """
 
 from abc import ABC, abstractmethod
@@ -27,8 +39,14 @@ from typing import Dict, Any, Optional, Tuple
 import numpy as np
 import pandas as pd
 from pandas import Series, DataFrame
+from scipy.optimize import minimize
+from sklearn.linear_model import Ridge, Lasso, LinearRegression
+from sklearn.preprocessing import StandardScaler
+import logging
 
 from src.portfolio_engine import PortfolioState
+
+logger = logging.getLogger(__name__)
 
 
 class BaseStrategyWrapper(ABC):
@@ -1225,6 +1243,654 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
 
 
 # ============================================================================
+# EXTENDED STRATEGIES
+# ============================================================================
+
+# ============================================================================
+# BUY AND HOLD STRATEGY
+# ============================================================================
+
+class BuyAndHoldStrategy(BaseStrategyWrapper):
+    """
+    Buy & Hold - Passive Investment Strategy
+    
+    Invests in assets at the beginning and holds without rebalancing
+    (except for initial setup). This serves as a benchmark for active strategies.
+    """
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        initial_method: str = 'equal',
+        initial_weights: Optional[pd.Series] = None
+    ):
+        """Initialize Buy & Hold strategy."""
+        super().__init__(
+            "Buy & Hold",
+            strategy,
+            optimizer,
+            initial_method=initial_method,
+            initial_weights=initial_weights
+        )
+        self._initial_weights = None
+        self._initialized = False
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        """Return buy-and-hold weights."""
+        if not self._initialized:
+            method = self.params.get('initial_method', 'equal')
+            custom_weights = self.params.get('initial_weights', None)
+            
+            if method == 'custom' and custom_weights is not None:
+                self._initial_weights = custom_weights
+            else:
+                n_assets = len(self.strategy.assets)
+                self._initial_weights = Series(1.0 / n_assets, index=self.strategy.assets)
+            
+            self._initialized = True
+        
+        return self._initial_weights
+
+
+class QuintileFactorStrategy(BaseStrategyWrapper):
+    """Quintile Factor Portfolios - Factor-Based Sorting Strategy"""
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        factor: str = 'momentum',
+        lookback: int = 126,
+        n_quintiles: int = 5,
+        target_quintile: int = 5,
+        **kwargs
+    ):
+        super().__init__(
+            f"Quintile Factor ({factor})",
+            strategy,
+            optimizer,
+            factor=factor,
+            lookback=lookback,
+            n_quintiles=n_quintiles,
+            target_quintile=target_quintile,
+            **kwargs
+        )
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        factor = self.params.get('factor', 'momentum')
+        lookback = self.params.get('lookback', 126)
+        n_quintiles = self.params.get('n_quintiles', 5)
+        target_quintile = self.params.get('target_quintile', 5)
+        
+        if factor == 'momentum':
+            factor_scores = self.strategy.momentum(window=lookback).loc[date]
+        else:
+            factor_scores = self.strategy.momentum(window=lookback).loc[date]
+        
+        factor_scores = factor_scores.sort_values(ascending=False)
+        n_assets = len(factor_scores)
+        assets_per_quintile = max(1, n_assets // n_quintiles)
+        
+        weights = Series(0.0, index=self.strategy.assets)
+        start_idx = (target_quintile - 1) * assets_per_quintile
+        end_idx = start_idx + assets_per_quintile
+        quintile_assets = factor_scores.iloc[start_idx:end_idx].index
+        weights[quintile_assets] = 1.0 / len(quintile_assets)
+        
+        return weights
+
+
+class MaximumDiversificationStrategy(BaseStrategyWrapper):
+    """Maximum Diversification Portfolio (MDP)"""
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 252,
+        max_weight: float = 0.5,
+        min_weight: float = 0.0
+    ):
+        super().__init__(
+            "Maximum Diversification",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            max_weight=max_weight,
+            min_weight=min_weight
+        )
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        lookback = self.params.get('lookback', 252)
+        max_weight = self.params.get('max_weight', 0.5)
+        min_weight = self.params.get('min_weight', 0.0)
+        
+        date_idx = self.strategy.prices.index.get_loc(date)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
+        if len(returns_window) < 20:
+            n_assets = len(self.strategy.assets)
+            return Series(1.0 / n_assets, index=self.strategy.assets)
+        
+        cov_matrix = returns_window.cov().values * 252
+        volatilities = returns_window.std().values * np.sqrt(252)
+        cov_matrix = cov_matrix + 1e-5 * np.eye(len(cov_matrix))
+        n_assets = len(volatilities)
+        
+        def neg_diversification_ratio(w):
+            portfolio_vol = np.sqrt(np.dot(w, np.dot(cov_matrix, w)))
+            weighted_vol = np.dot(w, volatilities)
+            if weighted_vol < 1e-8:
+                return 1e8
+            return portfolio_vol / weighted_vol
+        
+        x0 = np.ones(n_assets) / n_assets
+        bounds = [(min_weight, max_weight) for _ in range(n_assets)]
+        constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}]
+        
+        result = minimize(
+            neg_diversification_ratio,
+            x0,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'ftol': 1e-9, 'disp': False}
+        )
+        
+        if not result.success:
+            return Series(1.0 / n_assets, index=self.strategy.assets)
+        
+        optimal_weights = result.x
+        optimal_weights = np.clip(optimal_weights, 0, max_weight)
+        optimal_weights = optimal_weights / optimal_weights.sum()
+        
+        return Series(optimal_weights, index=self.strategy.assets)
+
+
+class MaximumDecorrelationStrategy(BaseStrategyWrapper):
+    """Maximum Decorrelation Portfolio (MDCP)"""
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 252,
+        max_weight: float = 0.5,
+        min_weight: float = 0.0
+    ):
+        super().__init__(
+            "Maximum Decorrelation",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            max_weight=max_weight,
+            min_weight=min_weight
+        )
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        lookback = self.params.get('lookback', 252)
+        max_weight = self.params.get('max_weight', 0.5)
+        min_weight = self.params.get('min_weight', 0.0)
+        
+        date_idx = self.strategy.prices.index.get_loc(date)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
+        if len(returns_window) < 20:
+            n_assets = len(self.strategy.assets)
+            return Series(1.0 / n_assets, index=self.strategy.assets)
+        
+        corr_matrix = returns_window.corr().values
+        corr_matrix = corr_matrix + 1e-5 * np.eye(len(corr_matrix))
+        n_assets = len(corr_matrix)
+        
+        def portfolio_correlation(w):
+            return np.dot(w, np.dot(corr_matrix, w))
+        
+        x0 = np.ones(n_assets) / n_assets
+        bounds = [(min_weight, max_weight) for _ in range(n_assets)]
+        constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}]
+        
+        result = minimize(
+            portfolio_correlation,
+            x0,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'ftol': 1e-9, 'disp': False}
+        )
+        
+        if not result.success:
+            return Series(1.0 / n_assets, index=self.strategy.assets)
+        
+        optimal_weights = result.x
+        optimal_weights = np.clip(optimal_weights, 0, max_weight)
+        optimal_weights = optimal_weights / optimal_weights.sum()
+        
+        return Series(optimal_weights, index=self.strategy.assets)
+
+
+class TimeSeriesMomentumStrategy(BaseStrategyWrapper):
+    """Time-Series Momentum (Trend Following)"""
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 126,
+        signal_threshold: float = 0.0,
+        volatility_scaling: bool = True,
+        long_only: bool = True,
+        **kwargs
+    ):
+        super().__init__(
+            "Time-Series Momentum",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            signal_threshold=signal_threshold,
+            volatility_scaling=volatility_scaling,
+            long_only=long_only,
+            **kwargs
+        )
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        lookback = self.params.get('lookback', 126)
+        signal_threshold = self.params.get('signal_threshold', 0.0)
+        volatility_scaling = self.params.get('volatility_scaling', True)
+        long_only = self.params.get('long_only', True)
+        
+        momentum_signals = self.strategy.momentum(window=lookback).loc[date]
+        signals = pd.Series(0.0, index=momentum_signals.index)
+        signals[momentum_signals > signal_threshold] = 1.0
+        if not long_only:
+            signals[momentum_signals < -signal_threshold] = -1.0
+        
+        if volatility_scaling:
+            recent_vol = self.strategy.volatility(window=21).loc[date]
+            inv_vol = 1.0 / (recent_vol + 1e-8)
+            signals = signals * inv_vol
+        
+        if long_only:
+            positive_signals = signals.clip(lower=0)
+            if positive_signals.sum() > 0:
+                weights = positive_signals / positive_signals.sum()
+            else:
+                weights = Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        else:
+            if signals.abs().sum() > 0:
+                weights = signals / signals.abs().sum()
+            else:
+                weights = Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        return weights
+
+
+class MovingAverageCrossoverStrategy(BaseStrategyWrapper):
+    """Moving Average Crossover Strategy"""
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        fast_window: int = 50,
+        slow_window: int = 200,
+        signal_type: str = 'binary',
+        long_only: bool = True,
+        **kwargs
+    ):
+        super().__init__(
+            f"MA Crossover ({fast_window}/{slow_window})",
+            strategy,
+            optimizer,
+            fast_window=fast_window,
+            slow_window=slow_window,
+            signal_type=signal_type,
+            long_only=long_only,
+            **kwargs
+        )
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        fast_window = self.params.get('fast_window', 50)
+        slow_window = self.params.get('slow_window', 200)
+        signal_type = self.params.get('signal_type', 'binary')
+        long_only = self.params.get('long_only', True)
+        
+        prices = self.strategy.prices
+        fast_ma = prices.rolling(window=fast_window).mean()
+        slow_ma = prices.rolling(window=slow_window).mean()
+        
+        fast_ma_current = fast_ma.loc[date]
+        slow_ma_current = slow_ma.loc[date]
+        
+        if signal_type == 'binary':
+            signals = pd.Series(0.0, index=self.strategy.assets)
+            signals[fast_ma_current > slow_ma_current] = 1.0
+            if not long_only:
+                signals[fast_ma_current < slow_ma_current] = -1.0
+        else:
+            ma_diff = (fast_ma_current - slow_ma_current) / slow_ma_current
+            signals = ma_diff
+            if long_only:
+                signals = signals.clip(lower=0)
+        
+        if long_only:
+            positive_signals = signals.clip(lower=0)
+            if positive_signals.sum() > 0:
+                weights = positive_signals / positive_signals.sum()
+            else:
+                weights = Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        else:
+            if signals.abs().sum() > 0:
+                weights = signals / signals.abs().sum()
+            else:
+                weights = Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        return weights
+
+
+class MarkowitzMVOStrategy(BaseStrategyWrapper):
+    """Classic Markowitz Mean-Variance Optimization"""
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 252,
+        risk_aversion: float = 1.0,
+        return_forecast_method: str = 'historical',
+        max_weight: float = 0.5,
+        **kwargs
+    ):
+        super().__init__(
+            f"Markowitz MVO (λ={risk_aversion})",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            risk_aversion=risk_aversion,
+            return_forecast_method=return_forecast_method,
+            max_weight=max_weight,
+            **kwargs
+        )
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        lookback = self.params.get('lookback', 252)
+        risk_aversion = self.params.get('risk_aversion', 1.0)
+        return_method = self.params.get('return_forecast_method', 'historical')
+        max_weight = self.params.get('max_weight', 0.5)
+        
+        date_idx = self.strategy.prices.index.get_loc(date)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
+        if len(returns_window) < 20:
+            n_assets = len(self.strategy.assets)
+            return Series(1.0 / n_assets, index=self.strategy.assets)
+        
+        if return_method == 'historical':
+            expected_returns = returns_window.mean().values * 252
+        elif return_method == 'momentum':
+            momentum_lookback = min(126, lookback)
+            expected_returns = self.strategy.momentum(window=momentum_lookback).loc[date].values
+        else:
+            expected_returns = returns_window.mean().values * 252
+        
+        cov_matrix = returns_window.cov().values * 252
+        cov_matrix = cov_matrix + 1e-5 * np.eye(len(cov_matrix))
+        
+        if self.optimizer is not None:
+            try:
+                weights = self.optimizer.mean_variance_optimization(
+                    expected_returns,
+                    cov_matrix,
+                    risk_aversion=risk_aversion
+                )
+                return Series(weights, index=self.strategy.assets)
+            except:
+                pass
+        
+        n_assets = len(expected_returns)
+        
+        def mvo_objective(w):
+            portfolio_return = np.dot(w, expected_returns)
+            portfolio_variance = np.dot(w, np.dot(cov_matrix, w))
+            return -portfolio_return + (risk_aversion / 2.0) * portfolio_variance
+        
+        x0 = np.ones(n_assets) / n_assets
+        bounds = [(0.0, max_weight) for _ in range(n_assets)]
+        constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}]
+        
+        result = minimize(
+            mvo_objective,
+            x0,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'ftol': 1e-9, 'disp': False}
+        )
+        
+        if not result.success:
+            return Series(1.0 / n_assets, index=self.strategy.assets)
+        
+        optimal_weights = result.x
+        optimal_weights = optimal_weights / optimal_weights.sum()
+        
+        return Series(optimal_weights, index=self.strategy.assets)
+
+
+class LinearRegressionStrategy(BaseStrategyWrapper):
+    """Linear Regression Prediction Strategy"""
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 252,
+        forecast_horizon: int = 1,
+        features: list = None,
+        regularization: str = 'ridge',
+        alpha: float = 0.1,
+        **kwargs
+    ):
+        if features is None:
+            features = ['returns_lag1', 'ma_ratio', 'volatility']
+        
+        super().__init__(
+            "Linear Regression",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            forecast_horizon=forecast_horizon,
+            features=features,
+            regularization=regularization,
+            alpha=alpha,
+            **kwargs
+        )
+        self._models = {}
+        self._scalers = {}
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        lookback = self.params.get('lookback', 252)
+        forecast_horizon = self.params.get('forecast_horizon', 1)
+        regularization = self.params.get('regularization', 'ridge')
+        alpha = self.params.get('alpha', 0.1)
+        
+        date_idx = self.strategy.prices.index.get_loc(date)
+        
+        if date_idx < lookback + 10:
+            n_assets = len(self.strategy.assets)
+            return Series(1.0 / n_assets, index=self.strategy.assets)
+        
+        train_start = max(0, date_idx - lookback)
+        train_end = date_idx
+        forecasts = pd.Series(0.0, index=self.strategy.assets)
+        
+        for asset in self.strategy.assets:
+            returns_train = self.strategy.returns[asset].iloc[train_start:train_end]
+            prices_train = self.strategy.prices[asset].iloc[train_start:train_end]
+            
+            n_samples = len(returns_train) - forecast_horizon - 1
+            if n_samples < 10:
+                forecasts[asset] = 0.0
+                continue
+            
+            feature_list = self.params.get('features', ['returns_lag1', 'ma_ratio', 'volatility'])
+            X_list = []
+            
+            for i in range(n_samples):
+                sample_features = []
+                
+                if 'returns_lag1' in feature_list:
+                    sample_features.append(returns_train.iloc[i] if i > 0 else 0)
+                if 'ma_ratio' in feature_list:
+                    if i >= 20:
+                        ma20 = prices_train.iloc[i-19:i+1].mean()
+                        ma50 = prices_train.iloc[max(0, i-49):i+1].mean()
+                        sample_features.append((ma20 - ma50) / ma50 if ma50 != 0 else 0)
+                    else:
+                        sample_features.append(0)
+                if 'volatility' in feature_list:
+                    sample_features.append(returns_train.iloc[max(0, i-19):i+1].std() if i >= 0 else 0)
+                
+                X_list.append(sample_features)
+            
+            y_list = returns_train.iloc[forecast_horizon:forecast_horizon + n_samples].values
+            
+            if len(X_list) < 10:
+                forecasts[asset] = 0.0
+                continue
+            
+            X_train = np.array(X_list)
+            y_train = np.array(y_list)
+            
+            if asset not in self._scalers:
+                self._scalers[asset] = StandardScaler()
+            X_train_scaled = self._scalers[asset].fit_transform(X_train)
+            
+            if regularization == 'ridge':
+                model = Ridge(alpha=alpha)
+            elif regularization == 'lasso':
+                model = Lasso(alpha=alpha)
+            else:
+                model = LinearRegression()
+            
+            model.fit(X_train_scaled, y_train)
+            self._models[asset] = model
+            
+            current_features = []
+            
+            if 'returns_lag1' in feature_list:
+                current_features.append(returns_train.iloc[-1])
+            if 'ma_ratio' in feature_list:
+                ma20 = prices_train.iloc[-20:].mean()
+                ma50 = prices_train.iloc[-50:].mean()
+                current_features.append((ma20 - ma50) / ma50 if ma50 != 0 else 0)
+            if 'volatility' in feature_list:
+                current_features.append(returns_train.iloc[-20:].std())
+            
+            X_current = np.array(current_features).reshape(1, -1)
+            X_current_scaled = self._scalers[asset].transform(X_current)
+            forecast = model.predict(X_current_scaled)[0]
+            forecasts[asset] = forecast
+        
+        positive_forecasts = forecasts.clip(lower=0)
+        
+        if positive_forecasts.sum() > 0:
+            weights = positive_forecasts / positive_forecasts.sum()
+        else:
+            weights = Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        return weights
+
+
+class GMRPStrategy(BaseStrategyWrapper):
+    """Global Maximum Return Portfolio (GMRP)"""
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 126,
+        return_forecast_method: str = 'momentum',
+        max_weight: float = 0.5,
+        min_assets: int = 3
+    ):
+        super().__init__(
+            "Global Maximum Return",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            return_forecast_method=return_forecast_method,
+            max_weight=max_weight,
+            min_assets=min_assets
+        )
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        lookback = self.params.get('lookback', 126)
+        return_method = self.params.get('return_forecast_method', 'momentum')
+        max_weight = self.params.get('max_weight', 0.5)
+        min_assets = self.params.get('min_assets', 3)
+        
+        if return_method == 'momentum':
+            expected_returns = self.strategy.momentum(window=lookback).loc[date]
+        else:
+            date_idx = self.strategy.prices.index.get_loc(date)
+            start_idx = max(0, date_idx - lookback)
+            returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+            expected_returns = returns_window.mean() * 252
+        
+        sorted_returns = expected_returns.sort_values(ascending=False)
+        weights = Series(0.0, index=self.strategy.assets)
+        
+        n_allocate = max(min_assets, int(np.ceil(1.0 / max_weight)))
+        top_assets = sorted_returns.iloc[:n_allocate].index
+        
+        weight_per_asset = min(1.0 / len(top_assets), max_weight)
+        weights[top_assets] = weight_per_asset
+        weights = weights / weights.sum()
+        
+        return weights
+
+
+# ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
 
@@ -1253,7 +1919,17 @@ def list_available_strategies() -> Dict[str, type]:
         'ml_gradient_boosting': MLGradientBoostingStrategy,
         'arma_forecast': ARMAForecastStrategy,
         'multi_factor_ml': MultiFactorMLStrategy,
-        'gmvp': GlobalMinimumVarianceStrategy
+        'gmvp': GlobalMinimumVarianceStrategy,
+        # Extended strategies
+        'buy_and_hold': BuyAndHoldStrategy,
+        'quintile_factor': QuintileFactorStrategy,
+        'gmrp': GMRPStrategy,
+        'max_diversification': MaximumDiversificationStrategy,
+        'max_decorrelation': MaximumDecorrelationStrategy,
+        'time_series_momentum': TimeSeriesMomentumStrategy,
+        'ma_crossover': MovingAverageCrossoverStrategy,
+        'markowitz_mvo': MarkowitzMVOStrategy,
+        'linear_regression': LinearRegressionStrategy
     }
 
 

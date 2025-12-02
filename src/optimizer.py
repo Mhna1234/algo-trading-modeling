@@ -28,6 +28,54 @@ from pypfopt.objective_functions import L2_reg
 
 logger = logging.getLogger(__name__)
 
+def regularize_covariance(cov_matrix: np.ndarray, 
+                          method: str = 'ledoit_wolf',
+                          returns_data: Optional[pd.DataFrame] = None,
+                          min_eigenvalue: float = 1e-5) -> np.ndarray:
+    """
+    Regularize covariance matrix to ensure positive semi-definite property.
+    
+    This fixes numerical instability issues that cause ARPACK convergence errors
+    in CVXPY optimization.
+    
+    Args:
+        cov_matrix: Original covariance matrix
+        method: Regularization method ('ledoit_wolf', 'eigenvalue_clip', 'ridge')
+        returns_data: Historical returns (required for ledoit_wolf)
+        min_eigenvalue: Minimum eigenvalue for clipping/ridge
+        
+    Returns:
+        Regularized positive semi-definite covariance matrix
+    """
+    cov_matrix = np.asarray(cov_matrix)
+    
+    if method == 'ledoit_wolf' and returns_data is not None:
+        try:
+            from sklearn.covariance import ledoit_wolf
+            cov_shrunk, _ = ledoit_wolf(returns_data.values)
+            return cov_shrunk
+        except Exception as e:
+            logger.warning(f"Ledoit-Wolf shrinkage failed: {e}, falling back to eigenvalue clipping")
+            method = 'eigenvalue_clip'
+    
+    if method == 'eigenvalue_clip':
+        # Eigenvalue decomposition and clipping
+        try:
+            eigvals, eigvecs = np.linalg.eigh(cov_matrix)
+            eigvals_clipped = np.maximum(eigvals, min_eigenvalue)
+            cov_regularized = eigvecs @ np.diag(eigvals_clipped) @ eigvecs.T
+            return cov_regularized
+        except np.linalg.LinAlgError:
+            logger.warning("Eigenvalue clipping failed, using ridge regularization")
+            method = 'ridge'
+    
+    if method == 'ridge':
+        # Add small multiple of identity matrix
+        return cov_matrix + min_eigenvalue * np.eye(len(cov_matrix))
+    
+    # Default fallback
+    return cov_matrix + 1e-5 * np.eye(len(cov_matrix))
+
 class PortfolioOptimizer:
     """
     Comprehensive portfolio optimization using convex optimization.
@@ -116,6 +164,10 @@ class PortfolioOptimizer:
         expected_returns = returns.mean() * 252  # Annualized
         cov_matrix = returns.cov() * 252  # Annualized
         
+        # Regularize covariance matrix to prevent ARPACK errors
+        cov_matrix = regularize_covariance(cov_matrix, method='eigenvalue_clip', 
+                                          returns_data=returns, min_eigenvalue=1e-5)
+        
         # Use max_weight parameter if provided, otherwise use instance setting
         if max_weight is not None:
             original_max_weight = self.max_weight
@@ -173,11 +225,15 @@ class PortfolioOptimizer:
         mu = np.array(expected_returns)
         sigma = np.array(cov_matrix)
         
+        # Regularize and wrap covariance for numerical stability
+        sigma = regularize_covariance(sigma, method='eigenvalue_clip')
+        sigma_psd = cp.psd_wrap(sigma)
+        
         # Define optimization variables
         w = cp.Variable(n_assets)
         
         # Objective function: utility - transaction costs
-        utility = mu.T @ w - 0.5 * risk_aversion * cp.quad_form(w, sigma)
+        utility = mu.T @ w - 0.5 * risk_aversion * cp.quad_form(w, sigma_psd)
         
         # Add transaction costs if previous weights provided
         if previous_weights is not None:
@@ -245,6 +301,10 @@ class PortfolioOptimizer:
         mu = np.array(expected_returns)
         sigma = np.array(cov_matrix)
         
+        # Regularize and wrap covariance for numerical stability
+        sigma = regularize_covariance(sigma, method='eigenvalue_clip')
+        sigma_psd = cp.psd_wrap(sigma)
+        
         # Reformulation variables: y = κw, κ > 0
         y = cp.Variable(n_assets)
         kappa = cp.Variable()
@@ -255,7 +315,7 @@ class PortfolioOptimizer:
         
         # Constraints
         constraints = [
-            cp.quad_form(y, sigma) <= 1,  # Risk constraint (normalized)
+            cp.quad_form(y, sigma_psd) <= 1,  # Risk constraint (normalized)
             cp.sum(y) == kappa,  # Budget constraint
             kappa >= 0,  # Kappa must be positive
             y >= self.min_weight * kappa,  # Minimum weight
@@ -313,6 +373,9 @@ class PortfolioOptimizer:
         """
         n_assets = len(cov_matrix)
         sigma = np.array(cov_matrix)
+        
+        # Regularize covariance matrix
+        sigma = regularize_covariance(sigma, method='eigenvalue_clip')
         
         if target_risk is None:
             target_risk = np.ones(n_assets) / n_assets
@@ -397,6 +460,11 @@ class PortfolioOptimizer:
         
         # Convert to numpy array
         returns_matrix = returns_data.values
+        
+        # Regularize returns data if needed (remove extreme outliers)
+        returns_matrix = np.clip(returns_matrix, 
+                                np.percentile(returns_matrix, 1), 
+                                np.percentile(returns_matrix, 99))
         
         # Decision variables
         w = cp.Variable(n_assets)  # Portfolio weights

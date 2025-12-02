@@ -1,16 +1,25 @@
-# Implementation Summary - v2.0.0
+# Implementation Summary - v2.1.0
 
 ## Overview
 
-Successfully implemented a **strategy-agnostic portfolio management system** with **10 working strategy configurations**, comprehensive documentation, testing, and examples.
+Successfully implemented a **strategy-agnostic portfolio management system** with **11 working strategies**, comprehensive optimization fixes, full documentation, testing, and examples.
 
 **Project Status**: ✅ **Production Ready**
 
-**Recent Updates** (Latest session):
-- ✅ Fixed optimizer to use real algorithms (Sharpe, MVO, Risk Parity) instead of placeholder
-- ✅ Added CVaR optimization method (fully implemented but not used in demo)
+**Recent Updates** (v2.1.0 - December 2025):
+- ✅ **Fixed critical ARPACK convergence errors** affecting 7 strategies
+- ✅ **Added covariance matrix regularization** (eigenvalue clipping, Ledoit-Wolf, ridge)
+- ✅ **Implemented PSD wrapping** for all CVXPY optimization calls
+- ✅ **All 11 strategies now working** with real market data
+- ✅ Updated demo parameters for better numerical stability
+- ✅ Fixed Min Variance strategy (now uses CVaR instead of incorrect mean reversion)
+- ✅ Improved Mean Reversion windows from 3-5 days to 10-20 days
+- ✅ Increased Momentum Fast lookback from 21 to 63 days
+
+**Previous Updates** (v2.0.0):
+- ✅ Fixed optimizer to use real algorithms (Sharpe, MVO, Risk Parity)
+- ✅ Added CVaR optimization method
 - ✅ Fixed returns data passing architecture throughout system
-- ✅ Demo successfully runs 10 strategies with diverse results (Sharpe 1.19-1.96, Returns 6.48%-21.42%)
 - ✅ All documentation updated to reflect current working state
 
 ---

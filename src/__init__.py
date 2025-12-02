@@ -29,40 +29,66 @@ Quick Start:
     results = backtester.run(initial_capital=100000)
 
 Available Strategies:
+    Core Strategies (11):
     - EqualWeightStrategy: 1/N portfolio
     - MomentumStrategy: Price momentum with mean reversion filter
     - MeanReversionStrategy: Z-score based reversion
     - InverseVolatilityStrategy: Risk parity approach
     - CVaRMinimizationStrategy: Downside risk optimization
+    - GlobalMinimumVarianceStrategy: Minimum variance portfolio
     - RegimeSwitchingStrategy: Market regime detection
     - MLRandomForestStrategy: Random Forest predictions
     - MLGradientBoostingStrategy: Gradient Boosting predictions
     - ARMAForecastStrategy: Time series forecasting
     - MultiFactorMLStrategy: Multi-factor ML ensemble
+    
+    Extended Strategies (9):
+    - BuyAndHoldStrategy: Passive investment benchmark
+    - QuintileFactorStrategy: Factor-based quintile portfolios
+    - GMRPStrategy: Global Maximum Return Portfolio
+    - MaximumDiversificationStrategy: Maximum Diversification Portfolio
+    - MaximumDecorrelationStrategy: Maximum Decorrelation Portfolio
+    - TimeSeriesMomentumStrategy: Time-series momentum (trend following)
+    - MovingAverageCrossoverStrategy: Moving average crossover
+    - MarkowitzMVOStrategy: Markowitz Mean-Variance Optimization
+    - LinearRegressionStrategy: Linear regression prediction
 
 Author: AI Assistant
-Version: 2.0.0
+Version: 2.1.0
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __author__ = "AI Assistant"
 
 # Core portfolio management (NEW)
 from .portfolio_engine import PortfolioEngine, PortfolioState, PortfolioResult
 
-# Strategy wrappers - 10 pre-built strategies (NEW)
+# Strategy wrappers - ALL 20 strategies (v2.1.0 - consolidated)
 from .strategy_wrapper import (
     BaseStrategyWrapper,
+    # Core strategies (11)
     EqualWeightStrategy,
     MomentumStrategy,
     MeanReversionStrategy,
     InverseVolatilityStrategy,
     CVaRMinimizationStrategy,
+    GlobalMinimumVarianceStrategy,
     RegimeSwitchingStrategy,
     MLRandomForestStrategy,
     MLGradientBoostingStrategy,
     ARMAForecastStrategy,
     MultiFactorMLStrategy,
+    # Extended strategies (9)
+    BuyAndHoldStrategy,
+    QuintileFactorStrategy,
+    GMRPStrategy,
+    MaximumDiversificationStrategy,
+    MaximumDecorrelationStrategy,
+    TimeSeriesMomentumStrategy,
+    MovingAverageCrossoverStrategy,
+    MarkowitzMVOStrategy,
+    LinearRegressionStrategy,
+    # Utility functions
     list_available_strategies,
     create_strategy
 )
@@ -93,18 +119,31 @@ __all__ = [
     'PortfolioState',
     'PortfolioResult',
     
-    # Strategy Wrappers (v2.0)
+    # Strategy Wrappers (v2.1.0 - All 20 strategies)
     'BaseStrategyWrapper',
+    # Core strategies
     'EqualWeightStrategy',
     'MomentumStrategy',
     'MeanReversionStrategy',
     'InverseVolatilityStrategy',
     'CVaRMinimizationStrategy',
+    'GlobalMinimumVarianceStrategy',
     'RegimeSwitchingStrategy',
     'MLRandomForestStrategy',
     'MLGradientBoostingStrategy',
     'ARMAForecastStrategy',
     'MultiFactorMLStrategy',
+    # Extended strategies
+    'BuyAndHoldStrategy',
+    'QuintileFactorStrategy',
+    'GMRPStrategy',
+    'MaximumDiversificationStrategy',
+    'MaximumDecorrelationStrategy',
+    'TimeSeriesMomentumStrategy',
+    'MovingAverageCrossoverStrategy',
+    'MarkowitzMVOStrategy',
+    'LinearRegressionStrategy',
+    # Utility functions
     'list_available_strategies',
     'create_strategy',
     

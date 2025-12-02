@@ -36,7 +36,7 @@ returns = pd.DataFrame(
 )
 prices = 100 * (1 + returns).cumprod()
 
-print(f"✓ Created {n_assets} assets with {len(dates)} days of data\n")
+print(f"[OK] Created {n_assets} assets with {len(dates)} days of data\n")
 
 # Step 2: Initialize strategy and optimizer
 print("Step 2: Initializing strategy and optimizer...")
@@ -46,7 +46,7 @@ optimizer = PortfolioOptimizer(
     max_weight=0.3,
     min_weight=0.0
 )
-print("✓ Ready\n")
+print("[OK] Ready\n")
 
 # Step 3: Create portfolio engine
 print("Step 3: Creating portfolio engine...")
@@ -56,7 +56,7 @@ portfolio = PortfolioEngine(
     transaction_cost_bps=5.0,
     slippage_bps=1.0
 )
-print("✓ Portfolio engine created\n")
+print("[OK] Portfolio engine created\n")
 
 # Step 4: Create strategy wrapper
 print("Step 4: Creating momentum strategy...")
@@ -69,7 +69,7 @@ momentum = MomentumStrategy(
     alpha=0.95,
     max_weight=0.3
 )
-print("✓ Momentum strategy configured\n")
+print("[OK] Momentum strategy configured\n")
 
 # Step 5: Run backtest
 print("Step 5: Running backtest...")
@@ -79,7 +79,7 @@ result = portfolio.run_backtest(
     end_date='2023-12-31',
     rebalance_freq='M'  # Monthly rebalancing
 )
-print("✓ Backtest complete\n")
+print("[OK] Backtest complete\n")
 
 # Step 6: Display results
 print("="*60)
@@ -140,7 +140,7 @@ plt.tight_layout()
 # Save
 os.makedirs('visualizations', exist_ok=True)
 plt.savefig('visualizations/simple_example.png', dpi=300, bbox_inches='tight')
-print("✓ Visualization saved to: visualizations/simple_example.png")
+print("[OK] Visualization saved to: visualizations/simple_example.png")
 
 plt.show()
 

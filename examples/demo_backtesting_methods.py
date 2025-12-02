@@ -345,25 +345,25 @@ When to use each method:
    - Most realistic for live trading
    - Simulates actual strategy deployment
    - Tests strategy adaptability over time
-   ✓  Recommended for production strategies
+   [OK] Recommended for production strategies
 
 3. CROSS-VALIDATION BACKTEST
    - Assessing statistical robustness
    - Comparing multiple strategies
    - Understanding performance variability
-   ✓  Good for strategy selection
+   [OK] Good for strategy selection
 
 4. MONTE CARLO BACKTEST
    - Stress testing strategies
    - Understanding worst-case scenarios
    - Assessing sensitivity to market conditions
-   ✓  Essential for risk management
+   [OK] Essential for risk management
 
 5. RANDOMIZED BACKTEST
    - Testing statistical significance
    - Detecting data-snooping bias
    - Validating strategy robustness
-   ✓  Good for research validation
+   [OK] Good for research validation
 
 BEST PRACTICE:
 Use multiple methods in combination:
