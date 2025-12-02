@@ -253,12 +253,37 @@ class MomentumStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate momentum-based weights."""
-        # Get initial weights (top K assets with momentum)
-        initial_weights = self.strategy.generate_initial_weights(
-            method='momentum',
-            top_n=self.params['top_k'],
-            lookback=self.params['lookback']
-        )
+        lookback = self.params['lookback']
+        
+        # Check if we have enough data for momentum calculation
+        date_idx = self.strategy.prices.index.get_loc(date)
+        if date_idx < lookback:
+            # During warmup period, use Buy & Hold
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            # First time: set equal weights and hold
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Calculate momentum for current date
+        momentum_signals = self.strategy.momentum(window=lookback).loc[date]
+        
+        # Select top K assets
+        top_k = self.params['top_k']
+        if top_k < len(self.strategy.assets):
+            top_assets = momentum_signals.nlargest(top_k).index
+            initial_weights = pd.Series(0.0, index=self.strategy.assets)
+            initial_weights[top_assets] = 1.0 / top_k
+        else:
+            # Weight by positive momentum signals
+            positive_signals = momentum_signals.clip(lower=0)
+            if positive_signals.sum() > 0:
+                initial_weights = positive_signals / positive_signals.sum()
+            else:
+                initial_weights = pd.Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Get returns window for optimization
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
         
         # Optimize with risk constraints
         final_weights = self.optimizer.optimize(
@@ -267,7 +292,7 @@ class MomentumStrategy(BaseStrategyWrapper):
             alpha=self.params.get('alpha', 0.95),
             long_only=True,
             max_weight=self.params['max_weight'],
-            returns_data=self.strategy.get_return_matrix()
+            returns_data=returns_window
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -342,12 +367,41 @@ class MeanReversionStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate mean reversion weights."""
-        # Generate mean reversion signals
-        initial_weights = self.strategy.generate_initial_weights(
-            method='mean_reversion',
-            top_n=self.params['top_k'],
-            window=self.params['window']
-        )
+        window = self.params['window']
+        
+        # Check if we have enough data for mean reversion calculation
+        date_idx = self.strategy.prices.index.get_loc(date)
+        if date_idx < window + 20:  # Need window + enough for volatility calc
+            # During warmup period, use Buy & Hold
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            # First time: set equal weights and hold
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Calculate mean reversion signals for current date
+        mr_signals = self.strategy.mean_reversion(window=window).loc[date]
+        
+        # Invert signals (negative z-score = oversold = buy)
+        inverted_signals = -mr_signals
+        
+        # Select top K assets
+        top_k = self.params['top_k']
+        if top_k < len(self.strategy.assets):
+            top_assets = inverted_signals.nlargest(top_k).index
+            initial_weights = pd.Series(0.0, index=self.strategy.assets)
+            initial_weights[top_assets] = 1.0 / top_k
+        else:
+            # Weight by inverted signals
+            positive_signals = inverted_signals.clip(lower=0)
+            if positive_signals.sum() > 0:
+                initial_weights = positive_signals / positive_signals.sum()
+            else:
+                initial_weights = pd.Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Get returns window for optimization
+        lookback = max(126, window * 2)  # At least 126 days or 2x window
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
         
         # Optimize
         final_weights = self.optimizer.optimize(
@@ -356,7 +410,7 @@ class MeanReversionStrategy(BaseStrategyWrapper):
             risk_aversion=self.params.get('risk_aversion', 3.0),
             long_only=True,
             max_weight=self.params['max_weight'],
-            returns_data=self.strategy.get_return_matrix()
+            returns_data=returns_window
         )
         
         return Series(final_weights, index=self.strategy.assets)
@@ -424,11 +478,28 @@ class InverseVolatilityStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate inverse volatility weights."""
-        # Generate inverse volatility signals
-        initial_weights = self.strategy.generate_initial_weights(
-            method='inv_vol',
-            window=self.params['vol_window']
-        )
+        vol_window = self.params['vol_window']
+        
+        # Check if we have enough data for volatility calculation
+        date_idx = self.strategy.prices.index.get_loc(date)
+        if date_idx < vol_window:
+            # During warmup period, use Buy & Hold
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            # First time: set equal weights and hold
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Calculate volatility for current date
+        recent_vol = self.strategy.volatility(window=vol_window).loc[date]
+        
+        # Weight by inverse volatility
+        inv_vol = 1.0 / (recent_vol + 1e-8)  # Add small epsilon
+        initial_weights = inv_vol / inv_vol.sum()
+        
+        # Get returns window for optimization
+        lookback = max(126, vol_window * 2)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
         
         # Optimize with risk parity
         final_weights = self.optimizer.optimize(
@@ -436,8 +507,10 @@ class InverseVolatilityStrategy(BaseStrategyWrapper):
             objective=self.params['objective'],
             long_only=True,
             max_weight=self.params['max_weight'],
-            returns_data=self.strategy.get_return_matrix()
+            returns_data=returns_window
         )
+        
+        return Series(final_weights, index=self.strategy.assets)
         
         return Series(final_weights, index=self.strategy.assets)
 
@@ -511,17 +584,32 @@ class CVaRMinimizationStrategy(BaseStrategyWrapper):
         n = len(self.strategy.assets)
         initial_weights = np.ones(n) / n
         
-        # Minimize CVaR
-        final_weights = self.optimizer.optimize(
-            initial_weights,
-            objective='cvar',
-            alpha=self.params['alpha'],
-            long_only=True,
-            max_weight=self.params['max_weight'],
-            returns_data=self.strategy.get_return_matrix()
-        )
+        # Get historical returns for CVaR calculation
+        lookback = self.params.get('lookback', 252)
+        date_idx = self.strategy.prices.index.get_loc(date)
+        start_idx = max(0, date_idx - lookback)
         
-        return Series(final_weights, index=self.strategy.assets)
+        # Get returns window ending before current date
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
+        # Need sufficient history
+        if len(returns_window) < 20:
+            return Series(initial_weights, index=self.strategy.assets)
+        
+        try:
+            # Minimize CVaR
+            final_weights = self.optimizer.optimize(
+                initial_weights,
+                objective='cvar',
+                alpha=self.params['alpha'],
+                long_only=True,
+                max_weight=self.params['max_weight'],
+                returns_data=returns_window
+            )
+            return Series(final_weights, index=self.strategy.assets)
+        except Exception as e:
+            logger.warning(f"CVaR optimization failed: {e}, using equal weights")
+            return Series(initial_weights, index=self.strategy.assets)
 
 
 # ============================================================================
@@ -1384,15 +1472,21 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate GMVP weights."""
         # Get historical returns for covariance estimation
-        returns_data = self.strategy.get_return_matrix()
-        
-        # Use lookback window
         lookback = self.params.get('lookback', 252)
-        if len(returns_data) > lookback:
-            returns_data = returns_data.iloc[-lookback:]
+        date_idx = self.strategy.prices.index.get_loc(date)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
+        # During warmup period, use Buy & Hold
+        if len(returns_window) < 20:
+            # Return previous weights to avoid unnecessary rebalancing
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            # First time: set equal weights and hold
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
         
         # Compute covariance matrix
-        cov = returns_data.cov().values
+        cov = returns_window.cov().values
         
         # Compute GMVP weights
         gmvp_weights = self._compute_gmvp_weights(cov)
@@ -1566,7 +1660,12 @@ class MaximumDiversificationStrategy(BaseStrategyWrapper):
         start_idx = max(0, date_idx - lookback)
         returns_window = self.strategy.returns.iloc[start_idx:date_idx]
         
+        # During warmup period, use Buy & Hold instead of rebalancing
         if len(returns_window) < 20:
+            # Return previous weights to avoid unnecessary rebalancing
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            # First time: set equal weights and hold
             n_assets = len(self.strategy.assets)
             return Series(1.0 / n_assets, index=self.strategy.assets)
         
@@ -1707,6 +1806,15 @@ class TimeSeriesMomentumStrategy(BaseStrategyWrapper):
         long_only = self.params.get('long_only', True)
         
         momentum_signals = self.strategy.momentum(window=lookback).loc[date]
+        
+        # During warmup period (NaN in momentum), use Buy & Hold
+        if momentum_signals.isna().any():
+            # Return previous weights to avoid unnecessary rebalancing
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            # First time: set equal weights and hold
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
         signals = pd.Series(0.0, index=momentum_signals.index)
         signals[momentum_signals > signal_threshold] = 1.0
         if not long_only:
@@ -1773,6 +1881,14 @@ class MovingAverageCrossoverStrategy(BaseStrategyWrapper):
         fast_ma_current = fast_ma.loc[date]
         slow_ma_current = slow_ma.loc[date]
         
+        # During warmup period (not enough data), use Buy & Hold
+        if fast_ma_current.isna().any() or slow_ma_current.isna().any():
+            # Return previous weights to avoid unnecessary rebalancing
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            # First time: set equal weights and hold
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
         if signal_type == 'binary':
             signals = pd.Series(0.0, index=self.strategy.assets)
             signals[fast_ma_current > slow_ma_current] = 1.0
@@ -1837,7 +1953,12 @@ class MarkowitzMVOStrategy(BaseStrategyWrapper):
         start_idx = max(0, date_idx - lookback)
         returns_window = self.strategy.returns.iloc[start_idx:date_idx]
         
+        # During warmup period, use Buy & Hold instead of rebalancing
         if len(returns_window) < 20:
+            # Return previous weights to avoid unnecessary rebalancing
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            # First time: set equal weights and hold
             n_assets = len(self.strategy.assets)
             return Series(1.0 / n_assets, index=self.strategy.assets)
         
@@ -1935,9 +2056,13 @@ class LinearRegressionStrategy(BaseStrategyWrapper):
         
         date_idx = self.strategy.prices.index.get_loc(date)
         
+        # During warmup period, use Buy & Hold
         if date_idx < lookback + 10:
-            n_assets = len(self.strategy.assets)
-            return Series(1.0 / n_assets, index=self.strategy.assets)
+            # Return previous weights to avoid unnecessary rebalancing
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            # First time: set equal weights and hold
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
         
         train_start = max(0, date_idx - lookback)
         train_end = date_idx
@@ -1959,16 +2084,21 @@ class LinearRegressionStrategy(BaseStrategyWrapper):
                 sample_features = []
                 
                 if 'returns_lag1' in feature_list:
-                    sample_features.append(returns_train.iloc[i] if i > 0 else 0)
+                    val = returns_train.iloc[i] if i > 0 else 0
+                    sample_features.append(0.0 if pd.isna(val) else val)
                 if 'ma_ratio' in feature_list:
                     if i >= 20:
                         ma20 = prices_train.iloc[i-19:i+1].mean()
                         ma50 = prices_train.iloc[max(0, i-49):i+1].mean()
-                        sample_features.append((ma20 - ma50) / ma50 if ma50 != 0 else 0)
+                        if pd.isna(ma20) or pd.isna(ma50) or ma50 == 0:
+                            sample_features.append(0.0)
+                        else:
+                            sample_features.append((ma20 - ma50) / ma50)
                     else:
-                        sample_features.append(0)
+                        sample_features.append(0.0)
                 if 'volatility' in feature_list:
-                    sample_features.append(returns_train.iloc[max(0, i-19):i+1].std() if i >= 0 else 0)
+                    vol = returns_train.iloc[max(0, i-19):i+1].std() if i >= 0 else 0
+                    sample_features.append(0.0 if pd.isna(vol) else vol)
                 
                 X_list.append(sample_features)
             
@@ -1980,6 +2110,12 @@ class LinearRegressionStrategy(BaseStrategyWrapper):
             
             X_train = np.array(X_list)
             y_train = np.array(y_list)
+            
+            # Handle any remaining NaN values
+            if np.any(np.isnan(X_train)):
+                X_train = np.nan_to_num(X_train, nan=0.0)
+            if np.any(np.isnan(y_train)):
+                y_train = np.nan_to_num(y_train, nan=0.0)
             
             if asset not in self._scalers:
                 self._scalers[asset] = StandardScaler()
@@ -1998,18 +2134,27 @@ class LinearRegressionStrategy(BaseStrategyWrapper):
             current_features = []
             
             if 'returns_lag1' in feature_list:
-                current_features.append(returns_train.iloc[-1])
+                val = returns_train.iloc[-1]
+                current_features.append(0.0 if pd.isna(val) else val)
             if 'ma_ratio' in feature_list:
                 ma20 = prices_train.iloc[-20:].mean()
                 ma50 = prices_train.iloc[-50:].mean()
-                current_features.append((ma20 - ma50) / ma50 if ma50 != 0 else 0)
+                if pd.isna(ma20) or pd.isna(ma50) or ma50 == 0:
+                    current_features.append(0.0)
+                else:
+                    current_features.append((ma20 - ma50) / ma50)
             if 'volatility' in feature_list:
-                current_features.append(returns_train.iloc[-20:].std())
+                vol = returns_train.iloc[-20:].std()
+                current_features.append(0.0 if pd.isna(vol) else vol)
             
             X_current = np.array(current_features).reshape(1, -1)
+            # Check for NaN in X_current before scaling
+            if np.any(np.isnan(X_current)):
+                X_current = np.nan_to_num(X_current, nan=0.0)
+            
             X_current_scaled = self._scalers[asset].transform(X_current)
             forecast = model.predict(X_current_scaled)[0]
-            forecasts[asset] = forecast
+            forecasts[asset] = forecast if not pd.isna(forecast) else 0.0
         
         positive_forecasts = forecasts.clip(lower=0)
         

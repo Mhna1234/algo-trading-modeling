@@ -199,19 +199,30 @@ def risk_parity_ccd(cov_matrix: np.ndarray,
     n_assets = len(cov_matrix)
     sigma = np.asarray(cov_matrix)
     
-    # Regularize covariance
-    sigma = regularize_covariance(sigma, method='eigenvalue_clip')
+    # More aggressive regularization for stability during volatile periods
+    sigma = regularize_covariance(sigma, method='eigenvalue_clip', min_eigenvalue=1e-4)
     
     if target_risk is None:
         target_risk = np.ones(n_assets) / n_assets
     else:
         target_risk = np.asarray(target_risk)
     
-    # Initialize with equal weights
-    w = np.ones(n_assets) / n_assets
+    # Better initialization: inverse volatility weighting
+    # This gives a better starting point than equal weights
+    vol = np.sqrt(np.diag(sigma))
+    inv_vol = 1.0 / (vol + 1e-8)
+    w = inv_vol / np.sum(inv_vol)
+    w = np.clip(w, min_weight, max_weight)
+    w = w / np.sum(w)  # Re-normalize after clipping
     
-    # Pre-compute for efficiency
-    sqrt_diag = np.sqrt(np.diag(sigma))
+    # Adaptive damping factor - starts high and decays
+    damping = 0.5
+    min_damping = 0.1
+    damping_decay = 0.99
+    
+    # Track convergence
+    prev_error = float('inf')
+    stall_count = 0
     
     for iteration in range(max_iter):
         w_old = w.copy()
@@ -229,17 +240,13 @@ def risk_parity_ccd(cov_matrix: np.ndarray,
             mrc_i = (sigma @ w)[i]  # Marginal risk contribution
             rc_i = w[i] * mrc_i / port_vol
             
-            # Total risk contributions (excluding i)
-            rc_total = np.sum(w * (sigma @ w)) / port_vol
-            
             # Desired risk contribution
             target_rc_i = target_risk[i] * port_vol
             
-            # Update weight using Newton step
-            # Derivative of RC objective w.r.t. w_i
+            # Update weight using Newton step with adaptive damping
             if abs(mrc_i) > 1e-10:
                 delta = (target_rc_i - rc_i) / mrc_i
-                w_new_i = w[i] + 0.5 * delta  # Damped step for stability
+                w_new_i = w[i] + damping * delta
             else:
                 w_new_i = w[i]
             
@@ -250,10 +257,45 @@ def risk_parity_ccd(cov_matrix: np.ndarray,
         # Normalize to sum to 1
         w = w / np.sum(w)
         
+        # Calculate convergence metric
+        change = np.linalg.norm(w - w_old)
+        
+        # Calculate risk parity error for monitoring
+        port_vol = np.sqrt(w @ sigma @ w)
+        risk_contribs = w * (sigma @ w) / port_vol
+        error = np.sum((risk_contribs / np.sum(risk_contribs) - target_risk) ** 2)
+        
+        # Check for stalling (error not decreasing)
+        if error >= prev_error - 1e-10:
+            stall_count += 1
+            if stall_count > 20:
+                # Stalled - check if current solution is good enough
+                if error < 0.01:  # Acceptable risk parity error
+                    logger.debug(f"Risk parity CCD stalled at iteration {iteration+1} with error {error:.6f}")
+                    break
+                else:
+                    # Not converging well, return None to trigger fallback
+                    logger.debug(f"Risk parity CCD failed to converge (error: {error:.6f})")
+                    return None
+        else:
+            stall_count = 0
+        
+        prev_error = error
+        
+        # Decay damping factor for faster convergence
+        damping = max(min_damping, damping * damping_decay)
+        
         # Check convergence
-        if np.linalg.norm(w - w_old) < tol:
-            logger.debug(f"Risk parity CCD converged in {iteration+1} iterations")
+        if change < tol:
+            logger.debug(f"Risk parity CCD converged in {iteration+1} iterations (error: {error:.6f})")
             break
+    else:
+        # Max iterations reached - check if solution is acceptable
+        if error < 0.05:  # Relaxed tolerance for max iter
+            logger.debug(f"Risk parity CCD max iterations with acceptable error {error:.6f}")
+        else:
+            logger.debug(f"Risk parity CCD max iterations with high error {error:.6f}")
+            return None
     
     return w
 
@@ -781,7 +823,7 @@ class PortfolioOptimizer:
         
         # Rebuild problem if dimensions changed
         if (self._cvar_problem is None or self._cvar_vars is None or 
-            len(self._cvar_vars['w']) != n_assets or 
+            self._cvar_vars['w'].shape[0] != n_assets or 
             self._cvar_vars['returns_param'].shape[0] != n_scenarios):
             
             # Decision variables
@@ -1091,11 +1133,7 @@ if __name__ == "__main__":
             transaction_cost=0.001
         )
         
-        print("Portfolio Optimization Results:")
-        print(f"Assets: {tickers}")
-        print(f"Forecasted returns: {next_returns.values}")
-        
-        # Test different optimization methods
+        # Silently test different optimization methods (no print output)
         methods = ['sharpe', 'mean_variance', 'risk_parity']
         
         for method in methods:
@@ -1106,29 +1144,14 @@ if __name__ == "__main__":
                 else:
                     weights = optimizer.optimize_portfolio_forecasted(
                         next_returns, cov_matrix, method)
-                
-                print(f"\n{method.upper()} Optimization:")
-                for i, asset in enumerate(tickers):
-                    print(f"  {asset}: {weights[i]:.3f}")
-                
-                if hasattr(optimizer, 'last_sharpe') and optimizer.last_sharpe:
-                    print(f"  Expected Sharpe: {optimizer.last_sharpe:.3f}")
-                
-            except Exception as e:
-                print(f"Error in {method} optimization: {e}")
+            except Exception:
+                pass
         
-        # Generate efficient frontier
+        # Generate efficient frontier (silent)
         try:
             returns, vols, sharpes = optimizer.efficient_frontier(next_returns, cov_matrix, 20)
-            max_sharpe_idx = np.nanargmax(sharpes)
-            
-            print(f"\nEfficient Frontier:")
-            print(f"  Max Sharpe point - Return: {returns[max_sharpe_idx]:.4f}, "
-                  f"Vol: {vols[max_sharpe_idx]:.4f}, Sharpe: {sharpes[max_sharpe_idx]:.3f}")
-            
-        except Exception as e:
-            print(f"Error generating efficient frontier: {e}")
+        except Exception:
+            pass
         
-    except Exception as e:
-        print(f"Error in example: {e}")
-        print("Note: This example requires other modules to be working")
+    except Exception:
+        pass  # Silently handle errors in example

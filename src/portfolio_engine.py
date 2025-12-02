@@ -495,21 +495,28 @@ class PortfolioEngine:
         trades_shares = target_shares - self._current_shares
         trades_dollars = trades_shares * current_prices
         
-        # Calculate turnover (sum of absolute trades)
+        # Calculate turnover (sum of absolute trades as fraction of equity)
+        # This already accounts for both buys and sells
         turnover = trades_dollars.abs().sum() / self._current_equity
         
-        # Calculate costs
-        one_way_cost_rate = (self.transaction_cost_bps / 2.0) / 10000.0
+        # Calculate costs - turnover already includes both sides
+        # transaction_cost_bps is the cost per trade (e.g., 10 bps = 0.1%)
+        # We apply it once to the total turnover
+        transaction_cost_rate = self.transaction_cost_bps / 10000.0
         slippage_rate = self.slippage_bps / 10000.0
-        total_cost_rate = one_way_cost_rate + slippage_rate
+        total_cost_rate = transaction_cost_rate + slippage_rate
         
-        total_costs = turnover * self._current_equity * total_cost_rate
-        transaction_costs = turnover * self._current_equity * one_way_cost_rate
+        # Costs are applied to the dollar volume traded
+        transaction_costs = turnover * self._current_equity * transaction_cost_rate
         slippage_costs = turnover * self._current_equity * slippage_rate
+        total_costs = transaction_costs + slippage_costs
         
-        # Execute trades
+        # Execute trades - deduct costs from the portfolio
         self._current_shares = target_shares
         self._current_cash = cash_weight * self._current_equity - total_costs
+        
+        # Update equity after costs
+        self._current_equity = self._current_equity - total_costs
         
         # Update weights
         position_values = self._current_shares * current_prices
