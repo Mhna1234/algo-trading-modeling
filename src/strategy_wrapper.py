@@ -12,23 +12,28 @@ Core Strategies:
 3. MeanReversionStrategy - Contrarian (buy losers)
 4. InverseVolatilityStrategy - Risk parity style
 5. CVaRMinimizationStrategy - Tail risk optimization
-6. RegimeSwitchingStrategy - Adaptive momentum
-7. MLRandomForestStrategy - ML return forecasting
-8. MLGradientBoostingStrategy - Ensemble learning
-9. ARMAForecastStrategy - Time series forecasting
-10. MultiFactorMLStrategy - Multi-factor combination
-11. GlobalMinimumVarianceStrategy - Pure risk minimization (GMVP)
+6. RegimeSwitchingStrategy - Adaptive momentum based on volatility regime
+7. GlobalMinimumVarianceStrategy - Pure risk minimization (GMVP)
+8. GMRPStrategy - Global Maximum Return Portfolio
+
+Machine Learning Strategies:
+9. MLRandomForestStrategy - ML return forecasting with Random Forest
+10. MLGradientBoostingStrategy - ML return forecasting with Gradient Boosting
+11. MultiFactorMLStrategy - Multi-factor combination with ML weighting
+12. LinearRegressionStrategy - Linear regression forecasting
+
+Time Series Strategies:
+13. ARMAForecastStrategy - Time series forecasting (ARMA models)
+14. ARIMAGARCHForecastingStrategy - Advanced time series with volatility modeling
 
 Extended Strategies:
-12. BuyAndHoldStrategy - Passive benchmark
-13. QuintileFactorStrategy - Factor-based quintile portfolios
-14. GMRPStrategy - Global Maximum Return Portfolio
-15. MaximumDiversificationStrategy - MDP
-16. MaximumDecorrelationStrategy - MDCP
-17. TimeSeriesMomentumStrategy - Individual asset momentum
-18. MovingAverageCrossoverStrategy - MA crossover signals
-19. MarkowitzMVOStrategy - Classic mean-variance optimization
-20. LinearRegressionStrategy - Linear regression forecasting
+15. BuyAndHoldStrategy - Passive benchmark
+16. QuintileFactorStrategy - Factor-based quintile portfolios
+17. MaximumDiversificationStrategy - MDP
+18. MaximumDecorrelationStrategy - MDCP
+19. TimeSeriesMomentumStrategy - Individual asset momentum
+20. MovingAverageCrossoverStrategy - MA crossover signals
+21. MarkowitzMVOStrategy - Classic mean-variance optimization
 
 Author: Portfolio Engine Team
 Date: December 2025
@@ -511,8 +516,6 @@ class InverseVolatilityStrategy(BaseStrategyWrapper):
         )
         
         return Series(final_weights, index=self.strategy.assets)
-        
-        return Series(final_weights, index=self.strategy.assets)
 
 
 # ============================================================================
@@ -616,7 +619,7 @@ class CVaRMinimizationStrategy(BaseStrategyWrapper):
 # EXTENDED STRATEGIES
 # ============================================================================
 
-class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
+class RegimeSwitchingStrategy(BaseStrategyWrapper):
     """
     6. Regime Switching Momentum - Adaptive Strategy
     
@@ -695,8 +698,18 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
     
     def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
         """Generate regime-adaptive weights."""
-        # Detect regime based on recent volatility
-        recent_vol = self.strategy.volatility(window=20).iloc[-1].mean()
+        # Check if we have enough data
+        date_idx = self.strategy.prices.index.get_loc(date)
+        slow_window = self.params['slow_window']
+        
+        # During warmup period, use Buy & Hold
+        if date_idx < slow_window:
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Detect regime based on recent volatility at current date
+        recent_vol = self.strategy.volatility(window=20).loc[date].mean()
         
         # Choose window based on volatility regime
         if recent_vol > self.params['vol_threshold']:
@@ -711,6 +724,11 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
             lookback=window
         )
         
+        # Get returns window for optimization
+        lookback = max(126, window)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
         # Optimize
         final_weights = self.optimizer.optimize(
             initial_weights,
@@ -718,10 +736,13 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
             alpha=self.params['alpha'],
             long_only=True,
             max_weight=self.params['max_weight'],
-            returns_data=self.strategy.get_return_matrix()
+            returns_data=returns_window
         )
         
+        return Series(final_weights, index=self.strategy.assets)
 
+
+class MLRandomForestStrategy(BaseStrategyWrapper):
     """
     7. ML Random Forest - Machine Learning Forecast
     
@@ -874,17 +895,24 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
             return Series(final_weights, index=self.strategy.assets)
             
         except Exception as e:
+            logger.warning(f"ML Random Forest failed: {e}, using momentum fallback")
             # Fallback to momentum on any error
             initial_weights = self.strategy.generate_initial_weights(
                 method='momentum', top_n=self.params['top_k'], lookback=126
             )
+            date_idx = self.strategy.prices.index.get_loc(date)
+            start_idx = max(0, date_idx - 126)
+            returns_window = self.strategy.returns.iloc[start_idx:date_idx]
             final_weights = self.optimizer.optimize(
                 initial_weights, objective=self.params['objective'],
                 alpha=self.params['alpha'], long_only=True,
                 max_weight=self.params['max_weight'],
-                returns_data=self.strategy.get_return_matrix()
+                returns_data=returns_window
             )
+            return Series(final_weights, index=self.strategy.assets)
 
+
+class MLGradientBoostingStrategy(BaseStrategyWrapper):
     """
     8. ML Gradient Boosting - Sequential Ensemble Learning
     
@@ -1025,16 +1053,23 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
             )
             return Series(final_weights, index=self.strategy.assets)
         except Exception as e:
+            logger.warning(f"ML Gradient Boosting failed: {e}, using momentum fallback")
             initial_weights = self.strategy.generate_initial_weights(
                 method='momentum', top_n=self.params['top_k'], lookback=126
             )
+            date_idx = self.strategy.prices.index.get_loc(date)
+            start_idx = max(0, date_idx - 126)
+            returns_window = self.strategy.returns.iloc[start_idx:date_idx]
             final_weights = self.optimizer.optimize(
                 initial_weights, objective=self.params['objective'],
                 alpha=self.params['alpha'], long_only=True,
                 max_weight=self.params['max_weight'],
-                returns_data=self.strategy.get_return_matrix()
+                returns_data=returns_window
             )
+            return Series(final_weights, index=self.strategy.assets)
 
+
+class ARMAForecastStrategy(BaseStrategyWrapper):
     """
     9. ARMA Time Series Forecast - Classical Statistical Approach
     
@@ -1164,19 +1199,26 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
             return Series(final_weights, index=self.strategy.assets)
             
         except Exception as e:
+            logger.warning(f"ARMA forecast failed: {e}, using mean reversion fallback")
             # Fallback to mean reversion
             initial_weights = self.strategy.generate_initial_weights(
                 method='mean_reversion', top_n=self.params['top_k'], window=20
             )
+            date_idx = self.strategy.prices.index.get_loc(date)
+            start_idx = max(0, date_idx - 126)
+            returns_window = self.strategy.returns.iloc[start_idx:date_idx]
             final_weights = self.optimizer.optimize(
                 initial_weights,
                 objective=self.params['objective'],
                 risk_aversion=self.params.get('risk_aversion', 3.0),
                 long_only=True,
                 max_weight=self.params['max_weight'],
-                returns_data=self.strategy.get_return_matrix()
+                returns_data=returns_window
             )
+            return Series(final_weights, index=self.strategy.assets)
 
+
+class MultiFactorMLStrategy(BaseStrategyWrapper):
     """
     10. Multi-Factor ML - Factor Combination with ML
     
@@ -1248,6 +1290,13 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
         lookback = self.params.get('lookback', 252)
         top_k = self.params['top_k']
         
+        # Check if we have enough data
+        date_idx = self.strategy.prices.index.get_loc(date)
+        if date_idx < 126:
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
         # Compute multiple factors
         momentum_signal = self.strategy.momentum(window=126).loc[date]
         mean_rev_signal = -self.strategy.mean_reversion(window=20).loc[date]  # Inverted
@@ -1276,6 +1325,10 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
         else:
             initial_weights[top_assets] = 1.0 / len(top_assets)
         
+        # Get returns window for optimization
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
         # Optimize
         final_weights = self.optimizer.optimize(
             initial_weights,
@@ -1283,10 +1336,231 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
             alpha=self.params['alpha'],
             long_only=True,
             max_weight=self.params['max_weight'],
-            returns_data=self.strategy.get_return_matrix()
+            returns_data=returns_window
         )
         
         return Series(final_weights, index=self.strategy.assets)
+
+
+class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
+    """
+    11. Global Minimum Variance Portfolio (GMVP) - Pure Risk Minimization
+    
+    Computes the portfolio with the absolute minimum variance (risk) possible
+    without any return forecasts. Uses analytical solution:
+        w = Σ^{-1} 1 / (1^T Σ^{-1} 1)
+    
+    Optionally supports integer rebalancing for practical implementation
+    with discrete share purchases.
+    
+    Properties:
+    - Analytical solution (no optimization needed)
+    - Pure risk minimization
+    - No return forecasts required
+    - Optimal for risk-averse investors
+    - Integer share support for real trading
+    
+    Parameters
+    ----------
+    strategy : Strategy
+        Signal generator (used for covariance estimation)
+    optimizer : PortfolioOptimizer, optional
+        Optimizer (unused for GMVP analytical solution)
+    lookback : int, default=252
+        Historical window for covariance estimation (1 year = 252 trading days)
+    use_integer_rebalance : bool, default=False
+        If True, solve for integer shares respecting budget constraints
+    total_capital : float, default=1_000_000
+        Total capital available (only used if use_integer_rebalance=True)
+    max_weight : float, default=0.5
+        Maximum weight per asset (concentration limit)
+    
+    References
+    ----------
+    Markowitz, H. (1952).
+    "Portfolio Selection."
+    Journal of Finance, 7(1), 77-91.
+    
+    Merton, R. C. (1972).
+    "An analytic derivation of the efficient portfolio frontier."
+    Journal of Financial and Quantitative Analysis, 7(4), 1851-1872.
+    
+    Examples
+    --------
+    >>> gmvp = GlobalMinimumVarianceStrategy(
+    ...     strategy, optimizer,
+    ...     lookback=252,
+    ...     use_integer_rebalance=False
+    ... )
+    """
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 252,
+        use_integer_rebalance: bool = False,
+        total_capital: float = 1_000_000,
+        max_weight: float = 0.5
+    ):
+        """Initialize Global Minimum Variance strategy."""
+        super().__init__(
+            "Global Minimum Variance",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            use_integer_rebalance=use_integer_rebalance,
+            total_capital=total_capital,
+            max_weight=max_weight
+        )
+
+
+class GMRPStrategy(BaseStrategyWrapper):
+    """
+    Global Maximum Return Portfolio (GMRP) - Return Maximization
+    
+    Maximizes expected portfolio returns subject to full investment constraint.
+    This is the counterpart to GMVP but focuses purely on returns rather than risk.
+    
+    Note: This is a highly speculative strategy that ignores risk. In practice,
+    it often allocates all capital to the single highest-return asset. Should be
+    combined with risk constraints or diversification requirements.
+    
+    Properties:
+    - Pure return maximization
+    - Ignores risk/volatility
+    - Often results in concentrated portfolios
+    - Best used with return forecasts from ML/statistical models
+    
+    Parameters
+    ----------
+    strategy : Strategy
+        Signal generator (used for return estimation)
+    optimizer : PortfolioOptimizer, optional
+        Optimizer (unused for simple GMRP)
+    lookback : int, default=252
+        Historical window for return estimation
+    return_method : str, default='historical'
+        Method to estimate returns ('historical', 'momentum', 'forecast')
+    min_weight : float, default=0.0
+        Minimum weight per asset (diversification constraint)
+    max_weight : float, default=1.0
+        Maximum weight per asset (concentration limit)
+    
+    References
+    ----------
+    Markowitz, H. (1952).
+    "Portfolio Selection."
+    Journal of Finance, 7(1), 77-91.
+    
+    Examples
+    --------
+    >>> gmrp = GMRPStrategy(
+    ...     strategy, optimizer,
+    ...     lookback=126,
+    ...     max_weight=0.3  # Force diversification
+    ... )
+    """
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 252,
+        return_method: str = 'historical',
+        min_weight: float = 0.0,
+        max_weight: float = 1.0
+    ):
+        """Initialize Global Maximum Return Portfolio strategy."""
+        super().__init__(
+            "Global Maximum Return Portfolio",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            return_method=return_method,
+            min_weight=min_weight,
+            max_weight=max_weight
+        )
+    
+    def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
+        """Generate GMRP weights based on expected returns."""
+        lookback = self.params.get('lookback', 252)
+        return_method = self.params.get('return_method', 'historical')
+        min_weight = self.params.get('min_weight', 0.0)
+        max_weight = self.params.get('max_weight', 1.0)
+        
+        # Get historical returns for return estimation
+        date_idx = self.strategy.prices.index.get_loc(date)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
+        # During warmup period, use Buy & Hold
+        if len(returns_window) < 20:
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Estimate expected returns based on method
+        if return_method == 'historical':
+            expected_returns = returns_window.mean() * 252  # Annualized
+        elif return_method == 'momentum':
+            # Use momentum as proxy for expected returns
+            momentum_lookback = min(126, lookback)
+            expected_returns = self.strategy.momentum(window=momentum_lookback).loc[date]
+        elif return_method == 'forecast':
+            # Use short-term returns as forecast
+            expected_returns = returns_window.iloc[-21:].mean() * 252  # Last month annualized
+        else:
+            expected_returns = returns_window.mean() * 252
+        
+        # Simple greedy allocation: allocate to highest return assets
+        # Sort by expected returns
+        sorted_returns = expected_returns.sort_values(ascending=False)
+        
+        # Initialize weights
+        weights = Series(0.0, index=self.strategy.assets)
+        
+        # Allocate greedily up to max_weight per asset
+        remaining_capital = 1.0
+        for asset in sorted_returns.index:
+            if sorted_returns[asset] <= 0:
+                break  # Stop if returns become negative
+            
+            allocation = min(max_weight, remaining_capital)
+            weights[asset] = allocation
+            remaining_capital -= allocation
+            
+            if remaining_capital <= 1e-6:
+                break
+        
+        # If min_weight constraint exists, ensure diversification
+        if min_weight > 0:
+            # Calculate how many assets needed
+            max_assets = int(1.0 / min_weight)
+            top_assets = sorted_returns.nlargest(max_assets).index
+            
+            # Redistribute weights
+            weights = Series(0.0, index=self.strategy.assets)
+            positive_returns = sorted_returns[top_assets].clip(lower=0)
+            
+            if positive_returns.sum() > 0:
+                # Weight proportional to returns, respecting constraints
+                raw_weights = positive_returns / positive_returns.sum()
+                raw_weights = raw_weights.clip(lower=min_weight, upper=max_weight)
+                weights[top_assets] = raw_weights / raw_weights.sum()
+            else:
+                # Equal weight among top assets if no positive returns
+                weights[top_assets] = 1.0 / len(top_assets)
+        
+        # Ensure weights sum to 1 and respect constraints
+        weights = weights.clip(lower=0, upper=max_weight)
+        if weights.sum() > 0:
+            weights = weights / weights.sum()
+        else:
+            # Fallback to equal weights
+            weights = Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        return weights
 
 
 class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
@@ -2381,13 +2655,31 @@ def list_available_strategies() -> Dict[str, type]:
     >>> print(strategies.keys())
     """
     return {
+        # Core Basic Strategies
         'equal_weight': EqualWeightStrategy,
         'momentum': MomentumStrategy,
         'mean_reversion': MeanReversionStrategy,
         'inverse_volatility': InverseVolatilityStrategy,
+        
+        # Risk-Based Strategies
         'cvar_minimization': CVaRMinimizationStrategy,
         'gmvp': GlobalMinimumVarianceStrategy,
-        # Extended strategies
+        'gmrp': GMRPStrategy,
+        
+        # Adaptive Strategies
+        'regime_switching': RegimeSwitchingStrategy,
+        
+        # ML Strategies
+        'ml_random_forest': MLRandomForestStrategy,
+        'ml_gradient_boosting': MLGradientBoostingStrategy,
+        'multi_factor_ml': MultiFactorMLStrategy,
+        
+        # Time Series Strategies
+        'arma_forecast': ARMAForecastStrategy,
+        'arima_garch': ARIMAGARCHForecastingStrategy,
+        'linear_regression': LinearRegressionStrategy,
+        
+        # Extended Strategies
         'buy_and_hold': BuyAndHoldStrategy,
         'quintile_factor': QuintileFactorStrategy,
         'max_diversification': MaximumDiversificationStrategy,
@@ -2395,8 +2687,6 @@ def list_available_strategies() -> Dict[str, type]:
         'time_series_momentum': TimeSeriesMomentumStrategy,
         'ma_crossover': MovingAverageCrossoverStrategy,
         'markowitz_mvo': MarkowitzMVOStrategy,
-        'linear_regression': LinearRegressionStrategy,
-        'arima_garch': ARIMAGARCHForecastingStrategy
     }
 
 
