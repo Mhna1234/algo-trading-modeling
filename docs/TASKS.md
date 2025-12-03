@@ -799,6 +799,334 @@ class RegimeSwitchingStrategy:
 
 ---
 
+### 🎯 Priority 4: Additional Strategy Development & Infrastructure
+
+#### Task 4.1: Current Strategy Implementation Review
+**Objective:** Document and verify all currently implemented strategies
+
+**Action Items:**
+- [ ] Create comprehensive inventory of implemented strategies:
+  - List all 12 strategies in `strategy_wrapper.py`
+  - Document each strategy's parameters and variants
+  - Verify implementation against documentation (STRATEGIES.md, STRATEGIES_EXTENDED.md)
+- [ ] Test each strategy individually:
+  - Run simple backtests to verify functionality
+  - Check parameter ranges and edge cases
+  - Validate output format consistency
+- [ ] Identify gaps and issues:
+  - Missing features or parameters
+  - Performance bottlenecks
+  - Documentation inconsistencies
+- [ ] Update strategy documentation:
+  - Sync code with documentation
+  - Add implementation notes
+  - Document known limitations
+
+**Deliverable:** Strategy implementation audit report with verification results  
+**Deadline:** Week 2  
+**Dependencies:** None
+
+---
+
+#### Task 4.2: Weekend and Holiday Handling Integration
+**Objective:** Implement robust handling of non-trading days (weekends, market holidays)
+
+**Background:**
+- Current implementation: DataLoader removes non-trading days using `dropna()`
+- Need: Explicit weekend/holiday calendar with proper date alignment
+- Issue: Rebalancing on holidays needs to be shifted to next trading day
+
+**Action Items:**
+- [ ] Research market calendar libraries:
+  - **pandas_market_calendars**: Comprehensive US/international calendars
+  - **trading_calendars**: Quantopian/Zipline calendars
+  - **exchange_calendars**: Modern replacement for trading_calendars
+- [ ] Implement market calendar utility:
+  ```python
+  # In src/utils.py
+  import pandas_market_calendars as mcal
+  
+  class MarketCalendar:
+      """
+      Handle trading days, weekends, and market holidays
+      """
+      def __init__(self, exchange='NYSE'):
+          """
+          Initialize calendar for specific exchange
+          
+          Supported exchanges: NYSE, NASDAQ, LSE, TSX, etc.
+          """
+          self.calendar = mcal.get_calendar(exchange)
+      
+      def is_trading_day(self, date):
+          """Check if given date is a trading day"""
+          schedule = self.calendar.schedule(start_date=date, end_date=date)
+          return len(schedule) > 0
+      
+      def get_trading_days(self, start_date, end_date):
+          """Get list of all trading days in date range"""
+          schedule = self.calendar.schedule(start_date=start_date, end_date=end_date)
+          return schedule.index.tolist()
+      
+      def next_trading_day(self, date):
+          """Get next trading day after given date"""
+          next_date = date + pd.Timedelta(days=1)
+          while not self.is_trading_day(next_date):
+              next_date += pd.Timedelta(days=1)
+          return next_date
+      
+      def previous_trading_day(self, date):
+          """Get previous trading day before given date"""
+          prev_date = date - pd.Timedelta(days=1)
+          while not self.is_trading_day(prev_date):
+              prev_date -= pd.Timedelta(days=1)
+          return prev_date
+  ```
+- [ ] Integrate calendar into DataLoader:
+  - Replace simple `dropna()` with calendar-based filtering
+  - Add validation to ensure no weekend/holiday data
+  - Add logging for removed dates
+- [ ] Update PortfolioEngine rebalancing logic:
+  ```python
+  def _get_rebalancing_dates(self, dates, frequency, calendar):
+      """
+      Generate rebalancing dates aligned to trading days
+      
+      If rebalance date falls on weekend/holiday:
+      - Shift to next trading day
+      - Log the adjustment
+      """
+      # Generate target rebalance dates
+      target_dates = self._generate_frequency_dates(dates, frequency)
+      
+      # Align to trading days
+      rebalance_dates = []
+      for target_date in target_dates:
+          if calendar.is_trading_day(target_date):
+              rebalance_dates.append(target_date)
+          else:
+              next_day = calendar.next_trading_day(target_date)
+              rebalance_dates.append(next_day)
+              logger.info(f"Rebalance shifted: {target_date} → {next_day}")
+      
+      return rebalance_dates
+  ```
+- [ ] Add configuration support:
+  ```yaml
+  # config.yaml
+  market_calendar:
+    exchange: NYSE
+    handle_holidays: true
+    shift_direction: next  # 'next' or 'previous'
+  ```
+- [ ] Create comprehensive tests:
+  - Test holiday date removal
+  - Test rebalancing date shifting
+  - Test multi-year date ranges
+  - Test edge cases (holiday runs, year boundaries)
+
+**Guidelines:**
+- Use `pandas_market_calendars` or `exchange_calendars` library
+- Default to NYSE calendar (US market holidays)
+- Allow configuration for different exchanges (international support)
+- Always shift rebalancing to NEXT trading day (not previous) to avoid look-ahead bias
+- Log all date adjustments for transparency
+- Validate that all dates in backtests are valid trading days
+
+**Deliverable:** Market calendar implementation with integration into DataLoader and PortfolioEngine  
+**Deadline:** Week 3  
+**Dependencies:** None (pip install pandas-market-calendars)
+
+---
+
+#### Task 4.3: Forecasting-Based Strategy Development
+**Objective:** Implement strategy that uses stock price forecasts for future market days (10, 15, 30 days ahead)
+
+**Background:**
+- Current Linear Regression strategy: Uses 1-day ahead forecasts with technical features
+- Enhancement: Multi-horizon forecasting (10, 15, 30 days) for better planning
+- Use case: Allocate based on longer-term predictions, not just next-day
+
+**Related Existing Strategy:**
+- **Linear Regression Prediction** (Task 2.3 in STRATEGIES_EXTENDED.md):
+  - Uses `sklearn.LinearRegression` to forecast returns
+  - Default: 1-day ahead (`forecast_horizon=1`)
+  - Features: Momentum, volatility, RSI, correlation-based
+  - **Can be extended** to multi-horizon forecasting
+
+**Action Items:**
+- [ ] Extend Linear Regression strategy to multi-horizon:
+  ```python
+  class MultiHorizonForecastStrategy:
+      """
+      Forecast returns at multiple time horizons (10, 15, 30 days)
+      and construct portfolio based on aggregated predictions
+      """
+      def __init__(self, forecast_horizons=[10, 15, 30], lookback=252):
+          self.horizons = forecast_horizons
+          self.lookback = lookback
+          self.models = {}  # Separate model per horizon
+      
+      def train_models(self, prices):
+          """
+          Train separate forecasting models for each horizon
+          """
+          for horizon in self.horizons:
+              # Prepare training data
+              features = self._compute_features(prices)  # Technical indicators
+              targets = self._compute_future_returns(prices, horizon)
+              
+              # Train model
+              self.models[horizon] = LinearRegression()
+              self.models[horizon].fit(features, targets)
+      
+      def generate_forecasts(self, prices):
+          """
+          Generate forecasts for all horizons
+          
+          Returns:
+              forecasts: dict {horizon: predicted_returns}
+          """
+          features = self._compute_features(prices)
+          forecasts = {}
+          
+          for horizon in self.horizons:
+              forecasts[horizon] = self.models[horizon].predict(features)
+          
+          return forecasts
+      
+      def aggregate_forecasts(self, forecasts):
+          """
+          Combine multi-horizon forecasts into single portfolio view
+          
+          Options:
+          1. Equal weighting: avg(10-day, 15-day, 30-day forecasts)
+          2. Time-weighted: weight by forecast horizon
+          3. Confidence-weighted: weight by prediction confidence
+          """
+          # Option 1: Simple average
+          combined = sum(forecasts.values()) / len(forecasts)
+          return combined
+      
+      def generate_target_weights(self, prices, current_weights, current_date):
+          """
+          Generate portfolio weights based on multi-horizon forecasts
+          """
+          # Step 1: Train or update models
+          self.train_models(prices[:current_date])
+          
+          # Step 2: Generate forecasts
+          forecasts = self.generate_forecasts(prices[:current_date])
+          
+          # Step 3: Aggregate forecasts
+          expected_returns = self.aggregate_forecasts(forecasts)
+          
+          # Step 4: Optimize portfolio
+          cov_matrix = prices.pct_change().cov()
+          weights = self._optimize_portfolio(expected_returns, cov_matrix)
+          
+          return weights
+  ```
+- [ ] Implement alternative ML models (beyond Linear Regression):
+  - **Random Forest**: Better for non-linear patterns
+  - **Gradient Boosting (XGBoost, LightGBM)**: State-of-the-art performance
+  - **LSTM/RNN**: Sequential patterns in time series (requires TensorFlow/PyTorch)
+  - Start with Random Forest (easier, no deep learning dependencies)
+- [ ] Create comprehensive feature engineering:
+  ```python
+  def _compute_features(self, prices):
+      """
+      Compute predictive features for forecasting
+      
+      Technical Indicators:
+      - Momentum (5, 10, 20, 60 days)
+      - RSI (14, 28 days)
+      - Volatility (20, 60 days)
+      - Moving average crossovers
+      - Volume patterns (if available)
+      
+      Cross-sectional:
+      - Correlation with market
+      - Relative strength vs peers
+      - Sector momentum
+      """
+      features = pd.DataFrame(index=prices.index)
+      
+      # Momentum features
+      for window in [5, 10, 20, 60]:
+          features[f'momentum_{window}'] = prices.pct_change(window)
+      
+      # Volatility features
+      for window in [20, 60]:
+          features[f'volatility_{window}'] = prices.pct_change().rolling(window).std()
+      
+      # RSI
+      features['rsi_14'] = self._compute_rsi(prices, 14)
+      features['rsi_28'] = self._compute_rsi(prices, 28)
+      
+      # Moving average signals
+      features['ma_20_50_cross'] = (
+          prices.rolling(20).mean() / prices.rolling(50).mean() - 1
+      )
+      
+      return features.dropna()
+  ```
+- [ ] Implement walk-forward validation:
+  ```python
+  def backtest_with_retraining(self, prices, rebalance_frequency='monthly'):
+      """
+      Backtest with periodic model retraining
+      
+      - Retrain models at each rebalance
+      - Use expanding or rolling window
+      - Avoid look-ahead bias
+      """
+      for date in rebalance_dates:
+          # Retrain on data up to current date
+          train_data = prices[:date]
+          self.train_models(train_data)
+          
+          # Generate weights for next period
+          weights = self.generate_target_weights(...)
+  ```
+- [ ] Backtest multi-horizon forecast strategy:
+  - Test different horizon combinations: [10], [30], [10,15,30]
+  - Compare vs 1-day Linear Regression baseline
+  - Analyze forecast accuracy by horizon
+  - Measure Sharpe ratio, returns, drawdowns
+- [ ] Analyze forecast quality:
+  - Correlation between forecasts and realized returns
+  - Accuracy metrics (MSE, MAE, R²) by horizon
+  - Feature importance analysis
+  - Which horizons are most predictive?
+
+**Guidelines:**
+- Start with Linear Regression (extend existing implementation)
+- Add Random Forest for comparison (better performance, still interpretable)
+- Use walk-forward validation to prevent overfitting
+- Avoid look-ahead bias: Only use data available at forecast time
+- Consider transaction costs: Longer horizons → less rebalancing → lower costs
+- Document forecast accuracy: Track prediction errors over time
+- Compare against existing Linear Regression (1-day horizon) as baseline
+
+**Research Papers:**
+- Gu, Kelly, Xiu (2020): "Empirical Asset Pricing via Machine Learning" (Review of Financial Studies)
+- Rapach, Strauss, Zhou (2010): "Out-of-sample equity premium prediction" (RFS)
+- Kelly, Pruitt (2013): "Market Expectations in the Cross-Section of Present Values" (Journal of Finance)
+
+**Deliverable:** Multi-horizon forecasting strategy with backtest results and forecast accuracy analysis  
+**Deadline:** Week 5  
+**Dependencies:** None (uses existing Linear Regression framework as starting point)
+
+**Note:** The current Linear Regression strategy in `strategy_wrapper.py` already implements basic forecasting with `forecast_horizon` parameter. This task extends it to:
+1. Multiple horizons simultaneously (not just one)
+2. Sophisticated aggregation of multi-horizon forecasts
+3. Alternative ML models (Random Forest, Gradient Boosting)
+4. Comprehensive feature engineering
+5. Forecast accuracy tracking and validation
+
+---
+
 ## 📊 Dashboard Developer Tasks - John
 
 ### 🎯 Priority 1: Dashboard Design & Requirements
