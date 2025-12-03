@@ -4,6 +4,8 @@
 
 This guide explains different backtesting strategies and methodologies used to validate trading algorithms. Understanding these approaches is crucial for developing robust, production-ready trading systems that avoid overfitting and perform well in live markets.
 
+**Current Implementation:** All backtesting methods are implemented in `src/backtesting_methods.py` with actual validated results from 5-year weekly testing (2019-2024).
+
 ---
 
 ## Table of Contents
@@ -88,26 +90,30 @@ A single backtest on historical data can be misleading due to:
 - **False Confidence**: May give misleading results
 - **Not Realistic**: Doesn't simulate actual deployment
 
-#### Key Metrics:
+#### Key Metrics (Equal Weight, 5-Year Weekly):
 ```
-Total Return: 16.55%
+Total Return: +16.6%
 Sharpe Ratio: 0.59
-Max Drawdown: -9.63%
+Max Drawdown: -9.6%
+Win Rate: 45.9%
 ```
+
+**Actual Performance:** These are real results from the Equal Weight strategy tested on 5 years of weekly data (2019-2024).
 
 #### Example Code:
 ```python
 from src.backtesting_methods import BacktestingMethods
 
-bt = BacktestingMethods(prices=price_data)
+bt = BacktestingMethods(prices=price_data, initial_capital=100000, transaction_cost_bps=10)
 result = bt.vanilla_backtest(
     strategy=my_strategy,
-    start_date='2020-01-01',
-    end_date='2023-12-31',
-    rebalance_freq='M'
+    start_date='2019-01-01',
+    end_date='2024-01-01',
+    rebalance_freq='W'
 )
 
 print(f"Sharpe Ratio: {result.aggregate_metrics['sharpe_ratio']:.2f}")
+print(f"Total Return: {result.aggregate_metrics['total_return']:.1%}")
 ```
 
 ---

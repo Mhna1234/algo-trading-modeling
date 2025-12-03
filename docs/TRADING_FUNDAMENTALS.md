@@ -800,6 +800,47 @@ Successful algorithmic trading requires:
 
 ---
 
+## Implementation in This Project
+
+This project implements all the concepts covered in this guide:
+
+### 20+ Trading Strategies
+All strategies documented here are implemented in `src/strategy_wrapper.py`:
+- **Momentum strategies** (Momentum, Time Series Momentum, MA Crossover)
+- **Mean Reversion** strategies
+- **Risk-based** (GMVP, CVaR, Max Diversification, Inverse Volatility)
+- **Factor & ML** (Linear Regression, Random Forest, Gradient Boosting)
+- **Advanced** (Regime Switching, ARMA Forecasting)
+
+See [STRATEGIES.md](STRATEGIES.md) for full documentation and performance results.
+
+### 5 Backtesting Methods
+Comprehensive validation framework in `src/backtesting_methods.py`:
+- Vanilla Backtest
+- Walk-Forward Analysis
+- Cross-Validation
+- Monte Carlo Simulation
+- Randomized Testing
+
+See [BACKTESTING_METHODS.md](BACKTESTING_METHODS.md) for detailed methodology and actual results.
+
+### Portfolio Optimization
+Multiple optimization methods in `src/optimizer.py`:
+- Mean-Variance Optimization (Sharpe maximization)
+- Minimum Variance
+- Risk Parity
+- CVaR Minimization
+- Maximum Diversification
+
+### Real-World Considerations
+- Transaction costs: 10 bps per trade
+- Slippage modeling
+- Proper date-specific calculations (no look-ahead bias)
+- Warmup periods for all strategies
+- Robust error handling
+
+---
+
 ## Further Reading
 
 ### Books
@@ -823,7 +864,13 @@ Successful algorithmic trading requires:
 ---
 
 **This document is part of the algo-trading-modeling project.**  
-**For implementation details, see `ARCHITECTURE.md` and `STRATEGIES.md`**
+**For implementation details, see:**
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System design and components
+- [STRATEGIES.md](STRATEGIES.md) - 20+ strategy documentation with actual results
+- [BACKTESTING_METHODS.md](BACKTESTING_METHODS.md) - 5 validation methods with results
+- [STRATEGIES_EXTENDED.md](STRATEGIES_EXTENDED.md) - Advanced strategy details
 
-**Version**: 1.0  
-**Last Updated**: November 2024
+**Version**: 3.0  
+**Last Updated**: December 2024
+**Test Period**: 5-year weekly backtests (2019-2024)
+

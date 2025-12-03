@@ -393,27 +393,26 @@ def run_benchmark_comparison_fast(use_10_years=False):
         
         fig = plt.figure(figsize=(20, 12))
         
-        # 1. Equity Curves
+        # 1. Portfolio Value Over Time (all strategies)
         ax1 = plt.subplot(2, 3, 1)
         for name, result in results.items():
             equity = result.equity_curve
             ax1.plot(equity.index, equity.values, label=name, alpha=0.7, linewidth=1.5)
-        ax1.set_title(f'Equity Curves ({period_desc.title()})', fontsize=14, fontweight='bold')
+        ax1.set_title('Portfolio Value Over Time', fontsize=14, fontweight='bold')
         ax1.set_xlabel('Date')
         ax1.set_ylabel('Portfolio Value ($)')
         ax1.legend(loc='upper left', fontsize=8)
         ax1.grid(True, alpha=0.3)
         
-        # 2. Cumulative Returns
+        # 2. Drawdown (all strategies)
         ax2 = plt.subplot(2, 3, 2)
         for name, result in results.items():
-            equity = result.equity_curve
-            cum_returns = (equity / 100000 - 1) * 100
-            ax2.plot(cum_returns.index, cum_returns.values, label=name, alpha=0.7, linewidth=1.5)
-        ax2.set_title('Cumulative Returns (%)', fontsize=14, fontweight='bold')
+            drawdown = result.drawdown_series
+            ax2.plot(drawdown.index, drawdown.values, label=name, alpha=0.7, linewidth=1.5)
+        ax2.set_title('Drawdown Over Time', fontsize=14, fontweight='bold')
         ax2.set_xlabel('Date')
-        ax2.set_ylabel('Return (%)')
-        ax2.legend(loc='upper left', fontsize=8)
+        ax2.set_ylabel('Drawdown (%)')
+        ax2.legend(loc='lower left', fontsize=8)
         ax2.grid(True, alpha=0.3)
         
         # 3. Sharpe Ratio Comparison
@@ -429,28 +428,31 @@ def run_benchmark_comparison_fast(use_10_years=False):
             ax3.axvline(0, color='black', linestyle='--', linewidth=0.8)
             ax3.grid(True, alpha=0.3)
         
-        # 4. Annual Returns Comparison
-        if 'Annual Return (%)' in metrics_df.columns:
-            ax4 = plt.subplot(2, 3, 4)
-            returns_data = metrics_df['Annual Return (%)'].sort_values(ascending=True)
-            colors = ['green' if x > 0 else 'red' for x in returns_data.values]
-            ax4.barh(range(len(returns_data)), returns_data.values, color=colors, alpha=0.7)
-            ax4.set_yticks(range(len(returns_data)))
-            ax4.set_yticklabels(returns_data.index, fontsize=9)
-            ax4.set_title('Annual Returns (%)', fontsize=14, fontweight='bold')
-            ax4.set_xlabel('Return (%)')
-            ax4.grid(True, alpha=0.3)
+        # 4. Daily Returns Distribution (combined histogram)
+        ax4 = plt.subplot(2, 3, 4)
+        for name, result in results.items():
+            returns = result.returns_series
+            ax4.hist(returns, bins=50, alpha=0.5, label=name, edgecolor='black')
+        ax4.set_title('Daily Returns Distribution (All Strategies)', fontsize=14, fontweight='bold')
+        ax4.set_xlabel('Daily Return')
+        ax4.set_ylabel('Frequency')
+        ax4.legend(loc='upper right', fontsize=8)
+        ax4.grid(True, alpha=0.3, axis='y')
         
-        # 5. Max Drawdown Comparison
-        if 'Max Drawdown (%)' in metrics_df.columns:
-            ax5 = plt.subplot(2, 3, 5)
-            dd_data = metrics_df['Max Drawdown (%)'].sort_values(ascending=False)
-            ax5.barh(range(len(dd_data)), dd_data.values, color='red', alpha=0.7)
-            ax5.set_yticks(range(len(dd_data)))
-            ax5.set_yticklabels(dd_data.index, fontsize=9)
-            ax5.set_title('Maximum Drawdown (%)', fontsize=14, fontweight='bold')
-            ax5.set_xlabel('Drawdown (%)')
-            ax5.grid(True, alpha=0.3)
+        # 5. Monthly Portfolio Weights (stacked bar for first strategy as example)
+        ax5 = plt.subplot(2, 3, 5)
+        # Show weights for the best performing strategy (highest Sharpe)
+        if 'Sharpe Ratio' in metrics_df.columns and len(results) > 0:
+            best_strategy = metrics_df['Sharpe Ratio'].idxmax()
+            if best_strategy in results:
+                weights_subset = results[best_strategy].weights_history.tail(12).drop('CASH', axis=1, errors='ignore')
+                weights_subset.plot(kind='bar', stacked=True, ax=ax5, legend=True)
+                ax5.set_title(f'Monthly Portfolio Weights - {best_strategy.replace("_", " ").title()} (Last 12 Months)', 
+                             fontsize=12, fontweight='bold')
+                ax5.set_ylabel('Weight')
+                ax5.set_xlabel('Date')
+                ax5.legend(fontsize=7, loc='best', ncol=2)
+                ax5.grid(True, alpha=0.3, axis='y')
         
         # 6. Risk-Return Scatter
         if 'Volatility (%)' in metrics_df.columns and 'Annual Return (%)' in metrics_df.columns:

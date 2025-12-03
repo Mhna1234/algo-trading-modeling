@@ -1,14 +1,39 @@
 # Extended Strategies Documentation
 
+## ⚠️ IMPORTANT NOTE
+
+**As of v3.0, all strategies have been consolidated into `src/strategy_wrapper.py`.**
+
+The separate `strategies_extended.py` file no longer exists. All strategies documented here are now part of the main strategy library and can be accessed through:
+
+```python
+from src.strategy_wrapper import (
+    BuyAndHoldStrategy,
+    QuintileFactorStrategy,
+    GMRPStrategy,
+    MaximumDiversificationStrategy,
+    MaximumDecorrelationStrategy,
+    TimeSeriesMomentumStrategy,
+    MovingAverageCrossoverStrategy,
+    MarkowitzMVOStrategy,
+    LinearRegressionStrategy,
+    list_available_strategies
+)
+```
+
+For the main strategy documentation, see [STRATEGIES.md](STRATEGIES.md).
+
+---
+
 ## Overview
 
-This document provides comprehensive documentation for the extended strategy library (`strategies_extended.py`). These strategies complement the core strategies in `strategy_wrapper.py` and provide additional algorithmic trading approaches.
+This document provides comprehensive documentation for extended strategies that complement the core strategies. All strategies are now implemented in `src/strategy_wrapper.py` and provide additional algorithmic trading approaches beyond the basic strategies.
 
 ## Table of Contents
 
 1. [Buy & Hold Strategy](#buy--hold-strategy)
 2. [Quintile Factor Portfolios](#quintile-factor-portfolios)
-3. [Global Maximum Return Portfolio (GMRP)](#global-maximum-return-portfolio-gmrp)
+3. [Global Minimum Risk Parity (GMRP)](#global-minimum-risk-parity-gmrp)
 4. [Maximum Diversification (MDP)](#maximum-diversification-mdp)
 5. [Maximum Decorrelation (MDCP)](#maximum-decorrelation-mdcp)
 6. [Time-Series Momentum](#time-series-momentum)
@@ -41,22 +66,34 @@ Where $w_0$ is the initial allocation (typically equal weight: $w_0 = \frac{1}{N
 ### Usage Example
 
 ```python
-from src.strategies_extended import BuyAndHoldStrategy
+from src.strategy_wrapper import BuyAndHoldStrategy
 from src.signal_generator import Strategy
+from src.optimizer import PortfolioOptimizer
 
 # Create strategy
 buy_hold = BuyAndHoldStrategy(
     strategy,
+    optimizer,
     initial_method='equal'
 )
 
 # Run backtest
-result = portfolio.run_backtest(
+from src.portfolio_engine import PortfolioEngine
+engine = PortfolioEngine(prices, initial_capital=100000, transaction_cost_bps=10)
+result = engine.run_backtest(
     buy_hold,
-    start_date='2020-01-01',
+    start_date='2019-01-01',
+    end_date='2024-01-01',
     rebalance_freq='M'
 )
 ```
+
+### Actual Performance (5-Year Weekly, 2019-2024)
+- **Total Return:** +862%
+- **Sharpe Ratio:** 2.25
+- **Max Drawdown:** -25.3%
+- **Annual Volatility:** 64.4%
+- **Average Turnover:** 12.5%
 
 ### Pros & Cons
 
@@ -115,7 +152,7 @@ $$w_i = \begin{cases}
 ### Usage Example
 
 ```python
-from src.strategies_extended import QuintileFactorStrategy
+from src.strategy_wrapper import QuintileFactorStrategy
 
 # Long-only momentum quintile
 quintile = QuintileFactorStrategy(
@@ -157,44 +194,50 @@ Jegadeesh, N., & Titman, S. (1993). "Returns to buying winners and selling loser
 
 ---
 
-## Global Maximum Return Portfolio (GMRP)
+## Global Minimum Risk Parity (GMRP)
 
 ### Description
 
-Maximizes expected portfolio return subject to diversification constraints. Pure return maximization with concentration limits.
+Implements risk parity optimization where assets are allocated to contribute equally to portfolio risk. Also known as Equal Risk Contribution (ERC).
 
 ### Mathematical Formulation
 
-$$\max_{w} \quad w^T \mu$$
+$$\min_{w} \quad \sum_{i,j} (w_i (\Sigma w)_i - w_j (\Sigma w)_j)^2$$
 
 subject to:
 $$\sum_i w_i = 1$$
-$$0 \leq w_i \leq w_{\max}$$
-$$\sum_i \mathbb{I}(w_i > 0) \geq N_{\min}$$
+$$w_i \geq 0$$
 
-Where $\mu$ is the vector of expected returns, $w_{\max}$ is maximum weight, and $N_{\min}$ is minimum number of assets.
+Where $\Sigma$ is the covariance matrix and the objective minimizes variance of risk contributions.
 
 ### Parameters
 
-- **lookback** (int, default=126): Historical window for return estimation
-- **return_forecast_method** (str, default='momentum'): 
-  - `'momentum'`: Recent momentum
-  - `'historical'`: Historical mean
+- **lookback** (int, default=126): Historical window for covariance estimation
+- **min_periods** (int, default=60): Minimum periods required
 - **max_weight** (float, default=0.5): Maximum weight per asset
-- **min_assets** (int, default=3): Minimum number of assets
+- **shrinkage** (bool, default=True): Use Ledoit-Wolf covariance shrinkage
 
 ### Usage Example
 
 ```python
-from src.strategies_extended import GMRPStrategy
+from src.strategy_wrapper import GMRPStrategy
 
 gmrp = GMRPStrategy(
     strategy,
+    optimizer,
     lookback=126,
-    max_weight=0.4,
-    min_assets=3
+    max_weight=0.4
 )
 ```
+
+### Actual Performance (5-Year Weekly, 2019-2024)
+- **Total Return:** +1389%
+- **Sharpe Ratio:** 0.12
+- **Max Drawdown:** -99.96% ⚠️
+- **Annual Volatility:** 599.3%
+- **Average Turnover:** 46.6%
+
+**⚠️ Warning:** This strategy showed extreme volatility and drawdown in the test period. Use with caution.
 
 ### Pros & Cons
 

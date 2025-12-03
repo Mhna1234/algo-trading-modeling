@@ -6,7 +6,14 @@ The Portfolio Engine is a strategy-agnostic portfolio management system designed
 1. **Signal Generation** (Strategy class)
 2. **Risk Optimization** (Optimizer class)  
 3. **Portfolio Execution** (PortfolioEngine class)
-4. **Strategy Integration** (StrategyWrapper classes)
+4. **Strategy Integration** (StrategyWrapper classes - 20+ strategies)
+5. **Advanced Validation** (BacktestingMethods class)
+
+**Current Version:** v3.0 (December 2024)
+- 20+ production-ready strategies in `src/strategy_wrapper.py`
+- 5 advanced backtesting methods in `src/backtesting_methods.py`
+- Comprehensive transaction cost modeling
+- Real-time metric calculation
 
 ## Design Principles
 
@@ -14,6 +21,7 @@ The Portfolio Engine is a strategy-agnostic portfolio management system designed
 - Portfolio Engine doesn't know about signals or forecasts
 - It only receives target weights and executes them
 - Any strategy can plug in via BaseStrategyWrapper interface
+- All strategies consolidated in single file (`src/strategy_wrapper.py`)
 
 ### 2. Real-Time Metric Calculation
 - All metrics calculated during backtest, not after
@@ -24,6 +32,11 @@ The Portfolio Engine is a strategy-agnostic portfolio management system designed
 - All data structured for immediate visualization
 - Pre-calculated rolling metrics
 - Easy export to JSON/CSV for dashboards
+
+### 4. Multiple Validation Methods
+- 5 backtesting methods for comprehensive validation
+- Confidence intervals and statistical testing
+- Protection against overfitting
 
 ## Architecture Diagram
 
@@ -118,23 +131,68 @@ class BaseStrategyWrapper(ABC):
         pass
 ```
 
-**10 Pre-Built Strategies:**
-1. **EqualWeightStrategy** - Naive 1/N (no optimization)
-2. **MomentumStrategy** - Trend following with Sharpe optimization
-3. **MeanReversionStrategy** - Contrarian with MVO
-4. **InverseVolatilityStrategy** - Risk parity
-5. **RegimeSwitchingStrategy** - Adaptive momentum
+**20+ Pre-Built Strategies:**
 
-**Additional Implemented (with fallbacks):**
-6. **CVaRMinimizationStrategy** - Tail risk focus (uses Sharpe/MVO as fallback)
-7. **MLRandomForestStrategy** - ML forecast (uses momentum fallback)
-8. **MLGradientBoostingStrategy** - Ensemble ML (uses momentum fallback)
-9. **ARMAForecastStrategy** - Time series (uses mean reversion fallback)
-10. **MultiFactorMLStrategy** - Multi-factor (uses composite fallback)
+**Core Strategies:**
+1. **EqualWeightStrategy** - Naive 1/N baseline
+2. **BuyAndHoldStrategy** - Passive benchmark
+3. **MomentumStrategy** - Trend following with Sharpe optimization
+4. **MeanReversionStrategy** - Contrarian with MVO
+5. **InverseVolatilityStrategy** - Risk parity
 
-**Demo Configuration**: Current demo uses 10 variations of the first 4 strategies with different parameters (lookback periods, windows, risk aversion levels) to demonstrate diverse performance characteristics.
+**Risk-Based Strategies:**
+6. **GlobalMinimumVarianceStrategy (GMVP)** - Minimum variance portfolio
+7. **GMRPStrategy** - Global minimum risk parity
+8. **CVaRMinimizationStrategy** - Tail risk minimization
+9. **MaximumDiversificationStrategy** - Diversification ratio maximization
+10. **MaximumDecorrelationStrategy** - Correlation minimization
 
-### 3. PortfolioState (Data Structure)
+**Trend & Momentum:**
+11. **TimeSeriesMomentumStrategy** - 12-month absolute momentum
+12. **MovingAverageCrossoverStrategy** - 50/200 MA crossover
+
+**Factor & Prediction:**
+13. **LinearRegressionStrategy** - Factor-based regression
+14. **QuintileFactorStrategy** - Factor quintile portfolios
+15. **MarkowitzMVOStrategy** - Mean-variance optimization
+
+**Machine Learning:**
+16. **MLRandomForestStrategy** - Random forest predictions
+17. **MLGradientBoostingStrategy** - Gradient boosting predictions
+18. **MultiFactorMLStrategy** - Multi-factor ML combination
+
+**Advanced:**
+19. **RegimeSwitchingStrategy** - Volatility regime detection
+20. **ARMAForecastStrategy** - ARMA time series forecasting
+21. **ARIMAGARCHForecastingStrategy** - ARIMA-GARCH forecasting
+
+**Strategy Factory:**
+```python
+from src.strategy_wrapper import list_available_strategies, create_strategy
+
+# List all strategies
+strategies = list_available_strategies()  # Returns dict of 20+ strategies
+
+# Create strategy instance
+strategy = create_strategy('momentum', strategy_obj, optimizer_obj, lookback=60)
+```
+
+### 3. BacktestingMethods (`src/backtesting_methods.py`)
+
+**Five Validation Methods:**
+1. **Vanilla Backtest** - Traditional single-run backtest
+2. **Walk-Forward Backtest** - Rolling/expanding window with train/test
+3. **Cross-Validation Backtest** - K-fold time-series validation
+4. **Monte Carlo Backtest** - Bootstrap/parametric simulation
+5. **Randomized Backtest** - Random start dates for significance testing
+
+**Key Features:**
+- Confidence intervals for all methods
+- Statistical significance testing
+- Comprehensive comparison framework
+- Protection against overfitting
+
+### 4. PortfolioState (Data Structure)
 
 Contains everything a strategy needs to make decisions:
 
