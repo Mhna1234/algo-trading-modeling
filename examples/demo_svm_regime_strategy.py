@@ -239,8 +239,7 @@ def run_svm_regime_demo():
             'Calmar Ratio': result.summary_metrics.get('calmar_ratio', 0),
             'Sortino Ratio': result.summary_metrics.get('sortino_ratio', 0),
             'Win Rate': result.summary_metrics.get('win_rate', 0),
-            'Avg Turnover': result.avg_turnover,
-            'Total Trades': result.total_rebalances
+            'Avg Turnover': result.summary_metrics.get('avg_turnover', 0),
         }
         for name, result in results.items()
     }).T
