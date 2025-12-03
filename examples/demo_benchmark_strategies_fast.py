@@ -47,6 +47,7 @@ from src.strategy_wrapper import (
     MeanReversionStrategy,
     InverseVolatilityStrategy,
     GlobalMinimumVarianceStrategy,
+    GMRPStrategy,
     CVaRMinimizationStrategy,
     MaximumDiversificationStrategy,
     TimeSeriesMomentumStrategy,
@@ -56,6 +57,7 @@ from src.strategy_wrapper import (
     RegimeSwitchingStrategy,
     MLRandomForestStrategy,
     MLGradientBoostingStrategy,
+    MultiFactorMLStrategy,
     ARMAForecastStrategy
 )
 
@@ -82,13 +84,14 @@ ENABLED_STRATEGIES = [
     'mean_reversion',        # 4. Contrarian
     'inverse_volatility',    # 5. Risk parity style
     'gmvp',                  # 6. Min variance
-    'cvar_minimization',     # 7. Tail risk control
-    'max_diversification',   # 8. Maximum diversification
-    'time_series_momentum',  # 9. Time series momentum
-    'ma_crossover',          # 10. Moving average crossover
-    'markowitz_mvo',         # 11. Mean-variance optimization
-    'linear_regression',     # 12. ML-based forecasting
-][:12]  # Enforce maximum 12 strategies
+    'gmrp',                  # 7. Global minimum risk parity
+    'cvar_minimization',     # 8. Tail risk control
+    'max_diversification',   # 9. Maximum diversification
+    'time_series_momentum',  # 10. Time series momentum
+    'ma_crossover',          # 11. Moving average crossover
+    'markowitz_mvo',         # 12. Mean-variance optimization
+    'multi_factor_ml',       # 13. Multi-factor ML (faster than linear_regression)
+][:13]  # Allow 13 strategies
 
 
 def validate_strategies(strategy_names: List[str]) -> List[str]:
@@ -150,11 +153,13 @@ def create_strategy_instances(
         'mean_reversion': lambda: MeanReversionStrategy(strategy, optimizer, window=21, top_k=4),
         'inverse_volatility': lambda: InverseVolatilityStrategy(strategy, optimizer, vol_window=63),
         'gmvp': lambda: GlobalMinimumVarianceStrategy(strategy, optimizer, lookback=252),
+        'gmrp': lambda: GMRPStrategy(strategy, optimizer, lookback=252),
         'cvar_minimization': lambda: CVaRMinimizationStrategy(strategy, optimizer, lookback=126, alpha=0.95),
         'max_diversification': lambda: MaximumDiversificationStrategy(strategy, optimizer, lookback=252, max_weight=0.4),
         'time_series_momentum': lambda: TimeSeriesMomentumStrategy(strategy, optimizer, lookback=126, long_only=True),
         'ma_crossover': lambda: MovingAverageCrossoverStrategy(strategy, optimizer, fast_window=50, slow_window=200),
         'markowitz_mvo': lambda: MarkowitzMVOStrategy(strategy, optimizer, lookback=252, risk_aversion=1.0),
+        'multi_factor_ml': lambda: MultiFactorMLStrategy(strategy, optimizer, lookback=126, top_k=4),
         'linear_regression': lambda: LinearRegressionStrategy(strategy, optimizer, lookback=252, regularization='ridge'),
         'regime_switching': lambda: RegimeSwitchingStrategy(strategy, optimizer, vol_window=63, vol_threshold=0.2),
         'ml_random_forest': lambda: MLRandomForestStrategy(strategy, optimizer, lookback=252, top_k=4),
@@ -204,7 +209,7 @@ def run_benchmark_comparison_fast(use_10_years=False):
     print("Rebalancing: WEEKLY (reduces computation by 80%)")
     print("Initial Capital: $100,000")
     print("Transaction Costs: 0.1%")
-    print(f"Maximum Strategies: 12 (currently {len(ENABLED_STRATEGIES)} enabled)")
+    print(f"Maximum Strategies: 13 (currently {len(ENABLED_STRATEGIES)} enabled)")
     print("=" * 80)
     print()
     
