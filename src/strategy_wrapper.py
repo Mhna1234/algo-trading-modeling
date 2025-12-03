@@ -76,7 +76,7 @@ class BaseStrategyWrapper(ABC):
     Examples
     --------
     >>> from src.strategy_wrapper import MomentumStrategy
-    >>> from src.strategy import Strategy
+    >>> from src.signal_generator import Strategy
     >>> from src.optimizer import PortfolioOptimizer
     >>> 
     >>> strategy = Strategy(prices)

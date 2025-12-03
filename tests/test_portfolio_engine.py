@@ -15,7 +15,7 @@ from datetime import datetime
 
 from src.portfolio_engine import PortfolioEngine, PortfolioState, PortfolioResult
 from src.strategy_wrapper import EqualWeightStrategy, MomentumStrategy
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 
 

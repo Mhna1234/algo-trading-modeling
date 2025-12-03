@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 
 from src.portfolio_engine import PortfolioEngine
 from src.strategy_wrapper import MomentumStrategy
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 
 print("\n" + "="*60)

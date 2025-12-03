@@ -25,7 +25,7 @@ from src.data_loader import load_data
 from src.backtesting_methods import BacktestingMethods, BacktestMethodResult
 from src.portfolio_engine import PortfolioEngine
 from src.strategy_wrapper import MomentumStrategy
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 
 

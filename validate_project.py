@@ -16,7 +16,7 @@ try:
     from src.data_loader import load_data
     from src.portfolio_engine import PortfolioEngine
     from src.evaluator import Evaluator
-    from src.strategy import Strategy
+    from src.signal_generator import Strategy
     from src.optimizer import PortfolioOptimizer
     print("      ✓ Core modules imported successfully")
 except Exception as e:

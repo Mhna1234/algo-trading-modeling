@@ -64,7 +64,7 @@ algo-trading-modeling/
 │   ├── strategy_wrapper.py  ← FIXED: All ML strategies implemented
 │   ├── portfolio_engine.py  ← Validated: Correct backtesting logic
 │   ├── backtester.py         ← Validated: Legacy API wrapper
-│   ├── strategy.py           ← Validated: Signal generation
+│   ├── signal_generator.py   ← Validated: Signal generation & Strategy class
 │   ├── optimizer.py          ← Validated: Risk optimization
 │   ├── data_loader.py        ← Validated: Data pipeline
 │   └── ...

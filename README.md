@@ -68,7 +68,7 @@ The architecture separates strategy logic from portfolio execution:
 from src.data_loader import load_data
 from src.portfolio_engine import PortfolioEngine
 from src.strategy_wrapper import MomentumStrategy
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 
 # Load data
@@ -126,7 +126,7 @@ algo-trading-modeling/
 │   ├── portfolio_engine.py        # Production portfolio engine (v2.2.0 - transaction cost fix)
 │   ├── strategy_wrapper.py        # 12 validated trading strategies (v2.2.0)
 │   ├── backtesting_methods.py     # 5 advanced backtesting methods
-│   ├── strategy.py                # Signal generation & ML/DL models
+│   ├── signal_generator.py           # Signal generation, Strategy class & SignalGenerator
 │   ├── optimizer.py               # Portfolio optimization (enhanced CCD v2.2.0)
 │   ├── backtester.py              # Legacy backtester (backward compatible)
 │   ├── evaluator.py               # Performance evaluation

@@ -3,7 +3,7 @@ Quick test script to verify GMVP strategy implementation
 """
 import numpy as np
 import pandas as pd
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 from src.strategy_wrapper import GlobalMinimumVarianceStrategy
 from src.portfolio_engine import PortfolioState

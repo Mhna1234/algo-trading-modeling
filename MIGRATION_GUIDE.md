@@ -243,7 +243,7 @@ All strategies use the same optimization backend, so no performance regression.
 ### Quick Test
 ```python
 # test_integration.py
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.strategies_extended import MaximumDiversificationStrategy
 from src.data_loader import load_data
 

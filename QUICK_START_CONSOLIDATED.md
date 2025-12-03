@@ -64,7 +64,7 @@ for name in sorted(strategies.keys()):
 ### Create Strategy Using Factory Function
 ```python
 from src.strategy_wrapper import create_strategy
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 
 strategy_obj = Strategy(prices)
@@ -147,7 +147,7 @@ The new benchmark demo uses **daily rebalancing**:
 # Quick test with 3 strategies, 3 years, monthly rebalancing
 from src.data_loader import load_data
 from src.portfolio_engine import PortfolioEngine
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 from src.strategy_wrapper import (
     EqualWeightStrategy,

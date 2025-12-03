@@ -70,7 +70,7 @@ python examples/demo_extended_strategies.py
 ### 5. Integration Test
 ```python
 # Test integration with existing code
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 from src.portfolio_engine import PortfolioEngine
 from src.strategies_extended import MaximumDiversificationStrategy

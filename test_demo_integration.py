@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from src.portfolio_engine import PortfolioEngine
 from src.strategy_wrapper import GlobalMinimumVarianceStrategy
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 
 print("="*80)

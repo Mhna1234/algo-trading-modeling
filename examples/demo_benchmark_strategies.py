@@ -39,7 +39,7 @@ from datetime import datetime
 # Import project modules
 from src.data_loader import load_data
 from src.portfolio_engine import PortfolioEngine
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 from src.strategy_wrapper import (
     EqualWeightStrategy,

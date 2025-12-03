@@ -42,7 +42,7 @@ Where $w_0$ is the initial allocation (typically equal weight: $w_0 = \frac{1}{N
 
 ```python
 from src.strategies_extended import BuyAndHoldStrategy
-from src.strategy import Strategy
+from src.signal_generator import Strategy
 
 # Create strategy
 buy_hold = BuyAndHoldStrategy(

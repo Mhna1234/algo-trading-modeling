@@ -78,7 +78,7 @@ from .strategy_wrapper import (
 )
 
 # Signal generation and forecasting (EXISTING)
-from .strategy import Strategy
+from .signal_generator import StrategySignalGenerator, Strategy, SignalGenerator, generate_signals
 
 # Portfolio optimization (EXISTING)
 from .optimizer import PortfolioOptimizer, optimize_portfolio_forecasted
@@ -94,7 +94,6 @@ from .evaluator import Evaluator, PerformanceEvaluator, evaluate_performance
 from .data_loader import DataLoader, load_data
 from .feature_engineering import FeatureEngineer, make_features
 from .forecasting import ARIMAGARCHForecaster, forecast_returns_volatility
-from .signal_generator import SignalGenerator, generate_signals
 from .utils import TradingConfig, setup_logging
 
 __all__ = [
@@ -126,7 +125,10 @@ __all__ = [
     'create_strategy',
     
     # Signal Generation
-    'Strategy',
+    'StrategySignalGenerator',
+    'Strategy',  # Backward compatibility alias
+    'SignalGenerator',  # Backward compatibility alias
+    'generate_signals',
     
     # Portfolio Optimization
     'PortfolioOptimizer',
@@ -152,10 +154,6 @@ __all__ = [
     # Forecasting
     'ARIMAGARCHForecaster',
     'forecast_returns_volatility',
-    
-    # Signal Generation (Legacy)
-    'SignalGenerator',
-    'generate_signals',
     
     # Utilities
     'TradingConfig',
