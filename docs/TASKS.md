@@ -1127,6 +1127,277 @@ class RegimeSwitchingStrategy:
 
 ---
 
+### 🎯 Priority 5: Integration & Deployment Preparation
+
+#### Task 5.1: Local Integration with Retrieval
+**Objective:** Integrate local modeling system with data retrieval pipeline
+
+**Action Items:**
+- [ ] Review current data retrieval implementation:
+  - Understand data sources and format
+  - Document API endpoints or data access methods
+  - Identify data update frequency and timing
+- [ ] Design integration architecture:
+  - Define interface between retrieval and modeling systems
+  - Establish data validation checkpoints
+  - Create error handling and fallback mechanisms
+- [ ] Implement local integration:
+  ```python
+  class DataRetrievalIntegration:
+      """
+      Interface between data retrieval and modeling systems
+      """
+      def __init__(self, retrieval_config):
+          self.config = retrieval_config
+          self.data_loader = DataLoader()
+      
+      def fetch_and_validate_data(self, start_date, end_date, assets):
+          """
+          Retrieve data and validate for modeling requirements
+          
+          Validation checks:
+          - No missing dates (or acceptable gap threshold)
+          - Price consistency (no extreme jumps)
+          - Sufficient history for strategies
+          """
+          raw_data = self.retrieval_client.fetch_data(...)
+          validated_data = self._validate_data(raw_data)
+          return validated_data
+      
+      def _validate_data(self, data):
+          """
+          Apply data quality checks
+          - Check for NaNs
+          - Verify trading days alignment
+          - Validate price reasonableness
+          """
+          # Validation logic
+          return validated_data
+  ```
+- [ ] Create integration tests:
+  - Test end-to-end data flow from retrieval to modeling
+  - Validate data quality at each stage
+  - Test error handling scenarios
+- [ ] Document integration process:
+  - Data flow diagrams
+  - Configuration requirements
+  - Troubleshooting guide
+
+**Guidelines:**
+- Ensure data format compatibility between retrieval and modeling systems
+- Implement robust error handling for network issues or data gaps
+- Add logging at each integration point for debugging
+- Create data validation pipeline to catch issues early
+- Test with historical data before moving to real-time integration
+- Coordinate with Awawdy on data schema and access methods
+
+**Deliverable:** Working local integration with retrieval system including validation pipeline  
+**Deadline:** Week 6  
+**Dependencies:** Coordination with Awawdy (data engineer), retrieval system documentation
+
+---
+
+#### Task 5.2: Raise Lambda for Benchmarks and Write to S3
+**Objective:** Deploy benchmark strategy results to AWS Lambda and store outputs in S3
+
+**Action Items:**
+- [ ] Consult with retrieval team on AWS infrastructure:
+  - Review S3 bucket structure and naming conventions
+  - Understand Lambda function deployment process
+  - Clarify IAM permissions and access policies
+  - Determine data format requirements for S3 storage
+- [ ] Design Lambda function for benchmark execution:
+  ```python
+  # lambda_function.py
+  import boto3
+  import pandas as pd
+  from src.backtester import Backtester
+  from src.strategy_wrapper import StrategyWrapper
+  
+  def lambda_handler(event, context):
+      """
+      Execute benchmark strategies and store results in S3
+      
+      Event parameters:
+      - start_date: Backtest start date
+      - end_date: Backtest end date
+      - strategies: List of strategies to run
+      - s3_bucket: Target S3 bucket name
+      """
+      # Parse event parameters
+      start_date = event['start_date']
+      end_date = event['end_date']
+      strategies = event.get('strategies', ['all'])
+      s3_bucket = event['s3_bucket']
+      
+      # Load data from S3 or retrieval source
+      data = load_data_from_s3(start_date, end_date)
+      
+      # Run benchmark strategies
+      results = {}
+      for strategy_name in strategies:
+          strategy = StrategyWrapper(strategy_name)
+          backtester = Backtester(strategy)
+          result = backtester.run(data, start_date, end_date)
+          results[strategy_name] = result
+      
+      # Write results to S3
+      write_results_to_s3(results, s3_bucket)
+      
+      return {
+          'statusCode': 200,
+          'body': f'Successfully executed {len(strategies)} strategies'
+      }
+  ```
+- [ ] Implement S3 output formatting:
+  - Create standardized JSON/CSV format for results
+  - Include metadata (execution timestamp, parameters)
+  - Organize results by date/strategy hierarchy
+  ```python
+  def write_results_to_s3(results, bucket_name):
+      """
+      Write benchmark results to S3 with proper structure
+      
+      S3 structure:
+      s3://bucket/benchmarks/{date}/{strategy_name}/
+        - equity_curve.csv
+        - summary_metrics.json
+        - weights_history.csv
+        - trades.csv
+      """
+      s3_client = boto3.client('s3')
+      timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+      
+      for strategy_name, result in results.items():
+          base_path = f'benchmarks/{timestamp}/{strategy_name}/'
+          
+          # Upload equity curve
+          s3_client.put_object(
+              Bucket=bucket_name,
+              Key=f'{base_path}equity_curve.csv',
+              Body=result.equity_history.to_csv()
+          )
+          
+          # Upload summary metrics
+          s3_client.put_object(
+              Bucket=bucket_name,
+              Key=f'{base_path}summary_metrics.json',
+              Body=json.dumps(result.summary_metrics)
+          )
+  ```
+- [ ] Create Lambda deployment package:
+  - Package dependencies (pandas, numpy, scipy, etc.)
+  - Create Docker container or Lambda layer for dependencies
+  - Configure Lambda function settings (memory, timeout)
+- [ ] Set up Lambda triggers:
+  - Schedule regular benchmark runs (daily/weekly)
+  - Create manual trigger mechanism for on-demand runs
+  - Configure CloudWatch logging
+- [ ] Implement monitoring and alerts:
+  - CloudWatch metrics for execution time and success rate
+  - SNS notifications for failures
+  - Cost monitoring for Lambda executions
+
+**Guidelines:**
+- Coordinate closely with Awawdy on S3 bucket structure and access
+- Ensure Lambda has sufficient memory (recommend 2GB+) and timeout (15 min)
+- Use Lambda layers or Docker container for heavy dependencies
+- Implement incremental updates to avoid reprocessing all data
+- Add version control for Lambda function code
+- Test Lambda function locally using SAM or Lambda runtime emulator
+- Document S3 data schema for dashboard team (John) to consume
+- Consider cost optimization (Lambda execution time vs frequency)
+
+**Deliverable:** Deployed Lambda function writing benchmark results to S3 with documentation  
+**Deadline:** Week 7  
+**Dependencies:** Task 5.1 complete, coordination with Awawdy, AWS infrastructure access
+
+---
+
+#### Task 5.3: Test Integration with Dashboard After S3 Data is Ready
+**Objective:** Validate end-to-end integration between S3 data storage and dashboard
+
+**Action Items:**
+- [ ] Verify S3 data availability:
+  - Confirm benchmark results are being written to S3
+  - Validate data format and structure
+  - Check data completeness and consistency
+  - Test S3 access permissions for dashboard
+- [ ] Coordinate with John on dashboard data ingestion:
+  - Share S3 bucket paths and file structure
+  - Provide data schema documentation
+  - Define data refresh frequency requirements
+  - Establish data access patterns (streaming vs batch)
+- [ ] Create data access layer for dashboard:
+  ```python
+  class S3DataProvider:
+      """
+      Provide dashboard with access to S3 benchmark data
+      """
+      def __init__(self, bucket_name, aws_credentials):
+          self.s3_client = boto3.client('s3', **aws_credentials)
+          self.bucket_name = bucket_name
+      
+      def get_latest_benchmark_results(self, strategy_name=None):
+          """
+          Retrieve most recent benchmark results from S3
+          """
+          # List objects in S3 bucket
+          objects = self.s3_client.list_objects_v2(
+              Bucket=self.bucket_name,
+              Prefix='benchmarks/'
+          )
+          
+          # Find latest timestamp
+          latest_results = self._get_latest_by_timestamp(objects)
+          
+          return latest_results
+      
+      def get_historical_performance(self, strategy_name, start_date, end_date):
+          """
+          Retrieve historical benchmark data for time series visualization
+          """
+          # Query S3 for date range
+          # Aggregate results across time periods
+          return performance_data
+  ```
+- [ ] Implement integration tests:
+  - Test data retrieval from S3 by dashboard
+  - Verify dashboard displays correct metrics
+  - Test data refresh mechanism
+  - Validate performance with realistic data volumes
+- [ ] Conduct end-to-end testing:
+  - Run full pipeline: Retrieval → Modeling → Lambda → S3 → Dashboard
+  - Verify data consistency at each stage
+  - Test error handling and recovery
+  - Measure end-to-end latency
+- [ ] Performance optimization:
+  - Implement caching for frequently accessed data
+  - Optimize S3 queries (use prefixes, pagination)
+  - Consider CloudFront for faster access
+  - Monitor data transfer costs
+- [ ] Create integration documentation:
+  - Data flow architecture diagram
+  - API/interface specifications
+  - Troubleshooting guide
+  - Performance benchmarks
+
+**Guidelines:**
+- Ensure dashboard has appropriate IAM permissions for S3 access
+- Use S3 Select or Athena for efficient querying if data volume is large
+- Implement data caching to reduce S3 API calls and costs
+- Test with production-scale data volumes
+- Monitor dashboard performance and loading times
+- Create rollback plan if integration issues arise
+- Document data refresh schedule and latency expectations
+- Coordinate testing schedule with John to ensure availability
+
+**Deliverable:** Fully tested and documented integration between S3 and dashboard  
+**Deadline:** Week 8  
+**Dependencies:** Task 5.2 complete (S3 data available), coordination with John (dashboard ready)
+
+---
+
 ## 📊 Dashboard Developer Tasks - John
 
 ### 🎯 Priority 1: Dashboard Design & Requirements
