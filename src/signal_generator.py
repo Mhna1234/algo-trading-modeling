@@ -789,6 +789,293 @@ class StrategySignalGenerator:
         return (f"StrategySignalGenerator(assets={len(self.assets)}, "
                 f"dates={len(self.dates)}, "
                 f"period={self.dates[0].date()} to {self.dates[-1].date()})")
+    
+    # ============================================================================
+    # REGIME CLASSIFICATION FEATURES
+    # ============================================================================
+    
+    def calculate_adx(self, window: int = 14) -> pd.DataFrame:
+        """
+        Calculate Average Directional Index (ADX) for trend strength.
+        
+        ADX measures trend strength regardless of direction (0-100 scale):
+        - ADX < 25: Weak trend / sideways market
+        - ADX 25-50: Moderate trend
+        - ADX > 50: Strong trend
+        
+        Parameters
+        ----------
+        window : int, default=14
+            Lookback window for ADX calculation
+        
+        Returns
+        -------
+        pd.DataFrame
+            ADX values for each asset (0-100 scale)
+        """
+        adx_values = pd.DataFrame(index=self.prices.index, columns=self.prices.columns, dtype=float)
+        
+        for asset in self.prices.columns:
+            prices = self.prices[asset]
+            
+            # Calculate True Range (simplified for close-only data)
+            high = prices
+            low = prices
+            prev_close = prices.shift(1)
+            
+            tr1 = high - low
+            tr2 = abs(high - prev_close)
+            tr3 = abs(low - prev_close)
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            
+            # Calculate Directional Movement
+            up_move = high - high.shift(1)
+            down_move = low.shift(1) - low
+            
+            plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+            minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+            
+            # Smooth with EMA
+            atr = tr.ewm(span=window, adjust=False).mean()
+            plus_di = 100 * pd.Series(plus_dm, index=prices.index).ewm(span=window, adjust=False).mean() / atr
+            minus_di = 100 * pd.Series(minus_dm, index=prices.index).ewm(span=window, adjust=False).mean() / atr
+            
+            # Calculate ADX
+            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di + 1e-8)
+            adx = dx.ewm(span=window, adjust=False).mean()
+            
+            adx_values[asset] = adx
+        
+        return adx_values.fillna(0.0)
+    
+    def calculate_market_breadth(self, window: int = 20) -> pd.Series:
+        """
+        Calculate market breadth (% of assets with positive momentum).
+        
+        Market breadth indicates the proportion of assets in an uptrend.
+        
+        Parameters
+        ----------
+        window : int, default=20
+            Lookback window for momentum calculation
+        
+        Returns
+        -------
+        pd.Series
+            Market breadth (0-1 scale) over time
+        """
+        momentum = self.momentum(window=window)
+        positive_momentum = (momentum > 0).sum(axis=1) / len(self.assets)
+        return positive_momentum
+    
+    def calculate_ma_distance(self, windows: List[int] = [20, 50, 200]) -> pd.DataFrame:
+        """
+        Calculate price distance from multiple moving averages.
+        
+        Parameters
+        ----------
+        windows : List[int], default=[20, 50, 200]
+            Moving average windows
+        
+        Returns
+        -------
+        pd.DataFrame
+            Distance from each MA (as % of price)
+        """
+        ma_distances = pd.DataFrame(index=self.prices.index)
+        
+        for window in windows:
+            ma = self.prices.rolling(window=window).mean()
+            distance = (self.prices - ma) / ma
+            
+            for asset in self.prices.columns:
+                col_name = f"{asset}_ma{window}"
+                ma_distances[col_name] = distance[asset]
+        
+        return ma_distances.fillna(0.0)
+    
+    def calculate_trend_slope(self, window: int = 20) -> pd.DataFrame:
+        """
+        Calculate slope of moving average (trend direction and strength).
+        
+        Parameters
+        ----------
+        window : int, default=20
+            Moving average window
+        
+        Returns
+        -------
+        pd.DataFrame
+            MA slope for each asset
+        """
+        ma = self.prices.rolling(window=window).mean()
+        slope = ma.diff(5) / ma
+        return slope.fillna(0.0)
+    
+    def calculate_volatility_regime(self, window: int = 20, percentile: float = 0.75) -> pd.DataFrame:
+        """
+        Classify volatility regime (high/low) for each asset.
+        
+        Parameters
+        ----------
+        window : int, default=20
+            Volatility calculation window
+        percentile : float, default=0.75
+            Percentile threshold
+        
+        Returns
+        -------
+        pd.DataFrame
+            Volatility regime indicator (1=high vol, 0=low vol)
+        """
+        vol = self.volatility(window=window)
+        vol_regime = pd.DataFrame(index=vol.index, columns=vol.columns, dtype=float)
+        
+        for asset in vol.columns:
+            rolling_percentile = vol[asset].expanding().quantile(percentile)
+            vol_regime[asset] = (vol[asset] > rolling_percentile).astype(float)
+        
+        return vol_regime.fillna(0.0)
+    
+    def calculate_price_velocity(self, windows: List[int] = [5, 10, 20]) -> pd.DataFrame:
+        """
+        Calculate price velocity (rate of change) across multiple timeframes.
+        
+        Parameters
+        ----------
+        windows : List[int], default=[5, 10, 20]
+            Windows for velocity calculation
+        
+        Returns
+        -------
+        pd.DataFrame
+            Price velocity for each asset and window
+        """
+        velocities = pd.DataFrame(index=self.prices.index)
+        
+        for window in windows:
+            velocity = self.prices.pct_change(window)
+            for asset in self.prices.columns:
+                col_name = f"{asset}_vel{window}"
+                velocities[col_name] = velocity[asset]
+        
+        return velocities.fillna(0.0)
+    
+    def calculate_correlation_regime(self, window: int = 60) -> pd.Series:
+        """
+        Calculate average pairwise correlation (market regime indicator).
+        
+        High correlation = crisis/high-vol regime
+        Low correlation = normal/low-vol regime
+        
+        Parameters
+        ----------
+        window : int, default=60
+            Rolling window for correlation calculation
+        
+        Returns
+        -------
+        pd.Series
+            Average correlation over time
+        """
+        avg_corr = pd.Series(index=self.prices.index, dtype=float)
+        
+        for i in range(window, len(self.returns)):
+            window_returns = self.returns.iloc[i-window:i]
+            corr_matrix = window_returns.corr()
+            
+            # Average correlation (excluding diagonal)
+            mask = ~np.eye(corr_matrix.shape[0], dtype=bool)
+            avg_corr.iloc[i] = corr_matrix.values[mask].mean()
+        
+        return avg_corr.fillna(0.0)
+    
+    def extract_regime_features(self, date: pd.Timestamp, lookback: int = 252) -> pd.Series:
+        """
+        Extract comprehensive feature set for regime classification.
+        
+        Combines multiple technical indicators and market metrics into
+        a single feature vector suitable for machine learning.
+        
+        Parameters
+        ----------
+        date : pd.Timestamp
+            Date for feature extraction
+        lookback : int, default=252
+            Historical window for feature calculations
+        
+        Returns
+        -------
+        pd.Series
+            Feature vector with labeled features
+        """
+        features = {}
+        
+        try:
+            date_idx = self.prices.index.get_loc(date)
+        except KeyError:
+            date_idx = self.prices.index.get_indexer([date], method='nearest')[0]
+        
+        if date_idx < lookback:
+            return pd.Series(dtype=float)
+        
+        # 1. Momentum features (multiple timeframes)
+        for window in [5, 10, 20, 60, 126]:
+            if date_idx >= window:
+                mom = self.momentum(window=window)
+                features[f'momentum_{window}d'] = mom.iloc[date_idx].mean()
+        
+        # 2. Volatility features
+        for window in [10, 20, 60]:
+            if date_idx >= window:
+                vol = self.volatility(window=window)
+                features[f'volatility_{window}d'] = vol.iloc[date_idx].mean()
+        
+        # 3. Trend strength (ADX)
+        if date_idx >= 14:
+            adx = self.calculate_adx(window=14)
+            features['adx_mean'] = adx.iloc[date_idx].mean()
+            features['adx_max'] = adx.iloc[date_idx].max()
+        
+        # 4. Market breadth
+        if date_idx >= 20:
+            breadth = self.calculate_market_breadth(window=20)
+            features['market_breadth'] = breadth.iloc[date_idx]
+        
+        # 5. MA distances
+        for window in [20, 50, 200]:
+            if date_idx >= window:
+                ma = self.prices.rolling(window=window).mean()
+                distance = ((self.prices.iloc[date_idx] - ma.iloc[date_idx]) / ma.iloc[date_idx]).mean()
+                features[f'ma_distance_{window}'] = distance
+        
+        # 6. Trend slopes
+        if date_idx >= 20:
+            slope = self.calculate_trend_slope(window=20)
+            features['trend_slope'] = slope.iloc[date_idx].mean()
+        
+        # 7. Volatility regime
+        if date_idx >= 20:
+            vol_regime = self.calculate_volatility_regime(window=20)
+            features['high_vol_pct'] = vol_regime.iloc[date_idx].mean()
+        
+        # 8. Price velocities
+        for window in [5, 10, 20]:
+            if date_idx >= window:
+                velocity = self.prices.pct_change(window)
+                features[f'velocity_{window}d'] = velocity.iloc[date_idx].mean()
+        
+        # 9. Correlation regime
+        if date_idx >= 60:
+            avg_corr = self.calculate_correlation_regime(window=60)
+            features['avg_correlation'] = avg_corr.iloc[date_idx]
+        
+        # 10. Mean reversion indicator
+        if date_idx >= 20:
+            z_score = self.mean_reversion(window=20)
+            features['mean_reversion'] = abs(z_score.iloc[date_idx]).mean()
+        
+        return pd.Series(features)
 
 
 # Backward compatibility alias

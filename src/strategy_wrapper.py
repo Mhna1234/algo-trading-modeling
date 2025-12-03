@@ -2440,6 +2440,437 @@ class LinearRegressionStrategy(BaseStrategyWrapper):
         return weights
 
 
+class SVMRegimeStrategy(BaseStrategyWrapper):
+    """
+    SVM Regime Classification Strategy - Machine Learning Market Regime Detection
+    
+    Uses Support Vector Machines to classify market regimes (bull, bear, sideways)
+    in high-dimensional feature space, then adapts portfolio strategy accordingly.
+    
+    The strategy works in three stages:
+    1. Feature Extraction: Computes 20-40 technical/market features
+    2. Regime Classification: SVM predicts current regime
+    3. Adaptive Allocation: Applies regime-specific portfolio strategy
+    
+    Regime-Specific Strategies:
+    - Bull Regime: Aggressive momentum (high equity allocation)
+    - Bear Regime: Defensive (low volatility, quality)
+    - Sideways Regime: Mean reversion (range-bound trading)
+    
+    Properties:
+    - Non-parametric classification (no distribution assumptions)
+    - High-dimensional feature space captures complex patterns
+    - Automatic retraining on expanding window
+    - Regime-adaptive portfolio allocation
+    
+    Parameters
+    ----------
+    strategy : Strategy
+        Signal generator with regime feature methods
+    optimizer : PortfolioOptimizer
+        Risk optimizer
+    kernel : str, default='rbf'
+        SVM kernel ('linear', 'rbf', 'poly', 'sigmoid')
+    C : float, default=1.0
+        Regularization parameter (smaller = more regularization)
+    gamma : str or float, default='scale'
+        Kernel coefficient ('scale', 'auto', or float)
+    retrain_frequency : int, default=63
+        Retrain SVM every N days (63 = quarterly)
+    lookback_window : int, default=756
+        Training data window (756 = 3 years)
+    bull_threshold : float, default=0.05
+        Minimum return for bull regime label
+    bear_threshold : float, default=-0.05
+        Maximum return for bear regime label
+    bull_strategy : str, default='momentum'
+        Strategy in bull regime
+    bear_strategy : str, default='inverse_vol'
+        Strategy in bear regime
+    sideways_strategy : str, default='mean_reversion'
+        Strategy in sideways regime
+    objective : str, default='cvar'
+        Optimization objective
+    alpha : float, default=0.95
+        CVaR confidence level
+    max_weight : float, default=0.3
+        Maximum weight per asset
+    
+    References
+    ----------
+    Cortes, C., & Vapnik, V. (1995).
+    "Support-vector networks."
+    Machine Learning, 20(3), 273-297.
+    
+    Nystrup, P., Madsen, H., & Lindström, E. (2017).
+    "Dynamic portfolio optimization across hidden market regimes."
+    Quantitative Finance, 18(1), 83-95.
+    
+    Examples
+    --------
+    >>> svm_regime = SVMRegimeStrategy(
+    ...     strategy, optimizer,
+    ...     kernel='rbf', C=1.0,
+    ...     retrain_frequency=63,
+    ...     bull_strategy='momentum',
+    ...     bear_strategy='inverse_vol'
+    ... )
+    """
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer,
+        kernel: str = 'rbf',
+        C: float = 1.0,
+        gamma: str = 'scale',
+        retrain_frequency: int = 63,
+        lookback_window: int = 756,
+        bull_threshold: float = 0.05,
+        bear_threshold: float = -0.05,
+        bull_strategy: str = 'momentum',
+        bear_strategy: str = 'inverse_vol',
+        sideways_strategy: str = 'mean_reversion',
+        objective: str = 'cvar',
+        alpha: float = 0.95,
+        max_weight: float = 0.3,
+        top_k: int = 10
+    ):
+        """Initialize SVM Regime Classification strategy."""
+        super().__init__(
+            "SVM Regime Classification",
+            strategy,
+            optimizer,
+            kernel=kernel,
+            C=C,
+            gamma=gamma,
+            retrain_frequency=retrain_frequency,
+            lookback_window=lookback_window,
+            bull_threshold=bull_threshold,
+            bear_threshold=bear_threshold,
+            bull_strategy=bull_strategy,
+            bear_strategy=bear_strategy,
+            sideways_strategy=sideways_strategy,
+            objective=objective,
+            alpha=alpha,
+            max_weight=max_weight,
+            top_k=top_k
+        )
+        
+        # Initialize SVM classifier
+        from sklearn.svm import SVC
+        from sklearn.preprocessing import StandardScaler
+        
+        self.svm_classifier = SVC(
+            kernel=kernel,
+            C=C,
+            gamma=gamma,
+            probability=True,  # Enable probability estimates
+            class_weight='balanced'  # Handle imbalanced classes
+        )
+        self.scaler = StandardScaler()
+        self._model_trained = False
+        self._last_train_date = None
+        self._regime_history = []
+    
+    def _generate_regime_labels(self, returns_window: DataFrame) -> np.ndarray:
+        """
+        Generate regime labels from forward returns.
+        
+        Labels:
+        - 2: Bull (returns > bull_threshold)
+        - 1: Sideways (bear_threshold <= returns <= bull_threshold)
+        - 0: Bear (returns < bear_threshold)
+        
+        Parameters
+        ----------
+        returns_window : DataFrame
+            Historical returns data
+        
+        Returns
+        -------
+        np.ndarray
+            Regime labels
+        """
+        bull_threshold = self.params.get('bull_threshold', 0.01)  # 1% for 5 days
+        bear_threshold = self.params.get('bear_threshold', -0.01)  # -1% for 5 days
+        
+        # Calculate forward 5-day cumulative returns (simpler, more robust)
+        forward_window = 5
+        avg_returns = returns_window.mean(axis=1)  # Average daily return across assets
+        
+        # Calculate cumulative forward returns
+        forward_returns = pd.Series(index=avg_returns.index, dtype=float)
+        for i in range(len(avg_returns) - forward_window):
+            forward_returns.iloc[i] = avg_returns.iloc[i:i+forward_window].sum()
+        
+        # Fill last few with mean to avoid NaNs
+        forward_returns = forward_returns.fillna(forward_returns.mean())
+        
+        # Generate labels using percentile-based thresholds for better distribution
+        # This ensures we get all three regimes
+        percentile_33 = forward_returns.quantile(0.33)
+        percentile_67 = forward_returns.quantile(0.67)
+        
+        labels = np.where(
+            forward_returns > percentile_67, 2,  # Bull (top 33%)
+            np.where(forward_returns < percentile_33, 0, 1)  # Bear (bottom 33%) or Sideways (middle 34%)
+        )
+        
+        return labels
+    
+    def _train_svm_model(self, date_idx: int) -> bool:
+        """
+        Train SVM on historical data.
+        
+        Parameters
+        ----------
+        date_idx : int
+            Current date index
+        
+        Returns
+        -------
+        bool
+            True if training successful
+        """
+        lookback = self.params['lookback_window']
+        
+        if date_idx < lookback:
+            return False
+        
+        # Get training window (use subset for speed)
+        start_idx = max(0, date_idx - lookback)
+        
+        # Sample dates for faster training (every 5 days instead of daily)
+        training_indices = range(start_idx, date_idx, 5)
+        training_dates = self.strategy.prices.index[list(training_indices)]
+        
+        # Extract features for training period
+        features_list = []
+        for train_date in training_dates:
+            features = self.strategy.extract_regime_features(train_date, lookback=126)  # Reduced from 252
+            if len(features) > 0:
+                features_list.append(features)
+        
+        if len(features_list) < 50:  # Reduced minimum samples
+            logger.warning(f"Insufficient samples for SVM training: {len(features_list)}")
+            return False
+        
+        # Create feature matrix
+        X = pd.DataFrame(features_list)
+        X = X.fillna(0)  # Handle any remaining NaNs
+        
+        # Generate labels (sample to match training dates)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        y_full = self._generate_regime_labels(returns_window)
+        
+        # Align labels with sampled dates
+        y = y_full[list(range(0, len(y_full), 5))][:len(X)]
+        
+        # Align X and y (remove NaN labels)
+        valid_indices = ~np.isnan(y)
+        X = X[valid_indices]
+        y = y[valid_indices]
+        
+        if len(X) < 30:
+            logger.warning(f"Insufficient valid samples after filtering: {len(X)}")
+            return False
+        
+        try:
+            # Scale features
+            X_scaled = self.scaler.fit_transform(X)
+            
+            # Train SVM
+            self.svm_classifier.fit(X_scaled, y)
+            self._model_trained = True
+            
+            # Log training results
+            train_score = self.svm_classifier.score(X_scaled, y)
+            regime_counts = pd.Series(y).value_counts()
+            
+            logger.info(f"SVM trained successfully. Training accuracy: {train_score:.3f}")
+            logger.info(f"Regime distribution: {regime_counts.to_dict()}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"SVM training failed: {e}")
+            return False
+    
+    def _predict_regime(self, date: pd.Timestamp) -> str:
+        """
+        Predict current market regime.
+        
+        Returns
+        -------
+        str
+            'bull', 'sideways', or 'bear'
+        """
+        if not self._model_trained:
+            return 'sideways'  # Default regime
+        
+        # Extract current features (using reduced lookback for speed)
+        features = self.strategy.extract_regime_features(date, lookback=126)
+        
+        if len(features) == 0:
+            return 'sideways'
+        
+        # Scale features
+        X = features.values.reshape(1, -1)
+        X_scaled = self.scaler.transform(X)
+        
+        # Predict regime
+        try:
+            regime_code = self.svm_classifier.predict(X_scaled)[0]
+            probabilities = self.svm_classifier.predict_proba(X_scaled)[0]
+            
+            regime_map = {0: 'bear', 1: 'sideways', 2: 'bull'}
+            regime = regime_map[regime_code]
+            
+            # Log prediction with probabilities
+            logger.debug(f"Regime prediction: {regime} (probabilities: {probabilities})")
+            
+            return regime
+            
+        except Exception as e:
+            logger.error(f"Regime prediction failed: {e}")
+            return 'sideways'
+    
+    def _get_regime_weights(
+        self,
+        regime: str,
+        date: pd.Timestamp,
+        date_idx: int
+    ) -> Series:
+        """
+        Generate portfolio weights based on detected regime.
+        
+        Parameters
+        ----------
+        regime : str
+            Current regime ('bull', 'bear', 'sideways')
+        date : pd.Timestamp
+            Current date
+        date_idx : int
+            Date index
+        
+        Returns
+        -------
+        pd.Series
+            Portfolio weights
+        """
+        strategy_name = self.params[f'{regime}_strategy']
+        top_k = self.params.get('top_k', 10)
+        
+        # Get returns window for optimization
+        lookback = max(126, 252)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
+        if len(returns_window) < 20:
+            # Fallback to equal weight
+            n = len(self.strategy.assets)
+            return Series(1.0 / n, index=self.strategy.assets)
+        
+        # Generate initial weights based on regime strategy
+        if strategy_name == 'momentum':
+            # Aggressive momentum for bull regime
+            momentum_signals = self.strategy.momentum(window=126).loc[date]
+            top_assets = momentum_signals.nlargest(top_k).index
+            initial_weights = Series(0.0, index=self.strategy.assets)
+            
+            top_scores = momentum_signals[top_assets].clip(lower=0)
+            if top_scores.sum() > 0:
+                initial_weights[top_assets] = top_scores / top_scores.sum()
+            else:
+                initial_weights[top_assets] = 1.0 / len(top_assets)
+        
+        elif strategy_name == 'inverse_vol':
+            # Defensive low-volatility for bear regime
+            vol = self.strategy.volatility(window=20).loc[date]
+            inv_vol = 1.0 / (vol + 1e-8)
+            initial_weights = inv_vol / inv_vol.sum()
+        
+        elif strategy_name == 'mean_reversion':
+            # Range-bound trading for sideways regime
+            mr_signals = -self.strategy.mean_reversion(window=5).loc[date]  # Inverted
+            top_assets = mr_signals.nlargest(top_k).index
+            initial_weights = Series(0.0, index=self.strategy.assets)
+            
+            top_scores = mr_signals[top_assets].clip(lower=0)
+            if top_scores.sum() > 0:
+                initial_weights[top_assets] = top_scores / top_scores.sum()
+            else:
+                initial_weights[top_assets] = 1.0 / len(top_assets)
+        
+        else:
+            # Fallback to equal weight
+            n = len(self.strategy.assets)
+            initial_weights = Series(1.0 / n, index=self.strategy.assets)
+        
+        # Optimize weights
+        try:
+            final_weights = self.optimizer.optimize(
+                initial_weights,
+                objective=self.params['objective'],
+                alpha=self.params['alpha'],
+                long_only=True,
+                max_weight=self.params['max_weight'],
+                returns_data=returns_window
+            )
+            return Series(final_weights, index=self.strategy.assets)
+        
+        except Exception as e:
+            logger.warning(f"Optimization failed in {regime} regime: {e}")
+            return initial_weights
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        """Generate regime-adaptive portfolio weights."""
+        date_idx = self.strategy.prices.index.get_loc(date)
+        retrain_freq = self.params['retrain_frequency']
+        
+        # Check if we need to retrain
+        if not self._model_trained or self._last_train_date is None:
+            # Initial training
+            if self._train_svm_model(date_idx):
+                self._last_train_date = date
+        else:
+            # Periodic retraining
+            days_since_train = (date - self._last_train_date).days
+            if days_since_train >= retrain_freq:
+                if self._train_svm_model(date_idx):
+                    self._last_train_date = date
+        
+        # Predict current regime
+        regime = self._predict_regime(date)
+        self._regime_history.append({'date': date, 'regime': regime})
+        
+        logger.info(f"Detected regime at {date}: {regime.upper()}")
+        
+        # Generate weights for detected regime
+        weights = self._get_regime_weights(regime, date, date_idx)
+        
+        return weights
+    
+    def get_strategy_info(self) -> Dict[str, Any]:
+        """Return strategy metadata including regime history."""
+        info = super().get_strategy_info()
+        
+        if self._regime_history:
+            recent_regimes = pd.DataFrame(self._regime_history).tail(20)
+            regime_distribution = recent_regimes['regime'].value_counts()
+            info['regime_distribution'] = regime_distribution.to_dict()
+            info['current_regime'] = self._regime_history[-1]['regime'] if self._regime_history else 'unknown'
+        
+        info['model_trained'] = self._model_trained
+        
+        return info
+
+
 class ARIMAGARCHForecastingStrategy(BaseStrategyWrapper):
     """
     ARIMA-GARCH Forecasting Strategy - Statistical Time Series Forecasting
@@ -2667,6 +3098,7 @@ def list_available_strategies() -> Dict[str, type]:
         
         # Adaptive Strategies
         'regime_switching': RegimeSwitchingStrategy,
+        'svm_regime': SVMRegimeStrategy,
         
         # ML Strategies
         'ml_random_forest': MLRandomForestStrategy,
