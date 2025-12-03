@@ -643,7 +643,7 @@ if __name__ == "__main__":
     
     from src.data_loader import load_data
     from src.feature_engineering import make_features
-    from src.forecasting import forecast_returns_volatility
+    # from src.forecasting import forecast_returns_volatility  # Removed: forecasting module deprecated
     from src.optimizer import optimize_portfolio_forecasted
     
     # Load sample data

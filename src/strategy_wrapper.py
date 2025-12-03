@@ -2535,11 +2535,10 @@ class ARIMAGARCHForecastingStrategy(BaseStrategyWrapper):
     def _ensure_forecaster(self):
         """Lazy initialization of forecaster."""
         if self._forecaster is None:
-            from src.forecasting import ARIMAGARCHForecaster
-            self._forecaster = ARIMAGARCHForecaster(
-                arima_order=self.params['arima_order'],
-                garch_order=self.params['garch_order'],
-                auto_order=self.params['auto_order']
+            # from src.forecasting import ARIMAGARCHForecaster  # Removed: forecasting module deprecated
+            raise NotImplementedError(
+                "ARIMAGARCHStrategy requires forecasting module which has been removed. "
+                "Please use ARMAForecastStrategy instead."
             )
     
     def get_weights(
@@ -2676,7 +2675,7 @@ def list_available_strategies() -> Dict[str, type]:
         
         # Time Series Strategies
         'arma_forecast': ARMAForecastStrategy,
-        'arima_garch': ARIMAGARCHForecastingStrategy,
+        # 'arima_garch': ARIMAGARCHForecastingStrategy,  # Removed: requires forecasting module
         'linear_regression': LinearRegressionStrategy,
         
         # Extended Strategies

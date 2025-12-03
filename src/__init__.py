@@ -94,7 +94,7 @@ from .evaluator import Evaluator, PerformanceEvaluator, evaluate_performance
 # Data and utilities (EXISTING)
 from .data_loader import DataLoader, load_data
 from .feature_engineering import FeatureEngineer, make_features
-from .forecasting import ARIMAGARCHForecaster, forecast_returns_volatility
+# from .forecasting import ARIMAGARCHForecaster, forecast_returns_volatility  # Removed: forecasting module deprecated
 from .utils import TradingConfig, setup_logging
 
 __all__ = [

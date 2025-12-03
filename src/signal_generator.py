@@ -843,7 +843,7 @@ if __name__ == "__main__":
     
     from src.data_loader import load_data
     from src.feature_engineering import make_features
-    from src.forecasting import forecast_returns_volatility
+    # from src.forecasting import forecast_returns_volatility  # Removed: forecasting module deprecated
     
     # Load sample data
     tickers = ['AAPL', 'MSFT', 'SPY']
@@ -855,8 +855,8 @@ if __name__ == "__main__":
         features = make_features(price_data)
         
         # Generate forecasts
-        mean_forecast, vol_forecast = forecast_returns_volatility(
-            features['returns'], auto_order=False, steps=1)
+        # mean_forecast, vol_forecast = forecast_returns_volatility(
+        #     features['returns'], auto_order=False, steps=1)
         
         # Prepare data for signal generation
         signal_data = {
