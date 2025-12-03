@@ -2166,6 +2166,202 @@ class LinearRegressionStrategy(BaseStrategyWrapper):
         return weights
 
 
+class ARIMAGARCHForecastingStrategy(BaseStrategyWrapper):
+    """
+    ARIMA-GARCH Forecasting Strategy - Statistical Time Series Forecasting
+    
+    Uses ARIMA models to forecast expected returns and GARCH models to
+    forecast volatility. Combines both to create risk-adjusted portfolio weights.
+    This is a sophisticated statistical approach that captures:
+    - Temporal dependencies (ARIMA)
+    - Volatility clustering (GARCH)
+    - Risk-adjusted return forecasts
+    
+    Properties:
+    - Statistical time series forecasting
+    - Captures autocorrelation and heteroskedasticity
+    - Risk-adjusted portfolio construction
+    - Automatic model order selection
+    
+    Parameters
+    ----------
+    strategy : Strategy
+        Signal generator (used for data access)
+    optimizer : PortfolioOptimizer
+        Risk optimizer for final weight optimization
+    arima_order : tuple, default=(1, 0, 1)
+        (p, d, q) order for ARIMA model
+    garch_order : tuple, default=(1, 1)
+        (p, q) order for GARCH model
+    auto_order : bool, default=True
+        Whether to automatically select optimal orders
+    forecast_steps : int, default=1
+        Number of steps ahead to forecast
+    min_history : int, default=252
+        Minimum history required for forecasting (1 year)
+    use_optimizer : bool, default=True
+        Whether to use optimizer for final weights
+    objective : str, default='cvar'
+        Optimization objective if using optimizer
+    alpha : float, default=0.95
+        CVaR confidence level
+    max_weight : float, default=0.3
+        Maximum weight per asset
+    
+    References
+    ----------
+    Box, G. E., Jenkins, G. M., & Reinsel, G. C. (2015).
+    "Time series analysis: Forecasting and control."
+    
+    Bollerslev, T. (1986).
+    "Generalized autoregressive conditional heteroskedasticity."
+    Journal of Econometrics, 31(3), 307-327.
+    
+    Examples
+    --------
+    >>> arima_garch = ARIMAGARCHForecastingStrategy(
+    ...     strategy, optimizer,
+    ...     auto_order=True,
+    ...     forecast_steps=1,
+    ...     use_optimizer=True
+    ... )
+    """
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        arima_order: tuple = (1, 0, 1),
+        garch_order: tuple = (1, 1),
+        auto_order: bool = True,
+        forecast_steps: int = 1,
+        min_history: int = 252,
+        use_optimizer: bool = True,
+        objective: str = 'cvar',
+        alpha: float = 0.95,
+        max_weight: float = 0.3
+    ):
+        super().__init__(
+            "ARIMA-GARCH Forecasting",
+            strategy,
+            optimizer,
+            arima_order=arima_order,
+            garch_order=garch_order,
+            auto_order=auto_order,
+            forecast_steps=forecast_steps,
+            min_history=min_history,
+            use_optimizer=use_optimizer,
+            objective=objective,
+            alpha=alpha,
+            max_weight=max_weight
+        )
+        self._forecaster = None
+        self._last_fit_date = None
+        
+    def _ensure_forecaster(self):
+        """Lazy initialization of forecaster."""
+        if self._forecaster is None:
+            from src.forecasting import ARIMAGARCHForecaster
+            self._forecaster = ARIMAGARCHForecaster(
+                arima_order=self.params['arima_order'],
+                garch_order=self.params['garch_order'],
+                auto_order=self.params['auto_order']
+            )
+    
+    def get_weights(
+        self,
+        date: pd.Timestamp,
+        portfolio_state: PortfolioState
+    ) -> Series:
+        """Generate weights based on ARIMA-GARCH forecasts."""
+        self._ensure_forecaster()
+        
+        # Get historical returns up to current date
+        returns_history = self.strategy.get_return_matrix(end_date=date)
+        
+        # Check if we have enough history
+        min_history = self.params['min_history']
+        if len(returns_history) < min_history:
+            logger.warning(
+                f"Insufficient history for ARIMA-GARCH: {len(returns_history)} < {min_history}"
+            )
+            # Fall back to equal weights
+            return Series(
+                1.0 / len(self.strategy.assets),
+                index=self.strategy.assets
+            )
+        
+        try:
+            # Fit models if not fitted or if enough time has passed
+            refit_needed = (
+                self._last_fit_date is None or
+                (date - self._last_fit_date).days >= 21  # Refit every month
+            )
+            
+            if refit_needed:
+                logger.info(f"Fitting ARIMA-GARCH models at {date.date()}")
+                self._forecaster.fit(returns_history)
+                self._last_fit_date = date
+            
+            # Generate forecasts
+            mean_forecasts, vol_forecasts = self._forecaster.forecast_portfolio(
+                returns_history,
+                steps=self.params['forecast_steps']
+            )
+            
+            # Use first step forecasts
+            expected_returns = mean_forecasts.iloc[0]
+            expected_volatility = vol_forecasts.iloc[0]
+            
+            # Calculate risk-adjusted forecasts (Sharpe-like ratio)
+            risk_adjusted = expected_returns / (expected_volatility + 1e-8)
+            
+            # Convert to weights
+            if self.params['use_optimizer'] and self.optimizer is not None:
+                # Use optimizer with forecasted returns
+                try:
+                    weights = self.optimizer.optimize(
+                        objective=self.params['objective'],
+                        expected_returns=expected_returns,
+                        alpha=self.params.get('alpha', 0.95),
+                        max_weight=self.params.get('max_weight', 0.3)
+                    )
+                    return Series(weights, index=self.strategy.assets)
+                except Exception as e:
+                    logger.warning(f"Optimizer failed, using simple weights: {e}")
+            
+            # Simple weight allocation based on risk-adjusted forecasts
+            # Only invest in positive risk-adjusted forecasts
+            positive_adjusted = risk_adjusted.clip(lower=0)
+            
+            if positive_adjusted.sum() > 0:
+                weights = positive_adjusted / positive_adjusted.sum()
+            else:
+                # If all forecasts are negative, equal weight
+                weights = Series(
+                    1.0 / len(self.strategy.assets),
+                    index=self.strategy.assets
+                )
+            
+            # Apply max weight constraint
+            max_weight = self.params.get('max_weight', 0.3)
+            weights = weights.clip(upper=max_weight)
+            
+            # Renormalize after clipping
+            if weights.sum() > 0:
+                weights = weights / weights.sum()
+            
+            return weights
+            
+        except Exception as e:
+            logger.error(f"Error in ARIMA-GARCH forecasting: {e}")
+            # Fall back to equal weights
+            return Series(
+                1.0 / len(self.strategy.assets),
+                index=self.strategy.assets
+            )
+
+
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
@@ -2199,7 +2395,8 @@ def list_available_strategies() -> Dict[str, type]:
         'time_series_momentum': TimeSeriesMomentumStrategy,
         'ma_crossover': MovingAverageCrossoverStrategy,
         'markowitz_mvo': MarkowitzMVOStrategy,
-        'linear_regression': LinearRegressionStrategy
+        'linear_regression': LinearRegressionStrategy,
+        'arima_garch': ARIMAGARCHForecastingStrategy
     }
 
 

@@ -72,6 +72,7 @@ from .strategy_wrapper import (
     MovingAverageCrossoverStrategy,
     MarkowitzMVOStrategy,
     LinearRegressionStrategy,
+    ARIMAGARCHForecastingStrategy,
     # Utility functions
     list_available_strategies,
     create_strategy
@@ -120,6 +121,7 @@ __all__ = [
     'MovingAverageCrossoverStrategy',
     'MarkowitzMVOStrategy',
     'LinearRegressionStrategy',
+    'ARIMAGARCHForecastingStrategy',
     # Utility functions
     'list_available_strategies',
     'create_strategy',
