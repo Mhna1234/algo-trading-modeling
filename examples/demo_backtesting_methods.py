@@ -21,7 +21,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-from src.data_loader import load_data
+from src.data_loader import load_preprocessed_data
 from src.backtesting_methods import BacktestingMethods, BacktestMethodResult
 from src.portfolio_engine import PortfolioEngine
 from src.strategy_wrapper import MomentumStrategy
@@ -142,19 +142,21 @@ def main():
     print_section("ADVANCED BACKTESTING METHODS DEMO")
     
     # Configuration
-    tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'JPM', 'V', 'JNJ']
     start_date = '2020-01-01'
     end_date = '2023-12-31'
     
     print(f"\nConfiguration:")
-    print(f"  Tickers: {', '.join(tickers)}")
     print(f"  Date Range: {start_date} to {end_date}")
     print(f"  Initial Capital: $1,000,000")
+    print(f"  Data Source: Pre-processed S3 data (2015-11 to 2025-11)")
     
-    # Load data
-    print("\nLoading data...")
+    # Load pre-processed data
+    print("\nLoading pre-processed data...")
     try:
-        full_data, price_data = load_data(tickers, start_date, end_date)
+        full_data, price_data = load_preprocessed_data(
+            start=start_date,
+            end=end_date
+        )
         print(f"  Loaded {len(price_data)} days of data for {len(price_data.columns)} assets")
         print(f"  Price data shape: {price_data.shape}")
         # Handle MultiIndex or regular columns

@@ -294,6 +294,79 @@ def load_data(tickers: List[str],
     return loader.load_data(tickers, start, end)
 
 
+def load_preprocessed_data(data_dir: str = "data",
+                           start: Optional[str] = None,
+                           end: Optional[str] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Load pre-processed data from disk (prepared by scripts/prepare_data.py).
+    
+    This function loads the full dataset that was already downloaded from S3
+    and processed. It's much faster than downloading data from yfinance.
+    
+    Args:
+        data_dir: Directory containing processed data
+        start: Optional start date to filter data (format: 'YYYY-MM-DD')
+        end: Optional end date to filter data (format: 'YYYY-MM-DD')
+        
+    Returns:
+        Tuple of (full_data, price_data)
+        - full_data: Complete OHLCV data with risk-free rate
+        - price_data: Adjusted close prices only
+        
+    Example:
+        >>> # Load all pre-processed data
+        >>> full_data, price_data = load_preprocessed_data()
+        >>> 
+        >>> # Load specific date range
+        >>> full_data, price_data = load_preprocessed_data(
+        ...     start='2020-01-01', 
+        ...     end='2023-12-31'
+        ... )
+    """
+    data_path = Path(data_dir)
+    processed_dir = data_path / "processed"
+    
+    # Look for the latest pre-processed files
+    full_data_file = processed_dir / "full_data_2015-11_2025-11.csv"
+    price_data_file = processed_dir / "price_data_2015-11_2025-11.csv"
+    
+    if not full_data_file.exists() or not price_data_file.exists():
+        raise FileNotFoundError(
+            f"Pre-processed data not found in {processed_dir}\n"
+            "Please run: python scripts/prepare_data.py"
+        )
+    
+    logger.info(f"Loading pre-processed data from {processed_dir}")
+    
+    # Load data
+    try:
+        # Load full data with MultiIndex columns
+        full_data = pd.read_csv(full_data_file, index_col=0, parse_dates=True, header=[0, 1])
+    except Exception:
+        # Fallback: try loading without MultiIndex
+        full_data = pd.read_csv(full_data_file, index_col=0, parse_dates=True)
+    
+    # Load price data
+    price_data = pd.read_csv(price_data_file, index_col=0, parse_dates=True)
+    
+    # Filter by date range if specified
+    if start is not None:
+        start_date = pd.to_datetime(start)
+        full_data = full_data[full_data.index >= start_date]
+        price_data = price_data[price_data.index >= start_date]
+    
+    if end is not None:
+        end_date = pd.to_datetime(end)
+        full_data = full_data[full_data.index <= end_date]
+        price_data = price_data[price_data.index <= end_date]
+    
+    logger.info(f"Loaded {len(price_data)} rows with {len(price_data.columns)} tickers")
+    if start or end:
+        logger.info(f"Filtered to date range: {price_data.index.min()} to {price_data.index.max()}")
+    
+    return full_data, price_data
+
+
 if __name__ == "__main__":
     # Example usage
     tickers = ['AAPL', 'MSFT', 'SPY', 'QQQ']

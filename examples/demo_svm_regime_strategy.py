@@ -27,7 +27,7 @@ import seaborn as sns
 from datetime import datetime
 import logging
 
-from src.data_loader import load_data
+from src.data_loader import load_preprocessed_data
 from src.signal_generator import StrategySignalGenerator
 from src.optimizer import PortfolioOptimizer
 from src.portfolio_engine import PortfolioEngine
@@ -85,8 +85,8 @@ def run_svm_regime_demo():
     end_date = '2024-01-01'
     
     try:
-        ticker_to_name, prices = load_data(tickers, start_date, end_date)
-        print(f"✓ Loaded {len(prices.columns)} assets")
+        full_data, prices = load_preprocessed_data(start=start_date, end=end_date)
+        print(f"✓ Loaded {len(prices.columns)} assets (pre-processed S3 data)")
         print(f"✓ Date range: {prices.index[0].date()} to {prices.index[-1].date()}")
         print(f"✓ Total trading days: {len(prices)}")
         print()

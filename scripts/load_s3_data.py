@@ -21,6 +21,9 @@ Examples:
   # Load a date range
   python scripts/load_s3_data.py --start-year 2020 --start-month 1 --end-year 2020 --end-month 3
   
+  # Load full available range (Nov 2015 to Nov 2025)
+  python scripts/load_s3_data.py --start-year 2015 --start-month 11 --end-year 2025 --end-month 11
+  
   # Specify custom output path
   python scripts/load_s3_data.py --year 2020 --month 1 --output data/raw/jan2020.csv
         """

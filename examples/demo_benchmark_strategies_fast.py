@@ -35,7 +35,7 @@ import logging
 from typing import Dict, List, Optional
 
 # Import project modules
-from src.data_loader import load_data
+from src.data_loader import load_preprocessed_data
 from src.portfolio_engine import PortfolioEngine
 from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
@@ -216,17 +216,16 @@ def run_benchmark_comparison_fast(use_10_years=False):
     # ========================================================================
     # 1. LOAD DATA
     # ========================================================================
-    print("[1/5] Loading data...")
+    print("[1/5] Loading pre-processed data...")
     logger.info("Starting data load")
     
-    tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'JPM']
-    
     try:
-        # load_data returns (full_data, price_data) tuple
-        _, prices = load_data(tickers, start_date, end_date)
-        logger.info(f"Loaded {len(tickers)} assets from {start_date} to {end_date}")
-        print(f"Loaded {len(tickers)} assets from {start_date} to {end_date}")
-        print(f"Data shape: {prices.shape} ({len(prices)} trading days)")
+        # load_preprocessed_data returns (full_data, price_data) tuple
+        _, prices = load_preprocessed_data(start=start_date, end=end_date)
+        logger.info(f"Loaded {len(prices.columns)} assets from {start_date} to {end_date}")
+        print(f"Loaded {len(prices.columns)} assets from {start_date} to {end_date}")
+        print(f"Data shape: {prices.shape}")
+        print(f"Data source: Pre-processed S3 data (2015-11 to 2025-11)")
     except Exception as e:
         logger.error(f"Failed to load data: {e}")
         raise

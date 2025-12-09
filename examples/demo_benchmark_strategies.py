@@ -3,7 +3,7 @@ Demo: Benchmark Strategies Comparison - Enhanced
 ==================================================
 
 This demo compares up to 12 key portfolio strategies with daily rebalancing
-over a 10-year period (2014-2024).
+over a ~9-year period (2015-2024).
 
 ENHANCEMENTS:
 - Smart strategy selection (MAX 12 strategies)
@@ -13,7 +13,7 @@ ENHANCEMENTS:
 - Robust metric computation
 
 Configuration:
-- Period: 2014-01-01 to 2024-01-01 (10 years)
+- Period: 2015-11-01 to 2024-12-31 (~9 years)
 - Rebalancing: Daily
 - Initial capital: $100,000
 - Transaction costs: 0.1%
@@ -33,7 +33,7 @@ import logging
 from typing import Dict, List, Optional
 
 # Import project modules
-from src.data_loader import load_data
+from src.data_loader import load_preprocessed_data
 from src.portfolio_engine import PortfolioEngine
 from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
@@ -181,14 +181,14 @@ def create_strategy_instances(
 def run_benchmark_comparison():
     """Run comprehensive benchmark comparison of up to 12 strategies."""
     
-    start_date = '2014-01-01'
-    end_date = '2024-01-01'
+    start_date = '2015-11-30'
+    end_date = '2024-12-31'
     
     print("=" * 80)
     print("BENCHMARK STRATEGIES COMPARISON - ENHANCED")
     print("=" * 80)
-    print(f"Period: {start_date} to {end_date} (10 years)")
-    print("Rebalancing: Daily")
+    print(f"Period: {start_date} to {end_date} (~9 years)")
+    print("Rebalancing: Weekly")
     print("Initial Capital: $100,000")
     print("Transaction Costs: 0.0% (zero costs)")
     print(f"Maximum Strategies: 12 (currently {len(ENABLED_STRATEGIES)} enabled)")
@@ -198,17 +198,16 @@ def run_benchmark_comparison():
     # ========================================================================
     # 1. LOAD DATA
     # ========================================================================
-    print("[1/5] Loading data...")
+    print("[1/5] Loading pre-processed data...")
     logger.info("Starting data load")
     
-    tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'JPM']
-    
     try:
-        # load_data returns (full_data, price_data) tuple
-        _, prices = load_data(tickers, start_date, end_date)
-        logger.info(f"Loaded {len(tickers)} assets from {start_date} to {end_date}")
-        print(f"Loaded {len(tickers)} assets from {start_date} to {end_date}")
+        # load_preprocessed_data returns (full_data, price_data) tuple
+        _, prices = load_preprocessed_data(start=start_date, end=end_date)
+        logger.info(f"Loaded {len(prices.columns)} assets from {start_date} to {end_date}")
+        print(f"Loaded {len(prices.columns)} assets from {start_date} to {end_date}")
         print(f"Data shape: {prices.shape}")
+        print(f"Data source: Pre-processed S3 data (2015-11 to 2025-11)")
     except Exception as e:
         logger.error(f"Failed to load data: {e}")
         raise
@@ -283,21 +282,21 @@ def run_benchmark_comparison():
             
             result = engine.run_backtest(
                 strategy_wrapper=strat,
-                rebalance_freq='D',  # Daily rebalancing
-                start_date='2014-01-01',
-                end_date='2024-01-01'
+                rebalance_freq='W',  # Weekly rebalancing
+                start_date=start_date,
+                end_date=end_date
             )
             results[name] = result
             
             final_value = result.equity_curve.iloc[-1]
             total_return = (final_value / 100000 - 1) * 100
             elapsed = time.time() - start_time
-            print(f"✓ Return: {total_return:+.2f}% (Time: {elapsed:.1f}s)")
+            print(f"[OK] Return: {total_return:+.2f}% (Time: {elapsed:.1f}s)")
             logger.info(f"✓ {name} completed successfully: {total_return:+.2f}%")
             
         except Exception as e:
             elapsed = time.time() - start_time
-            print(f"✗ FAILED: {str(e)[:50]}... (Time: {elapsed:.1f}s)")
+            print(f"[FAIL] FAILED: {str(e)[:50]}... (Time: {elapsed:.1f}s)")
             logger.error(f"✗ {name} failed: {e}")
             failed_strategies.append(name)
     
