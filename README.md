@@ -5,7 +5,7 @@ A comprehensive Python-based algorithmic trading framework featuring advanced po
 ## 🎯 Overview
 
 This project provides a production-ready algorithmic trading system with:
-- **21 pre-built trading strategies** (momentum, mean reversion, machine learning-based, etc.)
+- **22 pre-built trading strategies** (momentum, mean reversion, machine learning-based, etc.)
 - **5 advanced backtesting methods** (walk-forward, combinatorial, Monte Carlo, etc.)
 - **Portfolio optimization engine** with risk management
 - **Real-time performance metrics** and comprehensive evaluation
@@ -127,35 +127,41 @@ streamlit run dashboard.py
 
 ## 📊 Available Strategies
 
-The system includes 21 production-ready strategies organized by category:
+The system includes 22 production-ready strategies organized by category:
 
-### Momentum Strategies
-- Classic Momentum
-- Dual Momentum (Absolute + Relative)
-- Multi-factor Momentum
+### Basic Strategies
+- Equal Weight (1/N baseline)
+- Buy and Hold (benchmark)
+- Inverse Volatility (risk parity)
+
+### Momentum & Trend
+- Momentum Strategy (multi-period)
+- Time Series Momentum (12-month)
+- Moving Average Crossover (50/200 day)
 
 ### Mean Reversion
-- Mean Reversion Strategy
-- Pairs Trading
-- Statistical Arbitrage
+- Mean Reversion Strategy (Z-score based)
 
-### Machine Learning
-- SVM Regime Detection
-- Random Forest Signals
-- Online Learning (River)
-- Reinforcement Learning (PPO)
+### Risk-Based Optimization
+- Global Minimum Variance Portfolio (GMVP)
+- Global Maximum Return Portfolio (GMRP)
+- CVaR Minimization
+- Maximum Diversification
+- Maximum Decorrelation
 
-### Technical Analysis
-- Moving Average Crossover
-- RSI Strategy
-- Bollinger Bands
-- MACD Strategy
+### Machine Learning & Factor-Based
+- Linear Regression (factor-based)
+- Multi-Factor ML
+- Random Forest Strategy
+- Gradient Boosting Strategy
+- SVM Regime Classification
 
-### Advanced
-- Volatility Targeting
-- Risk Parity
-- Kelly Criterion Sizing
-- Ensemble Strategy
+### Advanced Strategies
+- Regime Switching (volatility-based)
+- ARMA Forecast
+- ARIMA-GARCH (time series + volatility)
+- Quintile Factor
+- Markowitz MVO (mean-variance)
 
 See `docs/STRATEGIES.md` for detailed descriptions and parameters.
 

@@ -1,8 +1,8 @@
 # Strategy Guide - Trading Strategies v3.1
 
-This guide provides detailed information about the 21+ validated trading strategies in the Portfolio Engine.
+This guide provides detailed information about the 22 validated trading strategies in the Portfolio Engine.
 
-## Strategy Overview (21+ Production-Ready Strategies)
+## Strategy Overview (22 Production-Ready Strategies)
 
 All strategies have been validated with comprehensive testing (5-year monthly backtests, 2019-2024) and show positive returns with proper transaction cost modeling. All strategies are implemented in `src/strategy_wrapper.py`.
 

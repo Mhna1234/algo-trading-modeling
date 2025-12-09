@@ -68,13 +68,9 @@ Restructured the project to use a centralized data preparation workflow, elimina
 - `data/processed/processed_data_2019-01-01_2024-01-01.csv`
 - `data/processed/processed_data_2020-01-01_2023-12-31.csv`
 
-#### Removed demo results:
-- `visualizations/benchmark_strategies_comparison_enhanced.csv`
-- `visualizations/benchmark_strategies_comparison_enhanced.png`
-- `visualizations/benchmark_strategies_fast_5years_enhanced.csv`
-- `visualizations/benchmark_strategies_fast_5years_enhanced.png`
-- `visualizations/svm_regime_strategy_comparison.csv`
-- `visualizations/svm_regime_strategy_analysis.png`
+#### Demo results status:
+- Some visualization files have been regenerated and exist in `visualizations/` folder
+- Current files: `benchmark_strategies_comparison_enhanced.csv/png`, `benchmark_strategies_fast_5years_enhanced.csv/png`
 
 ## Workflow Changes
 

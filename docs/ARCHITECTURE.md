@@ -12,7 +12,7 @@ The Portfolio Engine is a strategy-agnostic portfolio management system designed
 7. **Data Management** (`data_loader.py` - DataLoader class)
 
 **Current Version:** v2.2.0 (December 2025)
-- **21 production-ready strategies** in `src/strategy_wrapper.py`
+- **22 production-ready strategies** in `src/strategy_wrapper.py`
 - **5 advanced backtesting methods** in `src/backtesting_methods.py`
 - **Comprehensive transaction cost modeling** (slippage + fees)
 - **Real-time metric calculation** during backtests
