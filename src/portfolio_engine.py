@@ -533,6 +533,111 @@ class PortfolioEngine:
         self._transaction_costs_series.loc[date] = transaction_costs
         self._slippage_costs_series.loc[date] = slippage_costs
     
+    def _execute_int_rebalance(self, date: pd.Timestamp, target_weights: Series):
+        """
+        Execute rebalancing trades with INTEGER share constraints.
+        
+        This method enforces realistic trading constraints where only whole shares
+        can be purchased. Uses a greedy algorithm to allocate remaining budget
+        after floor allocation, prioritizing assets with largest fractional parts.
+        Cash automatically absorbs the residual from integer rounding.
+        
+        Parameters
+        ----------
+        date : pd.Timestamp
+            Rebalance date
+        target_weights : pd.Series
+            Target weights for risky assets (excluding cash)
+        
+        Notes
+        -----
+        Algorithm:
+        1. Calculate target shares from weights (fractional)
+        2. Apply floor() to get conservative integer allocation
+        3. Calculate remaining budget
+        4. Greedily add shares where fractional part was highest
+        5. Cash absorbs leftover capital from integer constraints
+        
+        This approach works with ANY strategy, whether or not the strategy
+        is aware of integer constraints.
+        """
+        # Get current prices
+        current_prices = self._prices.loc[date]
+        
+        # Calculate target positions in dollars
+        target_weights = target_weights.clip(lower=0)  # No shorts
+        target_weights_sum = target_weights.sum()
+        
+        if target_weights_sum > 1.0:
+            target_weights = target_weights / target_weights_sum
+        
+        # Target dollar amounts
+        target_dollars = target_weights * self._current_equity
+        target_shares_float = target_dollars / current_prices
+        
+        # Apply integer constraint: Floor + Greedy allocation
+        target_shares = np.floor(target_shares_float)
+        
+        # Calculate remaining budget after floor allocation
+        used_capital = (target_shares * current_prices).sum()
+        remaining_budget = self._current_equity - used_capital
+        
+        # Greedily add shares where we're furthest below target
+        # Priority = fractional part (how close we were to rounding up)
+        fractional_parts = target_shares_float - target_shares
+        
+        # Sort by fractional part (descending) - assets closest to rounding up get priority
+        priority_order = fractional_parts.sort_values(ascending=False).index
+        
+        for asset in priority_order:
+            price = current_prices[asset]
+            # If we can afford one more share and we had significant fractional part
+            if remaining_budget >= price and fractional_parts[asset] > 0.01:
+                target_shares[asset] += 1
+                remaining_budget -= price
+        
+        # Recalculate actual used capital with integer shares
+        used_capital = (target_shares * current_prices).sum()
+        
+        # Calculate trades
+        trades_shares = target_shares - self._current_shares
+        trades_dollars = trades_shares * current_prices
+        
+        # Calculate turnover (sum of absolute trades as fraction of equity)
+        turnover = trades_dollars.abs().sum() / self._current_equity
+        
+        # Calculate costs
+        transaction_cost_rate = self.transaction_cost_bps / 10000.0
+        slippage_rate = self.slippage_bps / 10000.0
+        
+        transaction_costs = turnover * self._current_equity * transaction_cost_rate
+        slippage_costs = turnover * self._current_equity * slippage_rate
+        total_costs = transaction_costs + slippage_costs
+        
+        # Execute trades - deduct costs from the portfolio
+        self._current_shares = target_shares
+        
+        # Cash = unused capital from integer constraints - transaction costs
+        self._current_cash = (self._current_equity - used_capital) - total_costs
+        
+        # Update equity after costs
+        self._current_equity = self._current_equity - total_costs
+        
+        # Update weights (recalculate actual weights after integer constraints)
+        position_values = self._current_shares * current_prices
+        total_value = position_values.sum() + self._current_cash
+        
+        asset_weights = position_values / total_value
+        self._current_weights = pd.concat([
+            asset_weights,
+            Series([self._current_cash / total_value], index=[self.cash_symbol])
+        ])
+        
+        # Record trades and costs
+        self._turnover_history.loc[date] = turnover
+        self._transaction_costs_series.loc[date] = transaction_costs
+        self._slippage_costs_series.loc[date] = slippage_costs
+    
     def _update_daily(self, date: pd.Timestamp, rebalance_weights: Optional[Series]):
         """Update portfolio value and metrics for current day."""
         # Get current prices
