@@ -35,6 +35,8 @@ algo-trading-modeling/
 │
 ├── examples/                     # Example scripts and demos
 │   ├── simple_example.py        # Quick start example
+│   ├── demo_12_strategies_fast.py    # Fast demo (6 months)
+│   ├── demo_12_strategies_full.py    # Full demo (10 years)
 │   ├── demo_benchmark_strategies.py
 │   ├── demo_backtesting_methods.py
 │   └── demo_svm_regime_strategy.py

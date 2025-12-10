@@ -16,24 +16,29 @@ Core Strategies:
 7. GlobalMinimumVarianceStrategy - Pure risk minimization (GMVP)
 8. GMRPStrategy - Global Maximum Return Portfolio
 
+Risk-Based Strategies:
+9. RiskParityStrategy - Equal risk contribution across assets
+10. SharpeMaximizationStrategy - Maximize risk-adjusted returns
+
 Machine Learning Strategies:
-9. MLRandomForestStrategy - ML return forecasting with Random Forest
-10. MLGradientBoostingStrategy - ML return forecasting with Gradient Boosting
-11. MultiFactorMLStrategy - Multi-factor combination with ML weighting
-12. LinearRegressionStrategy - Linear regression forecasting
+11. MLRandomForestStrategy - ML return forecasting with Random Forest
+12. MLGradientBoostingStrategy - ML return forecasting with Gradient Boosting
+13. MultiFactorMLStrategy - Multi-factor combination with ML weighting
+14. LinearRegressionStrategy - Linear regression forecasting
 
 Time Series Strategies:
-13. ARMAForecastStrategy - Time series forecasting (ARMA models)
-14. ARIMAGARCHForecastingStrategy - Advanced time series with volatility modeling
+15. ARMAForecastStrategy - Time series forecasting (ARMA models)
+16. ARIMAGARCHForecastingStrategy - Advanced time series with volatility modeling
 
 Extended Strategies:
-15. BuyAndHoldStrategy - Passive benchmark
-16. QuintileFactorStrategy - Factor-based quintile portfolios
-17. MaximumDiversificationStrategy - MDP
-18. MaximumDecorrelationStrategy - MDCP
-19. TimeSeriesMomentumStrategy - Individual asset momentum
-20. MovingAverageCrossoverStrategy - MA crossover signals
-21. MarkowitzMVOStrategy - Classic mean-variance optimization
+17. BuyAndHoldStrategy - Passive benchmark
+18. QuintileFactorStrategy - Factor-based quintile portfolios (momentum)
+19. QuintileLowVolatilityStrategy - Low volatility quintile portfolio
+20. MaximumDiversificationStrategy - MDP
+21. MaximumDecorrelationStrategy - MDCP
+22. TimeSeriesMomentumStrategy - Individual asset momentum
+23. MovingAverageCrossoverStrategy - MA crossover signals
+24. MarkowitzMVOStrategy - Classic mean-variance optimization
 
 Author: Portfolio Engine Team
 Date: December 2025
@@ -609,6 +614,14 @@ class CVaRMinimizationStrategy(BaseStrategyWrapper):
                 max_weight=self.params['max_weight'],
                 returns_data=returns_window
             )
+            # Ensure no negative weights due to numerical precision
+            final_weights = np.clip(final_weights, 0, 1)
+            # Renormalize after clipping
+            if final_weights.sum() > 0:
+                final_weights = final_weights / final_weights.sum()
+            else:
+                final_weights = initial_weights
+            
             return Series(final_weights, index=self.strategy.assets)
         except Exception as e:
             logger.warning(f"CVaR optimization failed: {e}, using equal weights")
@@ -1342,79 +1355,6 @@ class MultiFactorMLStrategy(BaseStrategyWrapper):
         return Series(final_weights, index=self.strategy.assets)
 
 
-class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
-    """
-    11. Global Minimum Variance Portfolio (GMVP) - Pure Risk Minimization
-    
-    Computes the portfolio with the absolute minimum variance (risk) possible
-    without any return forecasts. Uses analytical solution:
-        w = Σ^{-1} 1 / (1^T Σ^{-1} 1)
-    
-    Optionally supports integer rebalancing for practical implementation
-    with discrete share purchases.
-    
-    Properties:
-    - Analytical solution (no optimization needed)
-    - Pure risk minimization
-    - No return forecasts required
-    - Optimal for risk-averse investors
-    - Integer share support for real trading
-    
-    Parameters
-    ----------
-    strategy : Strategy
-        Signal generator (used for covariance estimation)
-    optimizer : PortfolioOptimizer, optional
-        Optimizer (unused for GMVP analytical solution)
-    lookback : int, default=252
-        Historical window for covariance estimation (1 year = 252 trading days)
-    use_integer_rebalance : bool, default=False
-        If True, solve for integer shares respecting budget constraints
-    total_capital : float, default=1_000_000
-        Total capital available (only used if use_integer_rebalance=True)
-    max_weight : float, default=0.5
-        Maximum weight per asset (concentration limit)
-    
-    References
-    ----------
-    Markowitz, H. (1952).
-    "Portfolio Selection."
-    Journal of Finance, 7(1), 77-91.
-    
-    Merton, R. C. (1972).
-    "An analytic derivation of the efficient portfolio frontier."
-    Journal of Financial and Quantitative Analysis, 7(4), 1851-1872.
-    
-    Examples
-    --------
-    >>> gmvp = GlobalMinimumVarianceStrategy(
-    ...     strategy, optimizer,
-    ...     lookback=252,
-    ...     use_integer_rebalance=False
-    ... )
-    """
-    
-    def __init__(
-        self,
-        strategy,
-        optimizer=None,
-        lookback: int = 252,
-        use_integer_rebalance: bool = False,
-        total_capital: float = 1_000_000,
-        max_weight: float = 0.5
-    ):
-        """Initialize Global Minimum Variance strategy."""
-        super().__init__(
-            "Global Minimum Variance",
-            strategy,
-            optimizer,
-            lookback=lookback,
-            use_integer_rebalance=use_integer_rebalance,
-            total_capital=total_capital,
-            max_weight=max_weight
-        )
-
-
 class GMRPStrategy(BaseStrategyWrapper):
     """
     Global Maximum Return Portfolio (GMRP) - Return Maximization
@@ -1959,16 +1899,20 @@ class MaximumDiversificationStrategy(BaseStrategyWrapper):
         bounds = [(min_weight, max_weight) for _ in range(n_assets)]
         constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}]
         
-        result = minimize(
-            neg_diversification_ratio,
-            x0,
-            method='SLSQP',
-            bounds=bounds,
-            constraints=constraints,
-            options={'ftol': 1e-9, 'disp': False}
-        )
-        
-        if not result.success:
+        try:
+            result = minimize(
+                neg_diversification_ratio,
+                x0,
+                method='SLSQP',
+                bounds=bounds,
+                constraints=constraints,
+                options={'ftol': 1e-9, 'disp': False, 'maxiter': 100}
+            )
+            
+            if not result.success:
+                return Series(1.0 / n_assets, index=self.strategy.assets)
+        except (KeyboardInterrupt, Exception) as e:
+            # Fall back to equal weights on any optimization failure
             return Series(1.0 / n_assets, index=self.strategy.assets)
         
         optimal_weights = result.x
@@ -2871,6 +2815,360 @@ class SVMRegimeStrategy(BaseStrategyWrapper):
         return info
 
 
+# ============================================================================
+# MISSING REQUIRED STRATEGIES
+# ============================================================================
+
+class RiskParityStrategy(BaseStrategyWrapper):
+    """
+    Risk Parity Portfolio - Equal Risk Contribution
+    
+    Allocates capital such that each asset contributes equally to portfolio risk.
+    Uses fast Cyclical Coordinate Descent algorithm from optimizer module.
+    
+    Mathematical formulation:
+    Risk Contribution_i = w_i * (Σw)_i / σ_p
+    Objective: RC_i / Σ(RC_j) = 1/N for all assets i
+    
+    Properties:
+    - Equalizes risk contributions across assets
+    - More balanced than equal weight or market cap
+    - Low-volatility assets get higher allocations
+    - Performs well in balanced markets
+    
+    Parameters
+    ----------
+    strategy : Strategy
+        Signal generator (used for covariance estimation)
+    optimizer : PortfolioOptimizer
+        Risk optimizer (uses risk_parity_optimization method)
+    lookback : int, default=252
+        Historical window for covariance estimation
+    max_weight : float, default=0.4
+        Maximum weight per asset
+    min_weight : float, default=0.0
+        Minimum weight per asset
+    target_risk : Optional[np.ndarray], default=None
+        Custom risk targets (default: equal 1/N)
+    
+    References
+    ----------
+    Maillard, S., Roncalli, T., & Teïletche, J. (2010).
+    "The properties of equally weighted risk contribution portfolios."
+    Journal of Portfolio Management, 36(4), 60-70.
+    
+    Examples
+    --------
+    >>> risk_parity = RiskParityStrategy(
+    ...     strategy, optimizer,
+    ...     lookback=252,
+    ...     max_weight=0.4
+    ... )
+    """
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer,
+        lookback: int = 252,
+        max_weight: float = 0.4,
+        min_weight: float = 0.0,
+        target_risk: Optional[np.ndarray] = None
+    ):
+        """Initialize Risk Parity strategy."""
+        super().__init__(
+            "Risk Parity",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            max_weight=max_weight,
+            min_weight=min_weight,
+            target_risk=target_risk
+        )
+    
+    def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
+        """Generate risk parity weights."""
+        lookback = self.params.get('lookback', 252)
+        max_weight = self.params.get('max_weight', 0.4)
+        min_weight = self.params.get('min_weight', 0.0)
+        target_risk = self.params.get('target_risk', None)
+        
+        # Get historical returns for covariance estimation
+        date_idx = self.strategy.prices.index.get_loc(date)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
+        # During warmup period, use Buy & Hold
+        if len(returns_window) < 20:
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Compute covariance matrix
+        cov_matrix = returns_window.cov().values * 252  # Annualized
+        
+        # Use optimizer's risk parity method
+        try:
+            # Temporarily update optimizer constraints if needed
+            original_max_weight = self.optimizer.max_weight
+            original_min_weight = self.optimizer.min_weight
+            
+            self.optimizer.max_weight = max_weight
+            self.optimizer.min_weight = min_weight
+            
+            weights = self.optimizer.risk_parity_optimization(
+                cov_matrix=cov_matrix,
+                target_risk=target_risk
+            )
+            
+            # Restore original constraints
+            self.optimizer.max_weight = original_max_weight
+            self.optimizer.min_weight = original_min_weight
+            
+            return Series(weights, index=self.strategy.assets)
+            
+        except Exception as e:
+            logger.warning(f"Risk parity optimization failed: {e}, using equal weights")
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+
+
+class SharpeMaximizationStrategy(BaseStrategyWrapper):
+    """
+    Sharpe Ratio Maximization - Risk-Adjusted Return Optimization
+    
+    Maximizes the Sharpe ratio: (E[R] - Rf) / σ(R)
+    This finds the portfolio on the efficient frontier with the best
+    risk-adjusted returns.
+    
+    Mathematical formulation:
+    maximize: (w^T μ - R_f) / sqrt(w^T Σ w)
+    subject to: Σw_i = 1, w_i ≥ 0, w_i ≤ max_weight
+    
+    Properties:
+    - Optimal risk-adjusted returns
+    - Tangency portfolio on efficient frontier
+    - Requires return forecasts
+    - Sensitive to estimation error
+    
+    Parameters
+    ----------
+    strategy : Strategy
+        Signal generator
+    optimizer : PortfolioOptimizer
+        Risk optimizer (uses sharpe_maximization method)
+    lookback : int, default=252
+        Historical window for estimation
+    return_forecast_method : str, default='historical'
+        Method to forecast returns ('historical', 'momentum', 'capm')
+    max_weight : float, default=0.3
+        Maximum weight per asset
+    min_weight : float, default=0.0
+        Minimum weight per asset
+    
+    References
+    ----------
+    Sharpe, W. F. (1966).
+    "Mutual fund performance."
+    Journal of Business, 39(1), 119-138.
+    
+    Examples
+    --------
+    >>> sharpe_max = SharpeMaximizationStrategy(
+    ...     strategy, optimizer,
+    ...     lookback=252,
+    ...     return_forecast_method='historical'
+    ... )
+    """
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer,
+        lookback: int = 252,
+        return_forecast_method: str = 'historical',
+        max_weight: float = 0.3,
+        min_weight: float = 0.0
+    ):
+        """Initialize Sharpe Maximization strategy."""
+        super().__init__(
+            "Sharpe Maximization",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            return_forecast_method=return_forecast_method,
+            max_weight=max_weight,
+            min_weight=min_weight
+        )
+    
+    def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
+        """Generate Sharpe-maximizing weights."""
+        lookback = self.params.get('lookback', 252)
+        return_method = self.params.get('return_forecast_method', 'historical')
+        max_weight = self.params.get('max_weight', 0.3)
+        min_weight = self.params.get('min_weight', 0.0)
+        
+        # Get historical returns
+        date_idx = self.strategy.prices.index.get_loc(date)
+        start_idx = max(0, date_idx - lookback)
+        returns_window = self.strategy.returns.iloc[start_idx:date_idx]
+        
+        # During warmup period, use Buy & Hold
+        if len(returns_window) < 20:
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Estimate expected returns
+        if return_method == 'historical':
+            expected_returns = returns_window.mean() * 252  # Annualized
+        elif return_method == 'momentum':
+            momentum_lookback = min(126, lookback)
+            expected_returns = self.strategy.momentum(window=momentum_lookback).loc[date]
+        elif return_method == 'capm':
+            # Simple market beta approach
+            market_returns = returns_window.mean(axis=1)
+            betas = returns_window.apply(lambda x: np.cov(x, market_returns)[0, 1] / np.var(market_returns))
+            market_premium = market_returns.mean() * 252
+            expected_returns = self.optimizer.risk_free_rate + betas * market_premium
+        else:
+            expected_returns = returns_window.mean() * 252
+        
+        # Compute covariance matrix
+        cov_matrix = returns_window.cov().values * 252
+        
+        # Use optimizer's sharpe maximization method
+        try:
+            # Temporarily update optimizer constraints
+            original_max_weight = self.optimizer.max_weight
+            original_min_weight = self.optimizer.min_weight
+            
+            self.optimizer.max_weight = max_weight
+            self.optimizer.min_weight = min_weight
+            
+            weights = self.optimizer.sharpe_maximization(
+                expected_returns=expected_returns.values,
+                cov_matrix=cov_matrix
+            )
+            
+            # Restore original constraints
+            self.optimizer.max_weight = original_max_weight
+            self.optimizer.min_weight = original_min_weight
+            
+            return Series(weights, index=self.strategy.assets)
+            
+        except Exception as e:
+            logger.warning(f"Sharpe maximization failed: {e}, using equal weights")
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+
+
+class QuintileLowVolatilityStrategy(BaseStrategyWrapper):
+    """
+    Quintile Low Volatility Portfolio - Defensive Factor Strategy
+    
+    Sorts assets by volatility and invests in the lowest volatility quintile.
+    This exploits the low-volatility anomaly: low-vol stocks tend to
+    outperform high-vol stocks on a risk-adjusted basis.
+    
+    Properties:
+    - Defensive portfolio construction
+    - Exploits low-volatility anomaly
+    - Equal weight within quintile
+    - Lower drawdowns than market
+    
+    Parameters
+    ----------
+    strategy : Strategy
+        Signal generator
+    optimizer : PortfolioOptimizer, optional
+        Optimizer (can be None for simple equal weight)
+    lookback : int, default=126
+        Lookback window for volatility estimation (6 months)
+    n_quintiles : int, default=5
+        Number of quintiles to create
+    target_quintile : int, default=1
+        Which quintile to invest in (1 = lowest vol, 5 = highest vol)
+    rebalance_method : str, default='equal'
+        Weight method within quintile ('equal', 'inverse_vol')
+    
+    References
+    ----------
+    Baker, M., Bradley, B., & Wurgler, J. (2011).
+    "Benchmarks as limits to arbitrage: Understanding the low-volatility anomaly."
+    Financial Analysts Journal, 67(1), 40-54.
+    
+    Examples
+    --------
+    >>> low_vol = QuintileLowVolatilityStrategy(
+    ...     strategy, optimizer,
+    ...     lookback=126,
+    ...     target_quintile=1
+    ... )
+    """
+    
+    def __init__(
+        self,
+        strategy,
+        optimizer=None,
+        lookback: int = 126,
+        n_quintiles: int = 5,
+        target_quintile: int = 1,
+        rebalance_method: str = 'equal'
+    ):
+        """Initialize Quintile Low Volatility strategy."""
+        super().__init__(
+            "Quintile Low Volatility",
+            strategy,
+            optimizer,
+            lookback=lookback,
+            n_quintiles=n_quintiles,
+            target_quintile=target_quintile,
+            rebalance_method=rebalance_method
+        )
+    
+    def get_weights(self, date: pd.Timestamp, portfolio_state: PortfolioState) -> Series:
+        """Generate low volatility quintile weights."""
+        lookback = self.params.get('lookback', 126)
+        n_quintiles = self.params.get('n_quintiles', 5)
+        target_quintile = self.params.get('target_quintile', 1)
+        rebalance_method = self.params.get('rebalance_method', 'equal')
+        
+        # Check data availability
+        date_idx = self.strategy.prices.index.get_loc(date)
+        if date_idx < lookback:
+            if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
+                return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+        
+        # Calculate volatility for all assets
+        volatility = self.strategy.volatility(window=lookback).loc[date]
+        
+        # Sort by volatility (ascending = low to high)
+        sorted_vol = volatility.sort_values(ascending=True)
+        n_assets = len(sorted_vol)
+        assets_per_quintile = max(1, n_assets // n_quintiles)
+        
+        # Select target quintile
+        start_idx = (target_quintile - 1) * assets_per_quintile
+        end_idx = start_idx + assets_per_quintile
+        quintile_assets = sorted_vol.iloc[start_idx:end_idx].index
+        
+        # Initialize weights
+        weights = Series(0.0, index=self.strategy.assets)
+        
+        # Weight within quintile
+        if rebalance_method == 'equal':
+            weights[quintile_assets] = 1.0 / len(quintile_assets)
+        elif rebalance_method == 'inverse_vol':
+            # Weight inversely proportional to volatility
+            quintile_vols = volatility[quintile_assets]
+            inv_vol = 1.0 / (quintile_vols + 1e-8)
+            weights[quintile_assets] = inv_vol / inv_vol.sum()
+        else:
+            weights[quintile_assets] = 1.0 / len(quintile_assets)
+        
+        return weights
+
+
 class ARIMAGARCHForecastingStrategy(BaseStrategyWrapper):
     """
     ARIMA-GARCH Forecasting Strategy - Statistical Time Series Forecasting
@@ -3095,6 +3393,8 @@ def list_available_strategies() -> Dict[str, type]:
         'cvar_minimization': CVaRMinimizationStrategy,
         'gmvp': GlobalMinimumVarianceStrategy,
         'gmrp': GMRPStrategy,
+        'risk_parity': RiskParityStrategy,
+        'sharpe_maximization': SharpeMaximizationStrategy,
         
         # Adaptive Strategies
         'regime_switching': RegimeSwitchingStrategy,
@@ -3113,6 +3413,7 @@ def list_available_strategies() -> Dict[str, type]:
         # Extended Strategies
         'buy_and_hold': BuyAndHoldStrategy,
         'quintile_factor': QuintileFactorStrategy,
+        'quintile_low_volatility': QuintileLowVolatilityStrategy,
         'max_diversification': MaximumDiversificationStrategy,
         'max_decorrelation': MaximumDecorrelationStrategy,
         'time_series_momentum': TimeSeriesMomentumStrategy,

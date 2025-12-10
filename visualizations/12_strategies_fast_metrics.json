@@ -1,0 +1,122 @@
+{
+  "1. Buy & Hold": {
+    "total_return": 0.17532912376461884,
+    "cagr": 0.3813985491693068,
+    "volatility": 0.12621813875509844,
+    "sharpe_ratio": 2.486027130568747,
+    "max_drawdown": -0.06256713958243335,
+    "calmar_ratio": 6.095828444687124,
+    "sortino_ratio": 3.67444935268354,
+    "win_rate": 0.48
+  },
+  "2. Equal Weight": {
+    "total_return": 0.17532912376461884,
+    "cagr": 0.3813985491693068,
+    "volatility": 0.12621813875509844,
+    "sharpe_ratio": 2.486027130568747,
+    "max_drawdown": -0.06256713958243335,
+    "calmar_ratio": 6.095828444687124,
+    "sortino_ratio": 3.67444935268354,
+    "win_rate": 0.48
+  },
+  "3. Quintile Momentum": {
+    "total_return": 0.0322286703738508,
+    "cagr": 0.06549602794176801,
+    "volatility": 0.1377384126751482,
+    "sharpe_ratio": 0.3873242309793817,
+    "max_drawdown": -0.0902860179165957,
+    "calmar_ratio": 0.7254282496130446,
+    "sortino_ratio": 0.5896415952403716,
+    "win_rate": 0.376
+  },
+  "4. Quintile Low Vol": {
+    "total_return": 0.0325065669316249,
+    "cagr": 0.06606981075692997,
+    "volatility": 0.07950467640440634,
+    "sharpe_ratio": 0.5992145110503659,
+    "max_drawdown": -0.050197867721694545,
+    "calmar_ratio": 1.3161875943263597,
+    "sortino_ratio": 0.5841841988927976,
+    "win_rate": 0.208
+  },
+  "5. Mean Reversion": {
+    "total_return": 0.15854784225008767,
+    "cagr": 0.342233102782334,
+    "volatility": 0.14778102326875095,
+    "sharpe_ratio": 1.9463645932468623,
+    "max_drawdown": -0.05073761141429284,
+    "calmar_ratio": 6.745155974881517,
+    "sortino_ratio": 2.9740446136371865,
+    "win_rate": 0.296
+  },
+  "6. GMVP": {
+    "total_return": 0.12318539259440131,
+    "cagr": 0.2615454261374395,
+    "volatility": 0.08227299753381145,
+    "sharpe_ratio": 2.6454156098264447,
+    "max_drawdown": -0.02516055937703258,
+    "calmar_ratio": 10.395056096256234,
+    "sortino_ratio": 5.555439494517797,
+    "win_rate": 0.36
+  },
+  "7. Inverse Volatility": {
+    "total_return": 0.1289848564075926,
+    "cagr": 0.2746068059976725,
+    "volatility": 0.11342405881627736,
+    "sharpe_ratio": 2.0371793187268783,
+    "max_drawdown": -0.06256713958249094,
+    "calmar_ratio": 4.388994092268199,
+    "sortino_ratio": 2.7477502176337247,
+    "win_rate": 0.392
+  },
+  "8. Risk Parity": {
+    "total_return": 0.12948052963730117,
+    "cagr": 0.2757262668297584,
+    "volatility": 0.11342979265854071,
+    "sharpe_ratio": 2.0448912576490845,
+    "max_drawdown": -0.06256713958248443,
+    "calmar_ratio": 4.406886245235151,
+    "sortino_ratio": 2.7577991167675604,
+    "win_rate": 0.392
+  },
+  "9. Max Diversification": {
+    "total_return": 0.14627848021702228,
+    "cagr": 0.31395435420864626,
+    "volatility": 0.08877171908347689,
+    "sharpe_ratio": 2.9205957235657154,
+    "max_drawdown": -0.029763957244295352,
+    "calmar_ratio": 10.548138865802855,
+    "sortino_ratio": 5.182990534293665,
+    "win_rate": 0.376
+  },
+  "10. Max Decorrelation": {
+    "total_return": 0.16470667662295946,
+    "cagr": 0.3565416425700991,
+    "volatility": 0.12393545169891358,
+    "sharpe_ratio": 2.381673879461578,
+    "max_drawdown": -0.05242907490488552,
+    "calmar_ratio": 6.800456487491359,
+    "sortino_ratio": 3.44780681914238,
+    "win_rate": 0.496
+  },
+  "11. Sharpe Maximization": {
+    "total_return": 0.2052061956038993,
+    "cagr": 0.4525219739220243,
+    "volatility": 0.09918311687118725,
+    "sharpe_ratio": 3.6439249170350103,
+    "max_drawdown": -0.024732438025074008,
+    "calmar_ratio": 18.296698993574864,
+    "sortino_ratio": 7.2746169564584,
+    "win_rate": 0.36
+  },
+  "12. CVaR Minimization": {
+    "total_return": 0.2563236893739871,
+    "cagr": 0.5783492124822665,
+    "volatility": 0.10200893470125012,
+    "sharpe_ratio": 4.368200349753147,
+    "max_drawdown": -0.020062727078730427,
+    "calmar_ratio": 28.827048796143245,
+    "sortino_ratio": 7.872738112834559,
+    "win_rate": 0.48
+  }
+}
