@@ -441,6 +441,111 @@ Where:
 
 ---
 
+### 6.4 Transaction Cost Adjustment (CRITICAL)
+
+**Challenge**: Strategy returns must be net of transaction costs for accurate reward calculation. Ignoring costs leads to overallocation to high-turnover strategies.
+
+**Problem**: A strategy with 15% gross return but 3% transaction costs (12% net) should not be preferred over a strategy with 13% gross return and 0.5% costs (12.5% net).
+
+**Solution**: Adjust realized returns before computing rewards.
+
+**Net Return Calculation**:
+
+$$
+r_k^{\text{net}} = r_k^{\text{gross}} - \text{TCost}_k
+$$
+
+Where:
+- $r_k^{\text{gross}}$ = strategy return before costs
+- $\text{TCost}_k$ = transaction costs from rebalancing strategy $k$'s assets (expressed as % of portfolio value)
+- $\text{TCost}_k = \text{Turnover}_k \times \text{CostPerTrade}$
+
+**Data Source**: `PortfolioEngine` already tracks transaction costs per rebalance period. `PortfolioState` contains:
+- `portfolio_state.transaction_costs`: Historical cost series
+- `portfolio_state.turnover`: Historical turnover series
+
+**Implementation in BanditStrategyWrapper**:
+
+```python
+def _calculate_rewards(self, date, portfolio_state):
+    """
+    Calculate risk-adjusted rewards net of transaction costs.
+    """
+    for strategy_idx, strategy in enumerate(self.strategies):
+        # Get gross returns for this strategy
+        gross_returns = self._get_strategy_returns(strategy_idx, portfolio_state)
+        
+        # Get transaction costs for this strategy from PortfolioState
+        # Note: Costs are tracked at portfolio level, need to attribute to strategies
+        strategy_costs = self._attribute_costs_to_strategy(strategy_idx, portfolio_state)
+        
+        # Calculate net returns
+        net_returns = gross_returns - strategy_costs
+        
+        # Compute risk-adjusted reward on net returns
+        reward = self._compute_risk_adjusted_reward(net_returns)
+        
+        rewards.append(reward)
+    
+    return rewards
+```
+
+**Cost Attribution Method**:
+
+Since `PortfolioEngine` tracks aggregate portfolio costs, `BanditStrategyWrapper` must attribute costs to individual strategies:
+
+**Option A: Simulated Tracking** (Recommended for Phase 1)
+- Track previous period's weights for each strategy: $w_{k,t-1}$
+- Compare with current period's weights: $w_{k,t}$
+- Calculate turnover: $\text{Turnover}_k = \sum_i |w_{k,t}(i) - w_{k,t-1}(i)|$
+- Apply cost model: $\text{TCost}_k = \text{Turnover}_k \times c$ where $c$ = 10 bps (0.001)
+
+**Option B: PortfolioEngine Extension** (Future)
+- Modify `PortfolioEngine` to track costs per strategy allocation
+- More accurate but requires changing existing code (violates non-modification constraint)
+
+**Cost Model** (from existing system):
+- **Default**: 10 basis points (0.001) per $ of turnover
+- **Conservative**: 15 bps for less liquid assets
+- **Aggressive**: 5 bps for high-liquidity portfolios
+
+**Reward Formula with Costs** (Multi-Objective):
+
+$$
+\text{reward}_k = w_1 \cdot \frac{\bar{r}_k^{\text{net}}}{\sigma_k} + w_2 \cdot \bar{r}_k^{\text{net}} - w_3 \cdot \text{MaxDD}_k - w_4 \cdot \sigma_k
+$$
+
+Where $\bar{r}_k^{\text{net}}$ includes transaction cost deduction.
+
+**Benefits**:
+1. **Penalizes high-turnover strategies**: MAB learns to avoid excessive rebalancing
+2. **Fair comparison**: All strategies evaluated on net-of-cost basis
+3. **Realistic performance**: Rewards reflect implementable returns
+4. **Turnover awareness**: Naturally encourages allocation to stable strategies
+
+**Example Impact**:
+
+| Strategy | Gross Return | Turnover | Transaction Cost | Net Return | Sharpe (Net) |
+|----------|-------------|----------|-----------------|------------|--------------|
+| Momentum | 18% | 200% | 2.0% | 16% | 1.2 |
+| Mean Rev | 14% | 300% | 3.0% | 11% | 0.9 |
+| GMVP | 12% | 50% | 0.5% | 11.5% | 1.3 |
+
+**Result**: MAB prefers GMVP (highest net Sharpe) despite lower gross returns.
+
+**Implementation Notes**:
+- Store previous weights: `self.prev_strategy_weights = {strategy: weights}` 
+- Update after each `get_weights()` call
+- Calculate turnover at next rebalance before reward computation
+- Use vectorized NumPy operations for efficiency
+
+**Validation**:
+- Unit test: Verify high-turnover strategies get lower rewards
+- Integration test: Backtest with/without cost adjustment, compare allocations
+- Sanity check: Net returns should always be ≤ gross returns
+
+---
+
 ## 7. Rebalancing & Stability Controls
 
 ### 7.1 Rebalance Frequency
@@ -519,9 +624,9 @@ Then renormalize to sum to 1.0.
 2. **Soft Updates**: Use exponential smoothing:
    $$\alpha_t = (1 - \beta) \alpha_{t-1} + \beta \alpha_t^{\text{new}}$$
    where $\beta \in [0.2, 0.5]$ controls update speed
-3. **Transaction Cost Penalty**: Incorporate turnover into reward calculation
+3. **Transaction Cost Penalty**: Incorporate turnover into reward calculation (see Section 6.4)
 
-**Not Recommended for Phase 1**: Turnover control adds complexity. Start with fixed weekly rebalancing, then optimize if turnover becomes problematic in backtests.
+**Phase 1 Approach**: Transaction cost adjustment in rewards (Section 6.4) provides implicit turnover control. Additional explicit controls (threshold, smoothing) can be added in Phase 2 if needed.
 
 ---
 
@@ -639,6 +744,11 @@ reward_config:
   lookback_periods: 12  # 3 months for weekly rebalancing
   clip_range: [-1.0, 3.0]  # Clip rewards to prevent outliers
   
+  # Transaction cost adjustment
+  include_transaction_costs: true  # Deduct costs from returns before reward calculation
+  cost_per_trade_bps: 10  # Transaction cost in basis points (10 bps = 0.1%)
+  cost_model: 'proportional'  # Options: proportional, fixed, tiered
+  
 rebalance_config:
   frequency: 'weekly'
   day_of_week: 'monday'
@@ -730,6 +840,14 @@ test_weight_aggregation()
     
 test_reward_calculation()
     - Mock portfolio_state, verify rewards computed correctly
+    
+test_transaction_cost_adjustment()
+    - Verify net returns = gross returns - transaction costs
+    - Test high-turnover strategy gets lower reward than low-turnover
+    
+test_cost_attribution()
+    - Verify turnover calculated correctly per strategy
+    - Test cost deduction applied before risk-adjusted reward calculation
     
 test_bandit_update_called()
     - Verify bandit allocator updated after each rebalance
@@ -829,8 +947,9 @@ test_integration_with_portfolio_engine()
 2. **Two new components**: `BanditAllocator` (pure logic) and `BanditStrategyWrapper` (integration)
 3. **No changes to existing code**: Strategies, optimizers, and execution layer remain untouched
 4. **Risk-adjusted rewards**: Use Sharpe-like rewards to avoid chasing volatility
-5. **Soft allocation with minimums**: Blend multiple strategies with minimum allocation floor
-6. **Weekly rebalancing**: Balance adaptation speed with transaction costs
+5. **Transaction cost aware**: Rewards calculated on net-of-cost returns (Section 6.4)
+6. **Soft allocation with minimums**: Blend multiple strategies with minimum allocation floor
+7. **Weekly rebalancing**: Balance adaptation speed with transaction costs
 
 ---
 
@@ -877,9 +996,10 @@ test_integration_with_portfolio_engine()
 | **Overfitting to recent data** | Use 12-week lookback, risk-adjusted rewards |
 | **Slow regime detection** | Decay factor or sliding window for faster adaptation |
 | **Over-concentration** | Minimum allocation constraint (5-8%) |
-| **Excessive turnover** | Weekly (not daily) rebalancing, soft allocation |
+| **Excessive turnover** | Weekly (not daily) rebalancing, soft allocation, cost-aware rewards |
 | **Lookahead bias** | Strict reward calculation using only past data |
 | **Poor exploration** | UCB/Thompson naturally explore; min allocation enforces it |
+| **High-turnover preference** | Transaction cost adjustment in reward calculation (Section 6.4) |
 
 ---
 
