@@ -58,6 +58,9 @@ from src.strategy_wrapper import (
     MLGradientBoostingStrategy,
     ARMAForecastStrategy
 )
+from src.bandit_strategy_wrapper import BanditStrategyWrapper
+from src.bandits.ucb import UCBBandit
+from src.bandits.thompson import ThompsonSamplingBandit
 
 # Configure logging
 logging.basicConfig(
@@ -65,6 +68,19 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# BANDIT WRAPPER CONFIGURATION (FEATURE FLAG)
+# ============================================================================
+USE_BANDIT_WRAPPER = False  # Set to True to enable bandit-based strategy selection
+BANDIT_CONFIG = {
+    'algorithm': 'ucb',  # 'ucb' or 'thompson'
+    'exploration_constant': 2.0,  # For UCB
+    'burn_in_periods': 10,  # Equal allocation during burn-in
+    'reward_type': 'sharpe',  # 'return', 'sharpe', or 'sortino'
+    'enable_soft_allocation': True,  # Use soft allocation (probabilistic)
+    'random_seed': 42  # For reproducibility (Thompson Sampling)
+}
 
 
 # ============================================================================
@@ -169,13 +185,81 @@ def create_strategy_instances(
             if name in strategy_configs:
                 display_name = name.replace('_', ' ').title()
                 strategies[display_name] = strategy_configs[name]()
-                logger.info(f"✓ Created strategy: {display_name}")
+                logger.info(f"[OK] Created strategy: {display_name}")
             else:
-                logger.warning(f"✗ No configuration found for: {name}")
+                logger.warning(f"[WARN] No configuration found for: {name}")
         except Exception as e:
-            logger.error(f"✗ Failed to create strategy '{name}': {e}")
+            logger.error(f"[FAIL] Failed to create strategy '{name}': {e}")
     
     return strategies
+
+
+def print_bandit_summary(diagnostics: Dict):
+    """Print bandit wrapper performance summary including allocations and arm stats."""
+    print("\\n" + "="*80)
+    print("BANDIT WRAPPER PERFORMANCE SUMMARY")
+    print("="*80)
+    
+    # Current allocations
+    print("\\n1. Current Strategy Allocations alpha(t):")
+    print("-" * 80)
+    current_allocs = diagnostics['current_allocations']
+    for strategy_name, alloc in sorted(current_allocs.items(), key=lambda x: x[1], reverse=True):
+        bar = '#' * int(alloc * 50)
+        print(f"  {strategy_name:40s} {alloc:6.1%} {bar}")
+    
+    # Arm performance summary from strategy metrics
+    print("\\n2. Arm Performance Summary:")
+    print("-" * 80)
+    print(f"{'Strategy':<40s} {'UCB Pulls':>12s} {'Mean Return':>15s} {'UCB Value':>15s}")
+    print("-" * 80)
+    
+    strategy_metrics = diagnostics['strategy_metrics']
+    
+    # Get bandit counts and values (UCB-specific)
+    bandit_state = diagnostics.get('bandit_state', {})
+    counts = bandit_state.get('counts', [])
+    values = bandit_state.get('values', [])
+    
+    # Sort by UCB value (bandit's estimated mean reward)
+    metrics_list = []
+    for i, (strategy_name, metrics) in enumerate(strategy_metrics.items()):
+        ucb_count = counts[i] if i < len(counts) else 0
+        ucb_value = values[i] if i < len(values) else 0.0
+        metrics_list.append((strategy_name, metrics, ucb_count, ucb_value))
+    
+    metrics_list.sort(key=lambda x: x[3], reverse=True)
+    
+    for strategy_name, metrics, ucb_count, ucb_value in metrics_list:
+        n_obs = metrics.get('n_observations', 0)
+        mean_return = metrics.get('mean_return', 0.0)
+        print(f"  {strategy_name:<38s} {ucb_count:>12d} {mean_return:>15.4f} {ucb_value:>15.4f}")
+    
+    # Allocation history statistics
+    if 'allocation_history' in diagnostics:
+        print("\\n3. Allocation Statistics:")
+        print("-" * 80)
+        alloc_history = diagnostics['allocation_history']
+        if len(alloc_history) > 0:
+            alloc_df = pd.DataFrame(alloc_history)
+            print(f"Total rebalancing periods: {len(alloc_df)}")
+            print(f"Burn-in complete: {diagnostics.get('burn_in_complete', False)}")
+            
+            # Show allocation concentration (Herfindahl index)
+            # Exclude 'date' column if present
+            last_allocs = alloc_df.iloc[-1]
+            if 'date' in alloc_df.columns:
+                last_allocs = last_allocs.drop('date')
+            # Convert to numeric and compute HHI
+            numeric_allocs = pd.to_numeric(last_allocs, errors='coerce').fillna(0)
+            # If allocations are in percentage (0-100) rather than fraction (0-1), normalize
+            if numeric_allocs.max() > 1.0:
+                numeric_allocs = numeric_allocs / 100.0
+            herfindahl = float((numeric_allocs ** 2).sum())
+            print(f"Current allocation concentration (HHI): {herfindahl:.3f}")
+            print(f"  (1.0 = fully concentrated, {1/len(numeric_allocs):.3f} = equally distributed)")
+    
+    print("="*80 + "\\n")
 
 
 def run_benchmark_comparison():
@@ -186,6 +270,8 @@ def run_benchmark_comparison():
     
     print("=" * 80)
     print("BENCHMARK STRATEGIES COMPARISON - ENHANCED")
+    if USE_BANDIT_WRAPPER:
+        print(f"BANDIT WRAPPER ENABLED: {BANDIT_CONFIG['algorithm'].upper()}")
     print("=" * 80)
     print(f"Period: {start_date} to {end_date} (~9 years)")
     print("Rebalancing: Weekly")
@@ -266,45 +352,103 @@ def run_benchmark_comparison():
     
     results = {}
     failed_strategies = []
+    bandit_diagnostics = None
     
-    for i, (name, strat) in enumerate(strategies.items(), 1):
-        start_time = time.time()
-        print(f"  [{i}/{len(strategies)}] Running {name}...", end=' ', flush=True)
-        logger.info(f"Starting backtest for {name}")
+    if USE_BANDIT_WRAPPER:
+        # Use bandit wrapper for all strategies
+        logger.info(f"Using BanditStrategyWrapper with {BANDIT_CONFIG['algorithm'].upper()}")
+        
+        if BANDIT_CONFIG['algorithm'] == 'ucb':
+            bandit = UCBBandit(
+                n_arms=len(strategies),
+                exploration_constant=BANDIT_CONFIG['exploration_constant']
+            )
+        else:  # thompson
+            bandit = ThompsonSamplingBandit(
+                n_arms=len(strategies),
+                random_seed=BANDIT_CONFIG.get('random_seed')
+            )
+        
+        wrapper = BanditStrategyWrapper(
+            child_strategies=list(strategies.values()),
+            bandit_allocator=bandit,
+            burn_in_periods=BANDIT_CONFIG['burn_in_periods'],
+            reward_type=BANDIT_CONFIG['reward_type'],
+            enable_soft_allocation=BANDIT_CONFIG['enable_soft_allocation'],
+            random_seed=BANDIT_CONFIG.get('random_seed')
+        )
         
         try:
+            logger.info("Running backtest with BanditStrategyWrapper")
             engine = PortfolioEngine(
                 prices=prices,
                 initial_capital=100000,
-                transaction_cost_bps=0.0,  # 0.0% = 0 bps (zero costs)
+                transaction_cost_bps=10,  # 0.1%
                 slippage_bps=0.0
             )
             
             result = engine.run_backtest(
-                strategy_wrapper=strat,
+                strategy_wrapper=wrapper,
                 rebalance_freq='W',  # Weekly rebalancing
                 start_date=start_date,
                 end_date=end_date
             )
-            results[name] = result
+            
+            results['Bandit Meta-Strategy'] = result
+            bandit_diagnostics = wrapper.get_diagnostics()
             
             final_value = result.equity_curve.iloc[-1]
             total_return = (final_value / 100000 - 1) * 100
-            elapsed = time.time() - start_time
-            print(f"[OK] Return: {total_return:+.2f}% (Time: {elapsed:.1f}s)")
-            logger.info(f"✓ {name} completed successfully: {total_return:+.2f}%")
+            print(f"  [OK] Bandit Meta-Strategy: Return: {total_return:+.2f}%")
+            logger.info(f"[OK] Bandit Meta-Strategy completed: {total_return:+.2f}%")
             
         except Exception as e:
-            elapsed = time.time() - start_time
-            print(f"[FAIL] FAILED: {str(e)[:50]}... (Time: {elapsed:.1f}s)")
-            logger.error(f"✗ {name} failed: {e}")
-            failed_strategies.append(name)
+            logger.error(f"[FAIL] Bandit Meta-Strategy failed: {e}")
+            failed_strategies.append('Bandit Meta-Strategy')
+    else:
+        # Run individual strategy backtests (existing path)
+        for i, (name, strat) in enumerate(strategies.items(), 1):
+            start_time = time.time()
+            print(f"  [{i}/{len(strategies)}] Running {name}...", end=' ', flush=True)
+            logger.info(f"Starting backtest for {name}")
+            
+            try:
+                engine = PortfolioEngine(
+                    prices=prices,
+                    initial_capital=100000,
+                    transaction_cost_bps=0.0,  # 0.0% = 0 bps (zero costs)
+                    slippage_bps=0.0
+                )
+                
+                result = engine.run_backtest(
+                    strategy_wrapper=strat,
+                    rebalance_freq='W',  # Weekly rebalancing
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                results[name] = result
+                
+                final_value = result.equity_curve.iloc[-1]
+                total_return = (final_value / 100000 - 1) * 100
+                elapsed = time.time() - start_time
+                print(f"[OK] Return: {total_return:+.2f}% (Time: {elapsed:.1f}s)")
+                logger.info(f"[OK] {name} completed successfully: {total_return:+.2f}%")
+                
+            except Exception as e:
+                elapsed = time.time() - start_time
+                print(f"[FAIL] FAILED: {str(e)[:50]}... (Time: {elapsed:.1f}s)")
+                logger.error(f"[FAIL] {name} failed: {e}")
+                failed_strategies.append(name)
     
     print()
     if failed_strategies:
         print(f"Failed strategies: {', '.join(failed_strategies)}")
-    print(f"Successful strategies: {len(results)}/{len(strategies)}")
+    print(f"Successful strategies: {len(results)}/{len(strategies) if not USE_BANDIT_WRAPPER else 1}")
     print()
+    
+    # Print bandit summary if enabled
+    if USE_BANDIT_WRAPPER and bandit_diagnostics:
+        print_bandit_summary(bandit_diagnostics)
     
     # Check if we have any results
     if len(results) == 0:
@@ -448,23 +592,23 @@ def run_benchmark_comparison():
         os.makedirs('visualizations', exist_ok=True)
         
         plt.savefig('visualizations/benchmark_strategies_comparison_enhanced.png', dpi=150, bbox_inches='tight')
-        print("✓ Saved visualization: visualizations/benchmark_strategies_comparison_enhanced.png")
+        print("[OK] Saved visualization: visualizations/benchmark_strategies_comparison_enhanced.png")
         logger.info("Saved visualization file")
         
         plt.close()
         
     except Exception as e:
         logger.error(f"Failed to create visualizations: {e}")
-        print(f"✗ Visualization failed: {e}")
+        print(f"[FAIL] Visualization failed: {e}")
     
     # Save metrics to CSV
     try:
         metrics_df.to_csv('visualizations/benchmark_strategies_comparison_enhanced.csv')
-        print("✓ Saved metrics: visualizations/benchmark_strategies_comparison_enhanced.csv")
+        print("[OK] Saved metrics: visualizations/benchmark_strategies_comparison_enhanced.csv")
         logger.info("Saved metrics CSV")
     except Exception as e:
         logger.error(f"Failed to save CSV: {e}")
-        print(f"✗ CSV save failed: {e}")
+        print(f"[FAIL] CSV save failed: {e}")
     
     print()
     print("=" * 80)

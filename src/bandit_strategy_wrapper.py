@@ -59,6 +59,7 @@ class StrategyPerformanceTracker:
         """Calculate recent performance metrics over a rolling window."""
         if len(self.returns) < 1:
             return {
+                'n_observations': 0,
                 'mean_return': 0.0,
                 'volatility': 0.0,
                 'sharpe': 0.0,
@@ -74,6 +75,7 @@ class StrategyPerformanceTracker:
         mean_alloc = np.mean(recent_allocs)
         
         return {
+            'n_observations': len(self.returns),
             'mean_return': mean_ret,
             'volatility': vol,
             'sharpe': sharpe,

@@ -1,0 +1,11 @@
+{
+  "Bandit Meta-Strategy": {
+    "cagr": 0.16523083241862313,
+    "volatility": 0.17498255236371096,
+    "sharpe_ratio": 0.8481872827203671,
+    "max_drawdown": -0.2964685970306762,
+    "calmar_ratio": 0.557329963690982,
+    "sortino_ratio": 0.9822307329286013,
+    "win_rate": 0.5399920413847991
+  }
+}

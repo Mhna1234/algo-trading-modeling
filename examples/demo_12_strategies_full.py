@@ -77,6 +77,9 @@ from src.strategy_wrapper import (
     SharpeMaximizationStrategy,
     CVaRMinimizationStrategy
 )
+from src.bandit_strategy_wrapper import BanditStrategyWrapper
+from src.bandits.ucb import UCBBandit
+from src.bandits.thompson import ThompsonSamplingBandit
 
 # Configure logging
 logging.basicConfig(
@@ -88,6 +91,19 @@ logger = logging.getLogger(__name__)
 # Set plot style
 sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (14, 8)
+
+# ============================================================================
+# BANDIT WRAPPER CONFIGURATION (FEATURE FLAG)
+# ============================================================================
+USE_BANDIT_WRAPPER = True  # Set to True to enable bandit-based strategy selection
+BANDIT_CONFIG = {
+    'algorithm': 'ucb',  # 'ucb' or 'thompson'
+    'exploration_constant': 2.0,  # For UCB
+    'burn_in_periods': 12,  # Equal allocation during burn-in
+    'reward_type': 'sharpe',  # 'return', 'sharpe', or 'sortino'
+    'enable_soft_allocation': False,  # CHANGED: Hard selection of best strategy
+    'random_seed': 42  # For reproducibility (Thompson Sampling)
+}
 
 
 def create_strategy_instances(
@@ -215,7 +231,7 @@ def run_backtest(
         metrics = result.summary_metrics
         
         logger.info(
-            f"  ✓ {strategy_name}: "
+            f"  [OK] {strategy_name}: "
             f"Total Return={metrics.get('total_return', 0):.2%}, "
             f"Sharpe={metrics.get('sharpe_ratio', 0):.3f}, "
             f"MaxDD={metrics.get('max_drawdown', 0):.2%}"
@@ -229,7 +245,7 @@ def run_backtest(
         }
         
     except Exception as e:
-        logger.error(f"  ✗ {strategy_name} FAILED: {str(e)}")
+        logger.error(f"  [FAIL] {strategy_name} FAILED: {str(e)}")
         return None
 
 
@@ -363,10 +379,119 @@ def plot_correlation_heatmap(results: List[Dict], output_dir: Path):
     plt.close()
 
 
+def print_bandit_summary(diagnostics: Dict):
+    """Print bandit wrapper performance summary including allocations and arm stats."""
+    print("\\n" + "="*80)
+    print("BANDIT WRAPPER PERFORMANCE SUMMARY")
+    print("="*80)
+    
+    # Current allocations
+    print("\\n1. Current Strategy Allocations alpha(t):")
+    print("-" * 80)
+    current_allocs = diagnostics['current_allocations']
+    for strategy_name, alloc in sorted(current_allocs.items(), key=lambda x: x[1], reverse=True):
+        bar = '#' * int(alloc * 50)
+        print(f"  {strategy_name:40s} {alloc:6.1%} {bar}")
+    
+    # Show actual allocation behavior over time
+    print("\\n2. Actual Capital Allocation Over Time:")
+    print("-" * 80)
+    
+    alloc_history = diagnostics.get('allocation_history', [])
+    strategy_metrics = diagnostics['strategy_metrics']
+    
+    if len(alloc_history) > 0:
+        # Build stats from allocation history
+        strategy_names = list(diagnostics['current_allocations'].keys())
+        strategy_stats = {name: [] for name in strategy_names}
+        
+        # Extract allocations from history (skip burn-in period typically)
+        for period in alloc_history:
+            allocations = period.get('allocations', [])
+            if isinstance(allocations, (list, np.ndarray)) and len(allocations) == len(strategy_names):
+                for i, name in enumerate(strategy_names):
+                    strategy_stats[name].append(float(allocations[i]))
+        
+        print(f"{'Strategy':<40s} {'Mean Alloc':>12s} {'Min':>8s} {'Max':>8s} {'Periods>0':>10s}")
+        print("-" * 80)
+        
+        stats_list = []
+        for name in strategy_names:
+            allocs = strategy_stats[name]
+            if len(allocs) > 0:
+                mean_alloc = np.mean(allocs)
+                min_alloc = np.min(allocs)
+                max_alloc = np.max(allocs)
+                periods_active = sum(1 for a in allocs if a > 0.01)  # Count periods with >1% allocation
+                stats_list.append((name, mean_alloc, min_alloc, max_alloc, periods_active))
+        
+        # Sort by mean allocation
+        stats_list.sort(key=lambda x: x[1], reverse=True)
+        
+        for name, mean_alloc, min_alloc, max_alloc, periods_active in stats_list:
+            print(f"  {name:<38s} {mean_alloc:>11.1%} {min_alloc:>7.1%} {max_alloc:>7.1%} {periods_active:>10d}")
+    
+    # Show UCB algorithm state
+    print("\\n3. UCB Algorithm State (for reference):")
+    print("-" * 80)
+    print(f"{'Strategy':<40s} {'UCB Value':>15s} {'Mean Return':>15s}")
+    print("-" * 80)
+    
+    bandit_state = diagnostics.get('bandit_state', {})
+    values = bandit_state.get('values', [])
+    
+    ucb_list = []
+    for i, strategy_name in enumerate(strategy_names):
+        ucb_value = values[i] if i < len(values) else 0.0
+        mean_return = strategy_metrics[strategy_name].get('mean_return', 0.0)
+        ucb_list.append((strategy_name, ucb_value, mean_return))
+    
+    ucb_list.sort(key=lambda x: x[1], reverse=True)
+    
+    for strategy_name, ucb_value, mean_return in ucb_list:
+        print(f"  {strategy_name:<38s} {ucb_value:>15.4f} {mean_return:>15.4f}")
+    
+    # Allocation history statistics
+    if 'allocation_history' in diagnostics:
+        print("\\n3. Allocation Statistics:")
+        print("-" * 80)
+        alloc_history = diagnostics['allocation_history']
+        if len(alloc_history) > 0:
+            alloc_df = pd.DataFrame(alloc_history)
+            print(f"Total rebalancing periods: {len(alloc_df)}")
+            print(f"Burn-in complete: {diagnostics.get('burn_in_complete', False)}")
+            
+            # Show allocation concentration (Herfindahl index)
+            # Extract last allocations properly (allocations field contains the dict/array)
+            last_period = alloc_history[-1]
+            allocations = last_period.get('allocations', {})
+            
+            # Convert allocations to numeric array
+            if isinstance(allocations, dict):
+                numeric_allocs = np.array(list(allocations.values()))
+            elif isinstance(allocations, (list, np.ndarray)):
+                numeric_allocs = np.array(allocations)
+            else:
+                numeric_allocs = np.array([])
+            
+            # Normalize if values are percentages (>1.0)
+            if len(numeric_allocs) > 0 and numeric_allocs.max() > 1.0:
+                numeric_allocs = numeric_allocs / 100.0
+            
+            herfindahl = float((numeric_allocs ** 2).sum()) if len(numeric_allocs) > 0 else 0.0
+            n_strategies = len(numeric_allocs)
+            print(f"Current allocation concentration (HHI): {herfindahl:.3f}")
+            print(f"  (1.0 = fully concentrated, {1/n_strategies if n_strategies > 0 else 0:.3f} = equally distributed)")
+    
+    print("="*80 + "\\n")
+
+
 def main():
     """Main execution function."""
     print("=" * 80)
     print("12 BENCHMARK STRATEGIES - FULL BACKTEST")
+    if USE_BANDIT_WRAPPER:
+        print("BANDIT WRAPPER ENABLED: " + BANDIT_CONFIG['algorithm'].upper())
     print("=" * 80)
     print()
     
@@ -400,24 +525,82 @@ def main():
     print("=" * 80)
     
     results = []
-    for strategy_name, strategy_instance in strategies.items():
-        result = run_backtest(
-            strategy_instance=strategy_instance,
-            strategy_name=strategy_name,
-            prices=prices,
-            initial_capital=100000.0,
-            rebalance_frequency=1,  # Daily
-            transaction_cost=0.001
+    bandit_diagnostics = None
+    
+    if USE_BANDIT_WRAPPER:
+        # Create bandit wrapper for all strategies
+        logger.info(f"Creating BanditStrategyWrapper with {BANDIT_CONFIG['algorithm'].upper()} algorithm")
+        
+        if BANDIT_CONFIG['algorithm'] == 'ucb':
+            bandit = UCBBandit(
+                n_arms=len(strategies),
+                exploration_constant=BANDIT_CONFIG['exploration_constant']
+            )
+        else:  # thompson
+            bandit = ThompsonSamplingBandit(
+                n_arms=len(strategies),
+                random_seed=BANDIT_CONFIG.get('random_seed')
+            )
+        
+        wrapper = BanditStrategyWrapper(
+            child_strategies=list(strategies.values()),
+            bandit_allocator=bandit,
+            burn_in_periods=BANDIT_CONFIG['burn_in_periods'],
+            reward_type=BANDIT_CONFIG['reward_type'],
+            enable_soft_allocation=BANDIT_CONFIG['enable_soft_allocation'],
+            random_seed=BANDIT_CONFIG.get('random_seed')
         )
         
-        if result is not None:
-            results.append(result)
+        # Run single backtest with bandit wrapper
+        logger.info("Running backtest with BanditStrategyWrapper")
+        engine = PortfolioEngine(
+            prices=prices,
+            initial_capital=100000.0,
+            transaction_cost_bps=10,  # 0.1%
+            slippage_bps=1.0
+        )
+        
+        result = engine.run_backtest(
+            strategy_wrapper=wrapper,
+            start_date=prices.index[0],
+            end_date=prices.index[-1],
+            rebalance_freq='M'  # Monthly rebalancing
+        )
+        
+        bandit_diagnostics = wrapper.get_diagnostics()
+        
+        results.append({
+            'name': 'Bandit Meta-Strategy',
+            'result': result,
+            'equity_curve': result.equity_curve,
+            'metrics': result.summary_metrics
+        })
+        
+        logger.info("Bandit backtest completed")
+    else:
+        # Run individual strategy backtests (existing path)
+        for strategy_name, strategy_instance in strategies.items():
+            result = run_backtest(
+                strategy_instance=strategy_instance,
+                strategy_name=strategy_name,
+                prices=prices,
+                initial_capital=100000.0,
+                rebalance_frequency=1,  # Daily
+                transaction_cost=0.001
+            )
+            
+            if result is not None:
+                results.append(result)
     
     if len(results) == 0:
         logger.error("No strategies completed successfully!")
         return
     
     logger.info(f"\nSuccessfully completed {len(results)}/{len(strategies)} strategies")
+    
+    # Print bandit summary if enabled
+    if USE_BANDIT_WRAPPER and bandit_diagnostics:
+        print_bandit_summary(bandit_diagnostics)
     
     # Compute comprehensive metrics
     logger.info("Computing performance metrics...")
@@ -475,14 +658,14 @@ def main():
     print(f"{'=' * 80}\n")
     
     print("OUTPUT FILES GENERATED:")
-    print(f"  ✓ CSV metrics: {csv_file}")
-    print(f"  ✓ JSON metrics: {json_file}")
-    print(f"  ✓ NAV curves: {output_dir / '12_strategies_nav_curves.png'}")
-    print(f"  ✓ Metrics comparison: {output_dir / '12_strategies_metrics_comparison.png'}")
-    print(f"  ✓ Correlation heatmap: {output_dir / '12_strategies_correlation_heatmap.png'}")
+    print(f"  [OK] CSV metrics: {csv_file}")
+    print(f"  [OK] JSON metrics: {json_file}")
+    print(f"  [OK] NAV curves: {output_dir / '12_strategies_nav_curves.png'}")
+    print(f"  [OK] Metrics comparison: {output_dir / '12_strategies_metrics_comparison.png'}")
+    print(f"  [OK] Correlation heatmap: {output_dir / '12_strategies_correlation_heatmap.png'}")
     print()
     
-    logger.info("✓ Full backtest completed successfully!")
+    logger.info("[OK] Full backtest completed successfully!")
 
 
 if __name__ == "__main__":
