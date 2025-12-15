@@ -79,6 +79,22 @@ class StrategyPerformanceTracker:
             'sharpe': sharpe,
             'mean_allocation': mean_alloc
         }
+    
+    def get_state(self) -> Dict[str, Any]:
+        """Get serializable state for persistence."""
+        return {
+            'strategy_name': self.strategy_name,
+            'returns': self.returns.copy(),
+            'allocations': self.allocations.copy(),
+            'timestamps': [ts.isoformat() for ts in self.timestamps]
+        }
+    
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Restore state from serialized dictionary."""
+        self.strategy_name = state['strategy_name']
+        self.returns = state['returns'].copy()
+        self.allocations = state['allocations'].copy()
+        self.timestamps = [pd.Timestamp(ts) for ts in state['timestamps']]
 
 
 class BanditStrategyWrapper(BaseStrategyWrapper):
@@ -651,3 +667,140 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
                 'enable_soft_allocation': self.enable_soft_allocation
             }
         }
+    
+    def get_state(self) -> Dict[str, Any]:
+        """
+        Get complete state for persistence and resumption.
+        
+        Returns
+        -------
+        dict
+            JSON-serializable dictionary containing:
+            - bandit_state: Bandit allocator state
+            - trackers: Performance tracking state per strategy
+            - period_count: Number of periods processed
+            - last_date: Last processed date (ISO format)
+            - last_weights: Last portfolio weights (dict)
+            - last_allocations: Last strategy allocations (list)
+            - last_portfolio_value: Last portfolio value
+            - allocation_history: Full history of allocations
+            
+        Notes
+        -----
+        Use this to save bandit state between runs. State can be
+        serialized to JSON and restored with set_state().
+        
+        Examples
+        --------
+        >>> state = wrapper.get_state()
+        >>> import json
+        >>> with open('bandit_state.json', 'w') as f:
+        ...     json.dump(state, f)
+        """
+        # Serialize allocation history
+        serialized_history = [
+            {
+                'date': h['date'].isoformat(),
+                'allocations': h['allocations'].tolist() if isinstance(h['allocations'], np.ndarray) else list(h['allocations']),
+                'period': h['period']
+            }
+            for h in self.allocation_history
+        ]
+        
+        return {
+            'bandit_state': self.bandit_allocator.get_state(),
+            'trackers': [tracker.get_state() for tracker in self.trackers],
+            'period_count': self.period_count,
+            'last_date': self.last_date.isoformat() if self.last_date is not None else None,
+            'last_weights': self.last_weights.to_dict() if self.last_weights is not None else None,
+            'last_allocations': self.last_allocations.tolist() if self.last_allocations is not None else None,
+            'last_portfolio_value': self.last_portfolio_value,
+            'allocation_history': serialized_history,
+        }
+    
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """
+        Restore complete state from serialized dictionary.
+        
+        Parameters
+        ----------
+        state : dict
+            State dictionary from get_state()
+            
+        Raises
+        ------
+        ValueError
+            If state is invalid or incompatible with current configuration
+            
+        Notes
+        -----
+        This restores the full wrapper state including:
+        - Bandit learning progress (counts, rewards)
+        - Performance tracking history
+        - Last portfolio state
+        - Allocation history
+        
+        The number of child strategies must match the saved state.
+        
+        Examples
+        --------
+        >>> import json
+        >>> with open('bandit_state.json', 'r') as f:
+        ...     state = json.load(f)
+        >>> wrapper.set_state(state)
+        """
+        # Validate state structure
+        required_keys = [
+            'bandit_state', 'trackers', 'period_count',
+            'last_date', 'last_weights', 'last_allocations',
+            'last_portfolio_value', 'allocation_history'
+        ]
+        for key in required_keys:
+            if key not in state:
+                raise ValueError(f"Missing required key in state: {key}")
+        
+        # Validate number of strategies matches
+        if len(state['trackers']) != len(self.child_strategies):
+            raise ValueError(
+                f"State has {len(state['trackers'])} trackers but wrapper has "
+                f"{len(self.child_strategies)} child strategies"
+            )
+        
+        # Restore bandit state
+        self.bandit_allocator.set_state(state['bandit_state'])
+        
+        # Restore performance trackers
+        for tracker, tracker_state in zip(self.trackers, state['trackers']):
+            tracker.set_state(tracker_state)
+        
+        # Restore scalar state
+        self.period_count = state['period_count']
+        self.last_date = pd.Timestamp(state['last_date']) if state['last_date'] is not None else None
+        self.last_portfolio_value = state['last_portfolio_value']
+        
+        # Restore last weights (dict -> Series)
+        if state['last_weights'] is not None:
+            self.last_weights = Series(state['last_weights'])
+        else:
+            self.last_weights = None
+        
+        # Restore last allocations (list -> array)
+        if state['last_allocations'] is not None:
+            self.last_allocations = np.array(state['last_allocations'])
+        else:
+            self.last_allocations = None
+        
+        # Restore allocation history
+        self.allocation_history = [
+            {
+                'date': pd.Timestamp(h['date']),
+                'allocations': np.array(h['allocations']),
+                'period': h['period']
+            }
+            for h in state['allocation_history']
+        ]
+        
+        logger.info(
+            f"Restored BanditStrategyWrapper state: period_count={self.period_count}, "
+            f"n_history={len(self.allocation_history)}"
+        )
