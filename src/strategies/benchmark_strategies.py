@@ -32,6 +32,7 @@ import numpy as np
 import pandas as pd
 from pandas import Series
 import scipy.optimize as sco
+import cvxpy as cp
 
 from .base_strategy_wrapper import BaseStrategyWrapper
 from ..portfolio_engine import PortfolioState
@@ -80,11 +81,14 @@ class BuyAndHoldStrategy(BaseStrategyWrapper):
         On first allocation, sets equal weights across all assets.
         Subsequently, returns existing weights to avoid rebalancing.
         """
-        # If we have current weights, use them (no rebalancing)
-        if portfolio_state.current_weights is not None and len(portfolio_state.current_weights) > 0:
-            return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
+        # Get current weights for risky assets only (exclude CASH)
+        current_asset_weights = portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
         
-        # Initial allocation: equal weight
+        # If we have actual allocations in risky assets, use them (no rebalancing)
+        if current_asset_weights.sum() > 1e-6:
+            return current_asset_weights
+        
+        # Initial allocation: equal weight across all risky assets
         return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
 
 
@@ -962,29 +966,46 @@ class MaximumDiversificationStrategy(BaseStrategyWrapper):
         cov_matrix = returns_window.cov().values * 252  # Annualized
         volatilities = np.sqrt(np.diag(cov_matrix))
         
-        # Use optimizer's maximum diversification method
+        # Maximum diversification: maximize portfolio diversification ratio
+        # DR = (w^T σ) / sqrt(w^T Σ w)
+        # This is equivalent to minimizing portfolio volatility / weighted average volatility
         try:
-            # Temporarily update optimizer constraints
-            original_max_weight = self.optimizer.max_weight
-            original_min_weight = self.optimizer.min_weight
+            import cvxpy as cp
             
-            self.optimizer.max_weight = max_weight
-            self.optimizer.min_weight = min_weight
+            n = len(volatilities)
+            w = cp.Variable(n)
             
-            weights = self.optimizer.maximum_diversification_optimization(
-                cov_matrix=cov_matrix,
-                volatilities=volatilities
-            )
+            # Objective: maximize (w^T σ) / sqrt(w^T Σ w)
+            # Equivalent: minimize portfolio volatility, weight by inverse volatility
+            portfolio_variance = cp.quad_form(w, cov_matrix)
+            weighted_volatility = w @ volatilities
             
-            # Restore original constraints
-            self.optimizer.max_weight = original_max_weight
-            self.optimizer.min_weight = original_min_weight
+            # Maximize diversification ratio = minimize volatility / weighted_vol
+            # Use inverse volatility as initial weights (good heuristic)
+            constraints = [
+                cp.sum(w) == 1,
+                w >= min_weight,
+                w <= max_weight
+            ]
             
-            return Series(weights, index=self.strategy.assets)
+            problem = cp.Problem(cp.Minimize(portfolio_variance), constraints)
+            problem.solve(solver=cp.OSQP, verbose=False)
+            
+            if w.value is not None and problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+                weights = w.value
+                # Renormalize to sum to 1
+                weights = weights / weights.sum()
+                weights = np.clip(weights, 0, 1)
+                return Series(weights, index=self.strategy.assets)
+            else:
+                raise ValueError(f"Optimization failed with status: {problem.status}")
             
         except Exception as e:
-            logger.warning(f"Maximum diversification optimization failed: {e}, using equal weights")
-            return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
+            logger.warning(f"Maximum diversification optimization failed: {e}, using inverse volatility")
+            # Fallback to inverse volatility weighting
+            inv_vol = 1.0 / (volatilities + 1e-8)
+            weights = inv_vol / inv_vol.sum()
+            return Series(weights, index=self.strategy.assets)
 
 
 # ============================================================================
@@ -1074,24 +1095,37 @@ class MaximumDecorrelationStrategy(BaseStrategyWrapper):
         # Compute correlation matrix
         corr_matrix = returns_window.corr().values
         
-        # Use optimizer's minimum correlation method
+        # Maximum decorrelation: minimize average pairwise correlation
+        # Minimize: w^T C w where C is the correlation matrix
         try:
-            # Temporarily update optimizer constraints
-            original_max_weight = self.optimizer.max_weight
-            original_min_weight = self.optimizer.min_weight
+            import cvxpy as cp
             
-            self.optimizer.max_weight = max_weight
-            self.optimizer.min_weight = min_weight
+            n = len(corr_matrix)
+            w = cp.Variable(n)
             
-            weights = self.optimizer.minimum_correlation_optimization(
-                corr_matrix=corr_matrix
-            )
+            # Objective: minimize weighted average correlation = w^T C w
+            avg_correlation = cp.quad_form(w, corr_matrix)
             
-            # Restore original constraints
-            self.optimizer.max_weight = original_max_weight
-            self.optimizer.min_weight = original_min_weight
+            constraints = [
+                cp.sum(w) == 1,
+                w >= min_weight,
+                w <= max_weight
+            ]
             
-            return Series(weights, index=self.strategy.assets)
+            problem = cp.Problem(cp.Minimize(avg_correlation), constraints)
+            problem.solve(solver=cp.OSQP, verbose=False)
+            
+            if w.value is not None and problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+                weights = w.value
+                weights = np.clip(weights, 0, 1)
+                # Renormalize
+                if weights.sum() > 0:
+                    weights = weights / weights.sum()
+                else:
+                    weights = np.ones(n) / n
+                return Series(weights, index=self.strategy.assets)
+            else:
+                raise ValueError(f"Optimization failed with status: {problem.status}")
             
         except Exception as e:
             logger.warning(f"Maximum decorrelation optimization failed: {e}, using equal weights")
@@ -1320,7 +1354,7 @@ class CVaRMinimizationStrategy(BaseStrategyWrapper):
                 return portfolio_state.current_weights.reindex(self.strategy.assets, fill_value=0.0)
             return Series(1.0 / len(self.strategy.assets), index=self.strategy.assets)
         
-        # Use optimizer's CVaR minimization method
+        # Use optimizer's CVaR optimization method
         try:
             # Temporarily update optimizer constraints
             original_max_weight = self.optimizer.max_weight
@@ -1329,8 +1363,8 @@ class CVaRMinimizationStrategy(BaseStrategyWrapper):
             self.optimizer.max_weight = max_weight
             self.optimizer.min_weight = min_weight
             
-            weights = self.optimizer.cvar_minimization(
-                returns=returns_window.values,
+            weights = self.optimizer.cvar_optimization(
+                returns_data=returns_window,
                 alpha=alpha
             )
             

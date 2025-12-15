@@ -1,13 +1,13 @@
 {
   "1. Buy & Hold": {
-    "total_return": 0.0,
-    "cagr": 0.0,
-    "volatility": 0.0,
-    "sharpe_ratio": -Infinity,
-    "max_drawdown": 0.0,
-    "calmar_ratio": 0.0,
-    "sortino_ratio": 0.0,
-    "win_rate": 0.0
+    "total_return": 0.1753291237646184,
+    "cagr": 0.3813985491693057,
+    "volatility": 0.12621813875509844,
+    "sharpe_ratio": 2.4860271305687225,
+    "max_drawdown": -0.06256713958243335,
+    "calmar_ratio": 6.095828444687106,
+    "sortino_ratio": 3.674449352683514,
+    "win_rate": 0.48
   },
   "2. Equal Weight": {
     "total_return": 0.17532912376461884,
@@ -80,24 +80,24 @@
     "win_rate": 0.392
   },
   "9. Max Diversification": {
-    "total_return": 0.12638550174645102,
-    "cagr": 0.26874429854460424,
-    "volatility": 0.11583733239770425,
-    "sharpe_ratio": 1.956956542870567,
-    "max_drawdown": -0.06256713958243292,
-    "calmar_ratio": 4.295294628109546,
-    "sortino_ratio": 2.648776087065698,
-    "win_rate": 0.384
+    "total_return": 0.13846002991349105,
+    "cagr": 0.296091239710627,
+    "volatility": 0.08179788065417509,
+    "sharpe_ratio": 2.9935163445468422,
+    "max_drawdown": -0.021981710329356568,
+    "calmar_ratio": 13.469890889936678,
+    "sortino_ratio": 6.711766114539683,
+    "win_rate": 0.352
   },
   "10. Max Decorrelation": {
-    "total_return": 0.12638550174645102,
-    "cagr": 0.26874429854460424,
-    "volatility": 0.11583733239770425,
-    "sharpe_ratio": 1.956956542870567,
-    "max_drawdown": -0.06256713958243292,
-    "calmar_ratio": 4.295294628109546,
-    "sortino_ratio": 2.648776087065698,
-    "win_rate": 0.384
+    "total_return": 0.11699811146825434,
+    "cagr": 0.24768478102364666,
+    "volatility": 0.11326923209471314,
+    "sharpe_ratio": 1.8496734154449654,
+    "max_drawdown": -0.05243053881969375,
+    "calmar_ratio": 4.724055609564179,
+    "sortino_ratio": 2.4363424355005168,
+    "win_rate": 0.4
   },
   "11. Sharpe Maximization": {
     "total_return": 0.2052061956038993,
@@ -110,13 +110,13 @@
     "win_rate": 0.36
   },
   "12. CVaR Minimization": {
-    "total_return": 0.12638550174645102,
-    "cagr": 0.26874429854460424,
-    "volatility": 0.11583733239770425,
-    "sharpe_ratio": 1.956956542870567,
-    "max_drawdown": -0.06256713958243292,
-    "calmar_ratio": 4.295294628109546,
-    "sortino_ratio": 2.648776087065698,
+    "total_return": 0.2055069581671931,
+    "cagr": 0.45324702618951873,
+    "volatility": 0.08928835861370905,
+    "sharpe_ratio": 4.043186534707226,
+    "max_drawdown": -0.01989957692501368,
+    "calmar_ratio": 22.77671670596118,
+    "sortino_ratio": 7.392632831407233,
     "win_rate": 0.384
   }
 }
