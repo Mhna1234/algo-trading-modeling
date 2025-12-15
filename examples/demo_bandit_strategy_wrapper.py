@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.abspath('.'))
 
 from src.signal_generator import StrategySignalGenerator as Strategy
 from src.optimizer import PortfolioOptimizer
-from src.strategy_wrapper import (
+from src.strategies import (
     MomentumStrategy, 
     MeanReversionStrategy, 
     InverseVolatilityStrategy

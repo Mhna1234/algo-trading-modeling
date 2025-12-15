@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data_loader import load_preprocessed_data
 from src.signal_generator import Strategy
-from src.strategy_wrapper import EqualWeightStrategy
+from src.strategies import EqualWeightStrategy
 from src.portfolio_engine import PortfolioEngine
 
 # Load data

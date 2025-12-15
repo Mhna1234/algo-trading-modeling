@@ -31,7 +31,7 @@ from src.data_loader import load_preprocessed_data
 from src.signal_generator import StrategySignalGenerator
 from src.optimizer import PortfolioOptimizer
 from src.portfolio_engine import PortfolioEngine
-from src.strategy_wrapper import (
+from src.strategies import (
     SVMRegimeStrategy,
     MomentumStrategy,
     MeanReversionStrategy,

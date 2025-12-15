@@ -1,0 +1,92 @@
+"""
+Trading Strategies Package
+
+This package contains all trading strategies organized into three modules:
+- base_strategy_wrapper: Base class and utility functions
+- benchmark_strategies: 12 validated production strategies  
+- advanced_strategies: 10 experimental research strategies
+
+Usage:
+    from src.strategies import create_strategy, list_available_strategies
+    
+    # List all strategies
+    available = list_available_strategies()
+    
+    # Create a strategy
+    strategy = create_strategy('equal_weight', signal_gen, optimizer)
+"""
+
+from .base_strategy_wrapper import (
+    BaseStrategyWrapper,
+    list_available_strategies,
+    create_strategy
+)
+
+# Import all benchmark strategies for direct access
+from .benchmark_strategies import (
+    BuyAndHoldStrategy,
+    EqualWeightStrategy,
+    QuintileFactorStrategy,
+    QuintileLowVolatilityStrategy,
+    MeanReversionStrategy,
+    GlobalMinimumVarianceStrategy,
+    InverseVolatilityStrategy,
+    RiskParityStrategy,
+    MaximumDiversificationStrategy,
+    MaximumDecorrelationStrategy,
+    SharpeMaximizationStrategy,
+    CVaRMinimizationStrategy
+)
+
+# Import all advanced strategies for direct access
+from .advanced_strategies import (
+    MomentumStrategy,
+    RegimeSwitchingStrategy,
+    MLRandomForestStrategy,
+    MLGradientBoostingStrategy,
+    ARMAForecastStrategy,
+    MultiFactorMLStrategy,
+    GMRPStrategy,
+    TimeSeriesMomentumStrategy,
+    MovingAverageCrossoverStrategy,
+    MarkowitzMVOStrategy,
+    LinearRegressionStrategy,
+    SVMRegimeStrategy,
+    ARIMAGARCHForecastingStrategy
+)
+
+__all__ = [
+    # Base classes and utilities
+    'BaseStrategyWrapper',
+    'list_available_strategies',
+    'create_strategy',
+    
+    # Benchmark strategies (12)
+    'BuyAndHoldStrategy',
+    'EqualWeightStrategy',
+    'QuintileFactorStrategy',
+    'QuintileLowVolatilityStrategy',
+    'MeanReversionStrategy',
+    'GlobalMinimumVarianceStrategy',
+    'InverseVolatilityStrategy',
+    'RiskParityStrategy',
+    'MaximumDiversificationStrategy',
+    'MaximumDecorrelationStrategy',
+    'SharpeMaximizationStrategy',
+    'CVaRMinimizationStrategy',
+    
+    # Advanced strategies (13)
+    'MomentumStrategy',
+    'RegimeSwitchingStrategy',
+    'MLRandomForestStrategy',
+    'MLGradientBoostingStrategy',
+    'ARMAForecastStrategy',
+    'MultiFactorMLStrategy',
+    'GMRPStrategy',
+    'TimeSeriesMomentumStrategy',
+    'MovingAverageCrossoverStrategy',
+    'MarkowitzMVOStrategy',
+    'LinearRegressionStrategy',
+    'SVMRegimeStrategy',
+    'ARIMAGARCHForecastingStrategy',
+]

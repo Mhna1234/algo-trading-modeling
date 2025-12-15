@@ -38,7 +38,7 @@ from src.data_loader import load_preprocessed_data
 from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 from src.portfolio_engine import PortfolioState
-from src.strategy_wrapper import (
+from src.strategies import (
     BaseStrategyWrapper,
     BuyAndHoldStrategy,
     EqualWeightStrategy,

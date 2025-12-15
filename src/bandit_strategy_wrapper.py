@@ -31,7 +31,7 @@ import logging
 from dataclasses import dataclass, field
 
 # Import base classes
-from src.strategy_wrapper import BaseStrategyWrapper
+from src.strategies import BaseStrategyWrapper
 from src.portfolio_engine import PortfolioState
 from src.bandits import BanditAllocator
 
@@ -141,7 +141,7 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
     Examples
     --------
     >>> from src.bandits import UCBBandit
-    >>> from src.strategy_wrapper import MomentumStrategy, MeanReversionStrategy
+    >>> from src.strategies import MomentumStrategy, MeanReversionStrategy
     >>> 
     >>> # Create child strategies
     >>> momentum = MomentumStrategy(strategy, optimizer, top_k=10)

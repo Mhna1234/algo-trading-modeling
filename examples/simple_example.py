@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from src.portfolio_engine import PortfolioEngine
-from src.strategy_wrapper import MomentumStrategy
+from src.strategies import MomentumStrategy
 from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
 

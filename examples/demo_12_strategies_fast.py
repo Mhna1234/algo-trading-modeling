@@ -59,7 +59,7 @@ from src.data_loader import load_preprocessed_data
 from src.portfolio_engine import PortfolioEngine
 from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
-from src.strategy_wrapper import (
+from src.strategies import (
     BuyAndHoldStrategy,
     EqualWeightStrategy,
     QuintileFactorStrategy,
@@ -153,14 +153,14 @@ def create_strategy_instances_fast(
     """
     strategies = {
         '1. Buy & Hold': BuyAndHoldStrategy(
-            signal_generator, optimizer, initial_method='equal'
+            signal_generator, optimizer
         ),
         '2. Equal Weight': EqualWeightStrategy(
             signal_generator, optimizer
         ),
         '3. Quintile Momentum': QuintileFactorStrategy(
             signal_generator, optimizer, 
-            factor='momentum', lookback=63, target_quintile=5
+            lookback=63, target_quintile=5
         ),
         '4. Quintile Low Vol': QuintileLowVolatilityStrategy(
             signal_generator, optimizer, 
@@ -168,7 +168,7 @@ def create_strategy_instances_fast(
         ),
         '5. Mean Reversion': MeanReversionStrategy(
             signal_generator, optimizer, 
-            window=10, top_k=5
+            lookback=10
         ),
         '6. GMVP': GlobalMinimumVarianceStrategy(
             signal_generator, optimizer, 
@@ -176,7 +176,7 @@ def create_strategy_instances_fast(
         ),
         '7. Inverse Volatility': InverseVolatilityStrategy(
             signal_generator, optimizer, 
-            vol_window=21
+            lookback=21
         ),
         '8. Risk Parity': RiskParityStrategy(
             signal_generator, optimizer, 
