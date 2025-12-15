@@ -62,6 +62,11 @@ algo-trading-modeling/
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
+- Python 3.11.9 or higher
+- pip (Python package manager)
+
 ### Installation
 
 1. Clone the repository:
@@ -70,7 +75,16 @@ git clone https://github.com/Mhna1234/algo-trading-modeling.git
 cd algo-trading-modeling
 ```
 
-2. Install dependencies:
+2. Create and activate a virtual environment (recommended):
+```bash
+python -m venv .venv
+# On Windows
+.venv\Scripts\activate
+# On macOS/Linux
+source .venv/bin/activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
