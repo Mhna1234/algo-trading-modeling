@@ -116,6 +116,32 @@ Where:
 - When you need deterministic, reproducible results
 - When you want interpretable decision-making
 
+### Thompson Sampling (Bayesian)
+
+**Algorithm:**
+1. Maintain posterior distribution N(μ_k, σ²_k) for each arm
+2. Sample θ_k ~ N(μ_k, σ²_k) from each posterior
+3. Select arm with highest sample: argmax_k θ_k
+
+**Properties:**
+- ✅ Excellent empirical performance
+- ✅ Natural exploration (wide posterior = more sampling)
+- ✅ Handles noisy continuous rewards well
+- ✅ No hyperparameters to tune
+- ⚠️ Stochastic (requires random seed for reproducibility)
+
+**Parameters:**
+- `prior_mean`: Prior belief about arm means (default 0.0)
+- `prior_variance`: Prior uncertainty (default 1.0)
+- `variance_scale`: Posterior variance scaling (default 1.0)
+- `random_seed`: Seed for reproducibility (default None)
+
+**When to use:**
+- When rewards are noisy/continuous
+- When you want faster convergence to best arm
+- When you don't need perfect reproducibility (or can set seed)
+- For non-stationary environments (adapts quickly)
+
 ## API Reference
 
 ### BanditAllocator (Base Class)
@@ -156,16 +182,41 @@ UCBBandit(
 - `values`: Average reward per arm
 - `total_selections`: Total selections made
 
+### ThompsonSamplingBandit
+
+Thompson Sampling with Bayesian normal model.
+
+**Initialization:**
+```python
+ThompsonSamplingBandit(
+    n_arms: int,                      # Number of strategies
+    prior_mean: float = 0.0,          # Prior belief about means
+    prior_variance: float = 1.0,      # Prior uncertainty (> 0)
+    variance_scale: float = 1.0,      # Posterior variance scaling (> 0)
+    random_seed: Optional[int] = None # Seed for reproducibility
+)
+```
+
+**Additional Methods:**
+- `get_arm_statistics() -> dict`: Get detailed statistics
+  - Returns: `{'counts': [...], 'means': [...], 'variances': [...], 'std_devs': [...]}`
+
+**Attributes:**
+- `counts`: Selection count per arm
+- `sums`: Sum of rewards per arm
+- `sum_squares`: Sum of squared rewards per arm
+- `random_state`: Random number generator
+
 ## Testing
 
 ### Run All Tests
 
 ```bash
 # Run all bandit tests
-python -m pytest tests/test_bandit_allocator.py tests/test_ucb_bandit.py -v
+python -m pytest tests/test_bandit_allocator.py tests/test_ucb_bandit.py tests/test_thompson_bandit.py -v
 
 # Run with coverage
-python -m pytest tests/test_bandit_allocator.py tests/test_ucb_bandit.py --cov=src/bandits --cov-report=term-missing
+python -m pytest tests/test_bandit_allocator.py tests/test_ucb_bandit.py tests/test_thompson_bandit.py --cov=src/bandits --cov-report=term-missing
 ```
 
 ### Test Categories
@@ -184,9 +235,18 @@ python -m pytest tests/test_bandit_allocator.py tests/test_ucb_bandit.py --cov=s
 - Convergence properties
 - Edge cases
 
+**Thompson Sampling Tests (28 tests):**
+- Reproducibility with seed
+- Stochastic behavior
+- Posterior mean/variance updates
+- Exploration of uncertain arms
+- Exploitation of good arms
+- Noisy reward handling
+- Edge cases
+
 All tests:
 - ✅ Fast (<2 seconds total)
-- ✅ Deterministic (no randomness)
+- ✅ Comprehensive (67 tests)
 - ✅ Pure (no I/O, no pandas, no market data)
 
 ## Integration with Trading System
@@ -238,20 +298,34 @@ Algorithms must be fast enough for real-time trading:
 - O(1) per update
 - Minimal memory allocation
 
+## Comparison: UCB vs Thompson Sampling
+
+| Feature | UCB | Thompson Sampling |
+|---------|-----|------------------|
+| **Exploration** | Confidence bounds | Posterior sampling |
+| **Deterministic** | Yes | No (requires seed) |
+| **Convergence** | Moderate | Fast |
+| **Noisy rewards** | Good | Excellent |
+| **Hyperparameters** | 1 (exploration_constant) | 0 (priors usually default) |
+| **Interpretability** | High (UCB scores) | Moderate (posterior) |
+| **Best for** | Backtests, stability | Real-time, adaptation |
+
+Run `examples/demo_bandit_comparison.py` to see both in action.
+
 ## Future Extensions
 
-Potential algorithms to add (not in current scope):
+Potential algorithms to add:
 
-1. **Thompson Sampling**: Bayesian approach with Beta distributions
-2. **Epsilon-Greedy**: Simple baseline for comparison
-3. **Sliding Window UCB**: Forget old observations for non-stationary environments
-4. **Discounted UCB**: Exponential decay for recent performance weighting
+1. **Epsilon-Greedy**: Simple baseline for comparison
+2. **Sliding Window UCB**: Forget old observations for non-stationary environments
+3. **Discounted Thompson Sampling**: Exponential decay for recent performance weighting
+4. **Contextual Bandits**: Condition on market state features
 
 All extensions should follow the same design principles:
 - Implement `BanditAllocator` interface
 - Add comprehensive unit tests
 - Maintain zero external dependencies
-- Ensure deterministic behavior
+- Reproducible behavior (deterministic or seeded)
 
 ## References
 

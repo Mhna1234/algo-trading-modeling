@@ -7,8 +7,10 @@ without dependencies on market data or pandas.
 
 from src.bandits.base import BanditAllocator
 from src.bandits.ucb import UCBBandit
+from src.bandits.thompson import ThompsonSamplingBandit
 
 __all__ = [
     'BanditAllocator',
     'UCBBandit',
+    'ThompsonSamplingBandit',
 ]
