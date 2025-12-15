@@ -1,46 +1,47 @@
-# Strategy Guide - Trading Strategies v4.0
+# Strategy Guide - Trading Strategies v3.0
 
-This guide provides detailed information about the 25 validated trading strategies in the Portfolio Engine.
+This guide provides detailed information about the **12 validated benchmark strategies** in the Portfolio Engine.
 
-## Strategy Overview (25 Production-Ready Strategies)
+## Strategy Overview (12 Validated Benchmark Strategies)
 
-All strategies have been validated with comprehensive testing including 10-year full backtests (2015-2025) and show positive returns with proper transaction cost modeling. All strategies are implemented in `src/strategy_wrapper.py`.
+All 12 strategies have been rigorously validated with comprehensive testing including 10-year full backtests (2015-2025) with monthly rebalancing and realistic transaction cost modeling. All strategies are implemented in `src/strategy_wrapper.py`.
 
-### Basic Strategies
-1. **Equal Weight** - 1/N baseline portfolio
-2. **Buy and Hold** - Buy-and-hold benchmark
-3. **Inverse Volatility** - Inverse volatility weighting
+**Version**: 3.0.0 | **Last Updated**: December 15, 2025
 
-### Momentum & Trend
-4. **Momentum** - Multi-period momentum with CVaR optimization
-5. **Time Series Momentum** - 12-month time series momentum
-6. **Moving Average Crossover** - 50/200 day MA crossover
+See [VALIDATION_COMPLETE.md](../VALIDATION_COMPLETE.md) for detailed validation results.
 
-### Mean Reversion
-7. **Mean Reversion** - Z-score based with mean-variance optimization
+### Passive/Baseline Strategies (2)
+1. **Buy & Hold** - Market cap weighted benchmark
+2. **Equal Weight (1/N)** - Naive diversification baseline
 
-### Risk-Based Optimization
-8. **GMVP (Global Minimum Variance)** - Minimum variance optimization
-9. **GMRP (Global Maximum Return Portfolio)** - Return maximization
-10. **CVaR Minimization** - Conditional Value at Risk minimization
-11. **Risk Parity** - Equal risk contribution across assets
-12. **Maximum Diversification** - Diversification ratio maximization
-13. **Maximum Decorrelation** - Minimize average pairwise correlation
+### Factor-Based Strategies (3)
+3. **Quintile Momentum** - Cross-sectional momentum (top 20%)
+4. **Quintile Low Volatility** - Low volatility factor (bottom 20%)
+5. **Mean Reversion Quintile** - Contrarian strategy
 
-### Machine Learning & Factor-Based
-14. **Linear Regression** - Factor-based expected return estimation
-15. **Multi-Factor ML** - Machine learning factor combination
-16. **ML Random Forest** - Random forest predictions
-17. **ML Gradient Boosting** - Gradient boosting predictions
-18. **SVM Regime Classification** - Support Vector Machine market regime detection
-19. **Quintile Factor** - Factor quintile portfolios (momentum, low vol, etc.)
+### Risk-Based Optimization (5)
+6. **Global Minimum Variance (GMVP)** - Minimum portfolio volatility
+7. **Inverse Volatility** - Weight inversely proportional to volatility
+8. **Risk Parity** - Equal risk contribution across assets
+9. **Maximum Diversification** - Maximize diversification ratio
+10. **Maximum Decorrelation** - Minimize average correlation
 
-### Advanced Strategies
-20. **Regime Switching** - Adaptive volatility-based regime detection
-21. **ARMA Forecast** - ARMA time series forecasting
-22. **ARIMA-GARCH** - Advanced time series with volatility modeling
-23. **Markowitz MVO** - Mean-variance optimization with custom parameters
-24. **Sharpe Maximization** - Maximize risk-adjusted returns (tangency portfolio)
+### Return-Based Optimization (2)
+11. **Sharpe Ratio Maximization** - Mean-variance optimization
+12. **CVaR Minimization** - Conditional Value-at-Risk minimization
+
+---
+
+## Multi-Armed Bandit (MAB) Meta-Strategy
+
+In addition to the 12 benchmark strategies, the system includes a **Multi-Armed Bandit (MAB)** meta-strategy that dynamically allocates capital across strategies:
+
+- **UCB (Upper Confidence Bound)** - Deterministic exploration-exploitation balance
+- **Thompson Sampling** - Bayesian posterior sampling approach
+- **Configurable Rewards** - Returns, Sharpe ratio, or Sortino ratio
+- **Soft Allocation** - Probabilistic strategy selection
+
+See [BANDIT_EXPLANATION.md](../BANDIT_EXPLANATION.md) for details.
 
 ## Validated Performance (10-Year Monthly, 2015-2025)
 
@@ -52,7 +53,9 @@ All strategies have been validated with comprehensive testing including 10-year 
 - Initial capital: $100,000
 - Assets: 20 tickers
 
-### Top 12 Strategies Performance
+**Key Finding**: Monthly rebalancing is critical for positive returns. Daily rebalancing leads to excessive transaction costs that eliminate gains.
+
+### 12 Benchmark Strategies Performance
 
 | Rank | Strategy | CAGR | Total Return | Sharpe | Volatility | Max DD | Sortino | Win Rate |
 |------|----------|------|--------------|--------|------------|--------|---------|----------|
@@ -75,6 +78,16 @@ All strategies have been validated with comprehensive testing including 10-year 
 - **Lowest Risk**: Quintile Low Vol (14.43% volatility, -20.84% max DD)
 - **Most Consistent**: Max Decorrelation (54.7% win rate)
 - **Critical Factor**: Monthly rebalancing vs daily reduces costs by 95% and enables positive returns
+
+---
+
+## Note on Strategy Documentation
+
+**⚠️ IMPORTANT**: This document contains detailed documentation for many strategies. However, only the **12 benchmark strategies listed above** have been fully validated and are production-ready in v3.0.0.
+
+The sections below (strategies 1-12) document the 12 validated benchmark strategies. Additional strategy documentation (beyond strategy #12) represents historical development work or future planned strategies that are not currently validated.
+
+For the current validated strategy list, see the table above or [VALIDATION_COMPLETE.md](../VALIDATION_COMPLETE.md).
 
 ---
 
