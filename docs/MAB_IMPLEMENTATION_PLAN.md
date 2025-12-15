@@ -1,72 +1,927 @@
 # MAB Implementation Plan - Algo Trading Project
 
-## Executive Summary
+## 1. Motivation and Problem Statement
 
-**Objective**: Integrate Multi-Armed Bandit (MAB) framework to dynamically allocate capital across 12 existing strategies, improving risk-adjusted returns through adaptive learning.
+### Current Limitations of Static Strategy Allocation
 
-**Approach**: Meta-strategy wrapper using Thompson Sampling for strategy selection with single-strategy allocation per rebalancing period.
+The project currently implements 22+ trading strategies (momentum, mean reversion, risk parity, machine learning-based, etc.). In production or backtesting scenarios, users face a fundamental allocation problem:
 
-**Expected Impact**: 15-25% Sharpe ratio improvement, 20-30% drawdown reduction vs. equal-weight baseline.
+**Problem**: How much capital should be allocated to each strategy over time?
+
+**Current Approaches**:
+- **Equal weighting**: Allocate 1/N to each of N strategies regardless of performance
+- **Ex-ante optimization**: Pre-select strategies based on historical backtests
+- **Manual selection**: Human judgment based on market conditions
+
+**Why These Are Suboptimal**:
+1. **Regime Blindness**: Static allocations cannot adapt when market regimes change
+2. **No Learning**: Past performance information is ignored in real-time
+3. **Winner's Curse**: Ex-ante optimization often selects strategies that worked historically but fail forward
+4. **Opportunity Cost**: Capital remains locked in underperforming strategies
+5. **No Exploration**: Manual selection misses opportunities to discover newly effective strategies
+
+### Why Multi-Armed Bandits at the Strategy Level
+
+MAB frameworks are designed to solve exactly this problem: **sequential decision-making under uncertainty with the exploration-exploitation trade-off**.
+
+**Key Insight**: Each trading strategy is an "arm" of the bandit. The algorithm learns which strategies (not which assets) deliver superior risk-adjusted returns in real-time, and dynamically reallocates capital accordingly.
+
+**Why This Level of Abstraction**:
+- **Strategy-level** decisions are less noisy than asset-level decisions (strategies aggregate many assets)
+- **Rebalancing frequency** can be lower (weekly/monthly vs daily), reducing transaction costs
+- **Interpretability**: "Why did we allocate 40% to momentum this month?" is answerable
+- **Separation of concerns**: Asset-level optimization (GMVP, CVaR, etc.) remains unchanged
+- **Risk management**: Existing portfolio optimizers continue to handle asset-level risk
+
+**Expected Benefits**:
+- **Adaptive allocation**: Capital flows to strategies that work in current regime
+- **Regime detection**: Automatically discovers regime changes through performance shifts
+- **Reduced overfitting**: Online learning reduces dependence on fixed historical periods
+- **Diversification**: Exploration ensures no strategy is permanently abandoned
 
 ---
 
-## Project Specifications (Based on Requirements)
+## 2. Conceptual Model
 
-### Configuration Parameters
+### Meta-Portfolio Formulation
+
+At each rebalancing time $t$, we have:
+
+$$
+\text{FinalPortfolio}_t = \sum_{k=1}^{K} \alpha_{k,t} \cdot \text{StrategyPortfolio}_{k,t}
+$$
+
+Where:
+- $K$ = number of candidate strategies (e.g., 6-12)
+- $\alpha_{k,t}$ = allocation weight to strategy $k$ at time $t$ (determined by MAB)
+- $\text{StrategyPortfolio}_{k,t}$ = asset weight vector from strategy $k$ at time $t$
+- $\sum_{k=1}^{K} \alpha_{k,t} = 1$ and $\alpha_{k,t} \geq \alpha_{\min}$ (minimum allocation constraint)
+
+**Each Strategy Already Handles**:
+- Signal generation
+- Asset-level portfolio optimization (e.g., GMVP, Sharpe maximization)
+- Risk management (position limits, leverage constraints)
+
+**The MAB Layer Handles**:
+- Learning which strategy family works best currently
+- Allocating capital across strategies ($\alpha$ weights)
+- Balancing exploration (trying uncertain strategies) vs exploitation (using proven strategies)
+
+### Definition of Arms
+
+**Arm** = A complete trading strategy wrapper (instance of `BaseStrategyWrapper`).
+
+Examples:
+- Momentum strategy (top 10 assets, 126-day lookback, GMVP optimizer)
+- Mean reversion strategy (21-day lookback, CVaR optimizer)
+- Low volatility strategy (inverse volatility weighting)
+- ML-based strategy (random forest forecasting, Sharpe optimizer)
+
+**Critical**: The arm is NOT an individual asset. The MAB does not select "buy AAPL vs MSFT". It selects "use momentum strategy vs mean reversion strategy", where each strategy already contains its own asset selection and weighting logic.
+
+### Rewards
+
+**Reward** = Realized risk-adjusted return of strategy $k$ over evaluation period $[t-L, t]$.
+
+**Timing**:
+1. At rebalance time $t$, MAB selects strategy allocations $\{\alpha_{k,t}\}$
+2. Portfolio executes these allocations
+3. At next rebalance time $t+1$, **realized returns** over $[t, t+1]$ are observed
+4. Rewards are calculated and fed back to MAB to update beliefs
+5. MAB selects new allocations $\{\alpha_{k,t+1}\}$ based on updated beliefs
+
+**Lookback**: Rewards typically use a sliding window (e.g., last 12 weeks) to evaluate recent strategy performance, not just single-period returns.
+
+### Rebalance Timing
+
+**Frequency**: Weekly or bi-weekly (aligned with existing strategy rebalancing).
+
+**Rationale**:
+- Daily rebalancing at strategy level creates excessive turnover
+- Monthly rebalancing is too slow to adapt to regime changes
+- Weekly provides good balance between responsiveness and stability
+
+---
+
+## 3. Component Overview
+
+### 3.1 BanditAllocator (Pure MAB Logic)
+
+**Purpose**: Encapsulates bandit algorithm logic in a reusable, testable, strategy-agnostic class.
+
+**Responsibilities**:
+- Maintain internal state (arm statistics: means, variances, selection counts)
+- Implement arm selection algorithms (UCB, Thompson Sampling, etc.)
+- Update beliefs after receiving rewards
+- Provide allocation weights (not just single arm selection)
+- Support minimum allocation constraints
+- Track selection history for diagnostics
+
+**Explicit Non-Responsibilities**:
+- No market data access
+- No knowledge of what "strategies" are
+- No portfolio construction logic
+- No execution or rebalancing logic
+- No reward calculation (receives rewards as input)
+
+**Design Principle**: `BanditAllocator` should be testable in isolation with synthetic reward sequences, without any dependency on trading infrastructure.
+
+---
+
+### 3.2 BanditStrategyWrapper (Strategy Integration)
+
+**Purpose**: Bridge between the bandit allocation logic and the existing strategy wrapper architecture.
+
+**Responsibilities**:
+- Implement `BaseStrategyWrapper` interface (drop-in replacement for any strategy)
+- Own and manage a collection of child strategy instances
+- Delegate to `BanditAllocator` for allocation decisions
+- Aggregate child strategy weights into final portfolio weights
+- Calculate rewards based on realized performance
+- Expose diagnostic information (selection history, reward history, allocation evolution)
+
+**Lifecycle**:
+1. **Initialization**: Instantiate child strategies and bandit allocator
+2. **Cold Start**: During burn-in period, use equal allocation or prior beliefs
+3. **Selection Phase**: At each rebalance, query `BanditAllocator` for allocations
+4. **Weight Aggregation**: Combine child strategy weights using bandit allocations
+5. **Performance Tracking**: Monitor realized returns for each strategy allocation
+6. **Reward Feedback**: Calculate and feed rewards back to `BanditAllocator`
+7. **Adaptation**: Allocations evolve based on observed performance
+
+**Integration Point**: `BanditStrategyWrapper` is registered and used exactly like `MomentumStrategy` or `MeanReversionStrategy` in demos and backtests.
+
+---
+
+## 4. Class Responsibilities & Interfaces
+
+### 4.1 BanditAllocator Interface
+
+**Conceptual Public API**:
+
+```
+class BanditAllocator:
+    __init__(n_arms, algorithm, min_allocation, **params)
+        Initialize bandit with N arms
+        
+    select_allocations() -> np.ndarray
+        Return allocation weights [α_1, ..., α_K]
+        Respects minimum allocation constraint
+        
+    update(arm_id, reward)
+        Update beliefs for single arm after observing reward
+        (For winner-take-all selection)
+        
+    update_all(rewards)
+        Update beliefs for all arms after observing reward vector
+        (For blended allocation)
+        
+    get_statistics() -> dict
+        Return current arm statistics (means, ucb scores, selection counts)
+        
+    reset()
+        Reset bandit state (for testing or re-initialization)
+```
+
+**Key Design Decisions**:
+- **Allocation vs Selection**: Returns full allocation vector, not just winner index
+- **Minimum Allocation**: Enforced at allocation level, not at algorithm level
+- **Algorithm Pluggability**: Algorithm name passed as string, factory pattern for instantiation
+- **Stateful**: Maintains history and statistics across calls
+
+**Supported Algorithms** (initial scope):
+- `'ucb'`: Upper Confidence Bound (default)
+- `'thompson'`: Thompson Sampling (optional)
+- `'epsilon_greedy'`: Epsilon-greedy (baseline)
+
+**Parameters**:
+- `n_arms`: Number of strategies
+- `algorithm`: Algorithm identifier
+- `min_allocation`: Minimum weight per arm (e.g., 0.05 for 5%)
+- `exploration_factor`: Algorithm-specific tuning (e.g., UCB confidence level)
+- `decay_factor`: Discount factor for non-stationary environments (optional)
+
+---
+
+### 4.2 BanditStrategyWrapper Interface
+
+**Conceptual Public API**:
+
+```
+class BanditStrategyWrapper(BaseStrategyWrapper):
+    __init__(child_strategies, bandit_config, reward_config, rebalance_config)
+        Initialize with list of child strategies and configuration
+        
+    get_weights(date, portfolio_state) -> pd.Series
+        PRIMARY METHOD: Return asset weights for current rebalance
+        - Query BanditAllocator for strategy allocations
+        - Get weights from each child strategy
+        - Aggregate using weighted combination
+        - Track performance for reward calculation
+        
+    get_strategy_info() -> dict
+        Return metadata (strategy name, algorithm, parameters)
+        
+    get_diagnostics() -> dict
+        Return detailed diagnostic information:
+        - Selection history (which strategies chosen when)
+        - Allocation evolution over time
+        - Reward history
+        - Arm statistics from BanditAllocator
+        - Attribution analysis (performance by strategy)
+```
+
+**Implementation Flow** (inside `get_weights`):
+
+1. **Burn-in Check**: If in burn-in period, return equal allocation
+2. **Allocation Decision**: Call `bandit_allocator.select_allocations()` → $\{\alpha_k\}$
+3. **Child Strategy Weights**: For each child strategy $k$, call `child_k.get_weights(date, portfolio_state)` → $w_k$
+4. **Aggregation**: Compute $w_{\text{final}} = \sum_k \alpha_k \cdot w_k$
+5. **Performance Tracking**: Record current allocations for future reward calculation
+6. **Return**: Return $w_{\text{final}}$ to `PortfolioEngine`
+
+**Reward Calculation** (deferred to next rebalance):
+- At time $t+1$, compute realized returns over $[t, t+1]$ for each strategy allocation
+- Calculate risk-adjusted reward (see Section 6)
+- Call `bandit_allocator.update_all(rewards)` or `update(arm_id, reward)`
+
+**Thread Safety**: Not required (single-threaded backtesting assumed).
+
+---
+
+### 4.3 Interaction Flow
+
+```
+User Code
+    ↓
+PortfolioEngine.run_backtest(bandit_strategy_wrapper, ...)
+    ↓
+For each rebalance date t:
+    PortfolioEngine calls bandit_strategy_wrapper.get_weights(date_t, portfolio_state_t)
+        ↓
+    BanditStrategyWrapper:
+        1. Calculate rewards from previous period [t-1, t]
+        2. Update BanditAllocator with rewards
+        3. Query BanditAllocator.select_allocations() → {α_k}
+        4. For each child strategy k:
+               weights_k = child_k.get_weights(date_t, portfolio_state_t)
+        5. Aggregate: weights_final = Σ α_k * weights_k
+        6. Record allocation for next period's reward calculation
+        7. Return weights_final
+    ↓
+PortfolioEngine executes weights_final, tracks returns, advances to t+1
+```
+
+**Key Point**: `PortfolioEngine` sees `BanditStrategyWrapper` as just another strategy. It does not know or care that MAB logic is happening inside.
+
+---
+
+## 5. Supported Bandit Algorithms (Initial Scope)
+
+### 5.1 UCB (Upper Confidence Bound) - DEFAULT
+
+**Algorithm**: Select allocations based on upper confidence bounds.
+
+$$
+\text{UCB}_k = \bar{r}_k + c \sqrt{\frac{2 \ln T}{n_k}}
+$$
+
+Where:
+- $\bar{r}_k$ = average reward of strategy $k$
+- $T$ = total number of rebalancing periods
+- $n_k$ = number of times strategy $k$ was selected
+- $c$ = exploration constant (default: 1.5-2.0)
+
+**Allocation**: Apply softmax to UCB scores with minimum allocation floor.
+
+**Rationale**:
+- Deterministic (reproducible backtests)
+- Strong theoretical regret bounds
+- Balances exploration (untried strategies get high UCB) and exploitation (good strategies get selected)
+- Interpretable (can explain why a strategy was selected)
+
+**Tuning**:
+- Increase $c$ for more exploration (volatile/changing markets)
+- Decrease $c$ for more exploitation (stable markets)
+
+---
+
+### 5.2 Thompson Sampling - OPTIONAL
+
+**Algorithm**: Bayesian approach with posterior sampling.
+
+For each arm $k$:
+1. Maintain Beta distribution: $\text{Beta}(\alpha_k, \beta_k)$
+2. Sample: $\theta_k \sim \text{Beta}(\alpha_k, \beta_k)$
+3. Select arms with highest samples
+
+**Update Rule**:
+- If reward > threshold: $\alpha_k \leftarrow \alpha_k + 1$
+- If reward < threshold: $\beta_k \leftarrow \beta_k + 1$
+
+**Rationale**:
+- Naturally explores uncertain strategies (wide posterior = more exploration)
+- No hyperparameters to tune
+- Excellent empirical performance in non-stationary environments
+
+**Trade-off**: Stochastic (backtests not perfectly reproducible without seed control).
+
+---
+
+### 5.3 Epsilon-Greedy - BASELINE
+
+**Algorithm**: 
+- With probability $1 - \epsilon$: Select best strategy (exploitation)
+- With probability $\epsilon$: Select random strategy (exploration)
+
+**Rationale**: Simple baseline for comparison. Not recommended for production due to inefficient exploration.
+
+---
+
+### 5.4 Extensibility (Future)
+
+**Discounted Rewards**: Apply exponential decay to older observations for faster adaptation.
+
+$$
+\bar{r}_k(t) = \lambda \bar{r}_k(t-1) + (1 - \lambda) r_k(t)
+$$
+
+Where $\lambda \in [0.9, 0.99]$ is decay factor.
+
+**Sliding Window**: Only consider last $W$ periods (e.g., 12 weeks) when calculating statistics.
+
+**Contextual Bandits**: Condition selection on market state features (VIX, trend, sector rotation). This requires significant additional infrastructure and is explicitly out of scope for Phase 1.
+
+---
+
+## 6. Reward Design (CRITICAL)
+
+### 6.1 Why Raw Returns Are Unsafe
+
+**Problem**: Using raw returns $r_k = \frac{V_{t+1} - V_t}{V_t}$ as rewards creates several issues:
+
+1. **Volatility Ignorance**: A strategy with 20% return and 40% volatility looks better than one with 15% return and 10% volatility
+2. **Tail Risk**: Strategies with positive skew (small steady gains, occasional large losses) look good until they blow up
+3. **Regime Overfitting**: High short-term returns in favorable regimes lead to overallocation, then losses when regime shifts
+4. **No Risk Penalty**: MAB will chase returns without considering drawdowns or volatility
+
+**Consequence**: The bandit will concentrate allocation in high-risk strategies, amplifying portfolio volatility and drawdown.
+
+---
+
+### 6.2 Recommended Reward Definitions
+
+**Option 1: Risk-Adjusted Return (Recommended Default)**
+
+$$
+\text{reward}_k = \frac{\bar{r}_k}{\sigma_k + \epsilon}
+$$
+
+Where:
+- $\bar{r}_k$ = average return of strategy $k$ over lookback window (e.g., last 12 weeks)
+- $\sigma_k$ = standard deviation of returns over same window
+- $\epsilon$ = small constant (e.g., 0.01) to avoid division by zero
+
+**Interpretation**: This is approximately a realized Sharpe ratio (without excess return over risk-free rate).
+
+**Benefits**:
+- Penalizes volatile strategies
+- Rewards consistent performance
+- Scale-free (comparable across strategies)
+
+---
+
+**Option 2: Clipped Sharpe-Like Reward**
+
+$$
+\text{reward}_k = \text{clip}\left( \frac{\bar{r}_k - r_f}{\sigma_k + \epsilon}, -1, 3 \right)
+$$
+
+Where $r_f$ = risk-free rate (or target return).
+
+**Benefits**:
+- Bounded rewards prevent outlier domination
+- Negative rewards for underperforming strategies
+
+---
+
+**Option 3: Multi-Objective Reward**
+
+$$
+\text{reward}_k = w_1 \cdot \frac{\bar{r}_k}{\sigma_k} + w_2 \cdot \bar{r}_k - w_3 \cdot \text{MaxDD}_k - w_4 \cdot \sigma_k
+$$
+
+Where:
+- $\text{MaxDD}_k$ = maximum drawdown over lookback window
+- $w_1, w_2, w_3, w_4$ = weighting factors (e.g., $[0.4, 0.3, 0.2, 0.1]$)
+
+**Benefits**:
+- Explicitly penalizes drawdowns
+- Can incorporate multiple objectives (return, Sharpe, drawdown, volatility)
+
+**Trade-off**: More complex, requires normalization and tuning of weights.
+
+---
+
+### 6.3 Reward Timing and Update Rules
+
+**Timing**:
+1. At time $t$, MAB selects allocations $\{\alpha_{k,t}\}$
+2. Portfolio executes over period $[t, t+1]$
+3. At time $t+1$, calculate realized returns for each strategy **as if it had 100% allocation**:
+   $$r_k = \frac{V_{k,t+1} - V_{k,t}}{V_{k,t}}$$
+4. Compute reward: $\text{reward}_k = f(r_k, \sigma_k, \text{other metrics})$
+5. Update bandit: `update_all([reward_1, ..., reward_K])`
+
+**Key Design Choice**: Rewards are based on **strategy performance**, not on allocation-weighted portfolio performance. This ensures each strategy is evaluated independently.
+
+**Lookback Window**: Use last $L$ periods (e.g., $L = 12$ weeks) to calculate rolling Sharpe for reward.
+
+**Frequency**: Rewards updated at each rebalancing event (weekly or bi-weekly).
+
+---
+
+## 7. Rebalancing & Stability Controls
+
+### 7.1 Rebalance Frequency
+
+**Recommendation**: Weekly or bi-weekly.
+
+**Trade-offs**:
+
+| Frequency | Pros | Cons |
+|-----------|------|------|
+| **Daily** | Fast adaptation | Excessive turnover, noisy signals |
+| **Weekly** | Good balance | Moderate adaptation speed |
+| **Monthly** | Low turnover | Slow to detect regime changes |
+
+**Default**: Weekly, aligned with existing strategy rebalancing in the system.
+
+---
+
+### 7.2 Soft Allocation vs Winner-Take-All
+
+**Winner-Take-All**:
+- MAB selects single best strategy
+- All capital allocated to that strategy
+- Other strategies remain active for observation only
+
+**Soft Allocation** (Recommended):
+- MAB provides weight vector $\{\alpha_k\}$ with $\alpha_k \geq \alpha_{\min}$
+- Capital distributed across multiple strategies
+- Reduces concentration risk
+- Smoother transitions between strategies
+
+**Implementation**:
+```
+After computing UCB scores or Thompson samples:
+1. Apply softmax with temperature: α_k ∝ exp(score_k / τ)
+2. Enforce minimum allocation: α_k = max(α_k, α_min)
+3. Renormalize to sum to 1.0
+```
+
+**Temperature Parameter** ($\tau$):
+- High $\tau$ → More uniform allocation (exploration)
+- Low $\tau$ → Concentrated allocation (exploitation)
+- Default: $\tau = 0.5$ to 1.0
+
+---
+
+### 7.3 Minimum Strategy Weights
+
+**Constraint**: Each strategy must maintain at least $\alpha_{\min}$ allocation (e.g., 5-10%).
+
+**Rationale**:
+1. **Continuous Monitoring**: Even "bad" strategies are tracked for regime changes
+2. **Diversification**: Prevents over-concentration in single strategy
+3. **Exploration**: Ensures all arms are periodically evaluated
+4. **Regime Shifts**: Previously poor strategies may become effective in new regimes
+
+**Implementation**: After bandit selection, enforce:
+$$
+\alpha_k = \max(\alpha_k^{\text{raw}}, \alpha_{\min}) \quad \forall k
+$$
+Then renormalize to sum to 1.0.
+
+**Recommended Values**:
+- 6 strategies: $\alpha_{\min} = 0.10$ (10%)
+- 8 strategies: $\alpha_{\min} = 0.08$ (8%)
+- 12 strategies: $\alpha_{\min} = 0.05$ (5%)
+
+---
+
+### 7.4 Turnover Control
+
+**Issue**: Frequent reallocation between strategies creates unnecessary transaction costs.
+
+**Mitigation**:
+1. **Rebalancing Threshold**: Only rebalance if $\|\alpha_t - \alpha_{t-1}\|_1 > \delta$ (e.g., $\delta = 0.15$)
+2. **Soft Updates**: Use exponential smoothing:
+   $$\alpha_t = (1 - \beta) \alpha_{t-1} + \beta \alpha_t^{\text{new}}$$
+   where $\beta \in [0.2, 0.5]$ controls update speed
+3. **Transaction Cost Penalty**: Incorporate turnover into reward calculation
+
+**Not Recommended for Phase 1**: Turnover control adds complexity. Start with fixed weekly rebalancing, then optimize if turnover becomes problematic in backtests.
+
+---
+
+## 8. Integration with Existing Pipeline
+
+### 8.1 Strategy Registration
+
+`BanditStrategyWrapper` is treated exactly like any other strategy wrapper.
+
+**Example Usage**:
+```python
+from src.strategy_wrapper import (
+    BanditStrategyWrapper,
+    MomentumStrategy, 
+    MeanReversionStrategy,
+    GMVPStrategy
+)
+
+# Create child strategies
+children = [
+    MomentumStrategy(strategy, optimizer, top_k=10, lookback=126),
+    MeanReversionStrategy(strategy, optimizer, lookback=21),
+    GMVPStrategy(strategy, optimizer),
+    # ... more strategies
+]
+
+# Create bandit meta-strategy
+bandit_strategy = BanditStrategyWrapper(
+    child_strategies=children,
+    bandit_algorithm='ucb',
+    min_allocation=0.08,
+    reward_metric='risk_adjusted_return',
+    lookback_periods=12
+)
+
+# Use like any other strategy
+portfolio = PortfolioEngine(prices, initial_capital=100000)
+result = portfolio.run_backtest(
+    strategy=bandit_strategy,
+    start_date='2019-01-01',
+    end_date='2024-12-31',
+    freq='W'
+)
+```
+
+**Key Point**: No changes to `PortfolioEngine`, `Backtester`, or any existing infrastructure.
+
+---
+
+### 8.2 Demo Integration
+
+**New Demo File**: `examples/demo_bandit_meta_strategy.py`
+
+**Comparison Baselines**:
+1. Equal-weight allocation across same child strategies
+2. Best single strategy (oracle, known only in hindsight)
+3. Worst single strategy (to show downside protection)
+
+**Outputs**:
+- Performance metrics comparison table
+- Strategy allocation evolution over time
+- Reward/regret plots
+- Selection frequency histogram
+
+---
+
+### 8.3 Reward Feedback Mechanism
+
+**Challenge**: `get_weights()` is called at time $t$, but rewards are only observable at time $t+1$ after returns are realized.
+
+**Solution**: Track pending allocations and calculate rewards at next rebalance.
+
+**Implementation Sketch**:
+```
+class BanditStrategyWrapper:
+    def __init__(...):
+        self.pending_allocations = {}  # {date: {strategy: allocation}}
+        self.performance_tracker = {}  # {strategy: recent_returns}
+        
+    def get_weights(self, date, portfolio_state):
+        # 1. If previous period exists, calculate rewards and update bandit
+        if date in self.pending_allocations:
+            rewards = self._calculate_rewards(date, portfolio_state)
+            self.bandit_allocator.update_all(rewards)
+        
+        # 2. Select new allocations
+        allocations = self.bandit_allocator.select_allocations()
+        
+        # 3. Get child weights and aggregate
+        weights = self._aggregate_weights(allocations, date, portfolio_state)
+        
+        # 4. Store for next period's reward calculation
+        self.pending_allocations[date] = allocations
+        
+        return weights
+```
+
+**Data Flow**: `PortfolioState` contains historical returns, which `BanditStrategyWrapper` uses to compute strategy-specific performance.
+
+---
+
+## 9. Configuration & Defaults
+
+### 9.1 Recommended Default Parameters
+
 ```yaml
-Strategy Selection: Option A (100% allocation to single strategy per period)
-Evaluation Window: 1-3 months (moderate adaptation)
-Exploration Budget: 15-25% (medium risk tolerance)
-Cold Start: Equal allocation across all strategies
-Minimum Allocation: 5% (never-die policy for diversification)
-Number of Strategies: 12 (from current benchmark)
-MAB Algorithm: Thompson Sampling (recommended)
-Update Frequency: Weekly (aligned with current rebalancing)
-Reward Metric: Multi-objective (Sharpe + Returns - Drawdown - Volatility)
+bandit_config:
+  algorithm: 'ucb'
+  min_allocation: 0.08  # 8% minimum per strategy
+  exploration_factor: 1.5  # UCB confidence multiplier
+  burn_in_periods: 12  # Equal allocation for first 12 weeks
+  
+reward_config:
+  metric: 'risk_adjusted_return'  # Options: raw_return, risk_adjusted_return, multi_objective
+  lookback_periods: 12  # 3 months for weekly rebalancing
+  clip_range: [-1.0, 3.0]  # Clip rewards to prevent outliers
+  
+rebalance_config:
+  frequency: 'weekly'
+  day_of_week: 'monday'
+  soft_allocation: true  # Use softmax blending vs winner-take-all
+  temperature: 0.8  # Softmax temperature
 ```
-
-### Design Decisions
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| **Allocation Mode** | Single strategy (100%) | Simple, clear attribution, lower transaction costs |
-| **Algorithm** | Thompson Sampling | No tuning, handles uncertainty, best for non-stationary markets |
-| **Adaptation Speed** | Moderate (1-3 months) | Balance responsiveness vs. noise |
-| **Exploration** | Medium (15-25%) | Enough to detect regime changes, not wasteful |
-| **Diversification** | 5% minimum per strategy | Ensure no strategy fully eliminated (regime changes) |
 
 ---
 
-## Architecture Integration
+### 9.2 Strategy Count Limits
 
-### Current Architecture
+**Recommendation**: Limit to 6-8 child strategies.
+
+**Rationale**:
+1. **Sample Efficiency**: With weekly rebalancing, 12 strategies require ~60 weeks (1 year) to explore each 5 times
+2. **Diversification**: 6-8 strategies provide sufficient diversification
+3. **Computation**: Each strategy evaluation has cost; limit parallelism
+4. **Interpretability**: 6 strategies easier to track than 22
+
+**Strategy Selection Heuristic**:
+- Include 1-2 momentum strategies (trend following)
+- Include 1-2 mean reversion strategies (contrarian)
+- Include 2-3 risk-based strategies (GMVP, risk parity, low vol)
+- Include 1-2 optimization-based strategies (CVaR, Sharpe maximization)
+
+**Avoid**: Including multiple variants of the same strategy family (e.g., 5 momentum strategies with different lookbacks). This dilutes exploration.
+
+---
+
+## 10. Testing & Validation Plan
+
+### 10.1 Unit Tests for BanditAllocator
+
+**Test Suite**: `tests/test_bandit_allocator.py`
+
+**Required Tests**:
 ```
-User Code
-    ↓
-PortfolioEngine.run_backtest()
-    ↓
-Individual Strategy Wrapper (e.g., MomentumStrategy)
-    ↓
-Signal Generator + Optimizer
-    ↓
-Returns target weights
+test_ucb_initialization()
+    - Verify initial state (all arms equal)
+    
+test_ucb_selection_deterministic()
+    - Given fixed rewards, verify expected arm selection
+    
+test_ucb_exploration_bonus()
+    - Verify untried arms get high UCB scores
+    
+test_minimum_allocation_enforcement()
+    - Verify all allocations ≥ min_allocation
+    
+test_allocation_sum_to_one()
+    - Verify Σ α_k = 1.0 always
+    
+test_thompson_sampling_stochastic()
+    - Verify sampling behavior (with fixed seed)
+    
+test_reward_update()
+    - Verify statistics update correctly after rewards
+    
+test_decay_factor()
+    - Verify exponential decay applied correctly
+    
+test_multiple_arms_performance()
+    - Simulate 100-period sequence, verify convergence to best arm
 ```
 
-### New Architecture (Non-Invasive)
+**Property-Based Tests**:
+- Allocation weights always valid (non-negative, sum to 1)
+- No runtime errors on edge cases (zero rewards, negative rewards, NaN)
+
+---
+
+### 10.2 Integration Tests for BanditStrategyWrapper
+
+**Test Suite**: `tests/test_bandit_strategy_wrapper.py`
+
+**Required Tests**:
 ```
-User Code
-    ↓
-PortfolioEngine.run_backtest()
-    ↓
-MultiArmedBanditMetaStrategy ← NEW LAYER
-    ↓
-[Strategy1, Strategy2, ..., Strategy12] ← EXISTING
-    ↓
-MAB selects best strategy dynamically
-    ↓
-Returns selected strategy's weights
+test_wrapper_initialization()
+    - Verify child strategies registered correctly
+    
+test_get_weights_returns_valid_series()
+    - Verify output format matches BaseStrategyWrapper
+    
+test_burn_in_period()
+    - Verify equal allocation during burn-in
+    
+test_weight_aggregation()
+    - Given known child weights and allocations, verify correct aggregation
+    
+test_reward_calculation()
+    - Mock portfolio_state, verify rewards computed correctly
+    
+test_bandit_update_called()
+    - Verify bandit allocator updated after each rebalance
+    
+test_diagnostics_output()
+    - Verify get_diagnostics() returns expected fields
+    
+test_integration_with_portfolio_engine()
+    - Full backtest with mock data, verify no errors
 ```
 
-**Key Benefit**: Zero changes to existing code. MAB is just another strategy wrapper.
+---
+
+### 10.3 Backtest Sanity Checks
+
+**Validation Criteria**:
+1. **No Lookahead Bias**: Manually inspect that rewards only use data available at decision time
+2. **Convergence**: By end of backtest, allocation should concentrate on top-performing strategies
+3. **Exploration**: All strategies should be selected at least once (due to min_allocation)
+4. **Regime Adaptation**: In known regime changes (e.g., 2020 COVID crash), verify allocation shifts
+5. **Performance**: Bandit meta-strategy should outperform equal-weight baseline in Sharpe ratio
+
+**Red Flags**:
+- Bandit performs worse than equal-weight → Reward function issue or lookback too short
+- Zero exploration → Min allocation not enforced
+- Excessive turnover → Need turnover control or longer lookback
+- Allocation to single strategy only → Temperature too low or min_allocation not working
+
+**Comparison Benchmarks**:
+```
+1. Equal-weight: Σ (1/K * child_strategy_k)
+2. Best single: Best child strategy (oracle)
+3. Worst single: Worst child strategy (downside protection check)
+4. Random selection: Random strategy each period (worse than equal-weight expected)
+```
+
+---
+
+## 11. Explicit Non-Goals (Phase 1)
+
+### 11.1 No Asset-Level Bandits
+
+**Out of Scope**: Using MAB to select individual assets (e.g., "buy AAPL vs MSFT vs GOOGL").
+
+**Rationale**:
+- Asset-level decisions are too noisy (single asset returns highly volatile)
+- Require daily or intraday rebalancing (transaction costs prohibitive)
+- Existing portfolio optimizers (GMVP, CVaR, Sharpe) already handle this well
+- Loses diversification benefits
+
+**Clarification**: The MAB selects strategies, and each strategy handles its own asset selection using existing optimizers.
+
+---
+
+### 11.2 No Direct Execution Logic
+
+**Out of Scope**: `BanditAllocator` or `BanditStrategyWrapper` does not interact with execution layer, broker APIs, or order management.
+
+**Rationale**: Separation of concerns. Execution is handled by `PortfolioEngine` after weights are returned.
+
+---
+
+### 11.3 No Deep RL or Policy Gradients
+
+**Out of Scope**: Advanced reinforcement learning methods (DQN, PPO, A3C, policy gradients).
+
+**Rationale**:
+- MAB is simpler, more interpretable, and requires less data
+- Deep RL requires extensive hyperparameter tuning and infrastructure
+- MAB sufficient for strategy-level allocation problem
+
+**Future Consideration**: If MAB proves successful, contextual bandits (linear or neural) may be explored in Phase 2.
+
+---
+
+### 11.4 No Real-Time Market Data in BanditAllocator
+
+**Out of Scope**: `BanditAllocator` receiving live market data, prices, or order book information.
+
+**Rationale**: BanditAllocator is pure allocation logic. It receives rewards (summary statistics), not raw market data. This keeps it testable and modular.
+
+---
+
+### 11.5 No Multi-Objective Optimization Beyond Reward
+
+**Out of Scope**: Pareto-optimal frontiers, constraint optimization, or multi-objective programming within MAB.
+
+**Rationale**: Risk management is handled via reward function design (e.g., risk-adjusted return). Keep MAB focused on single scalar reward maximization.
+
+---
+
+## 12. Summary and Next Steps
+
+### 12.1 Key Takeaways
+
+1. **MAB is a meta-strategy**: It allocates capital across existing strategies, not across assets
+2. **Two new components**: `BanditAllocator` (pure logic) and `BanditStrategyWrapper` (integration)
+3. **No changes to existing code**: Strategies, optimizers, and execution layer remain untouched
+4. **Risk-adjusted rewards**: Use Sharpe-like rewards to avoid chasing volatility
+5. **Soft allocation with minimums**: Blend multiple strategies with minimum allocation floor
+6. **Weekly rebalancing**: Balance adaptation speed with transaction costs
+
+---
+
+### 12.2 Implementation Checklist
+
+**Phase 1 (Weeks 1-2): Core Implementation**
+- [ ] Implement `BanditAllocator` class with UCB and Thompson Sampling
+- [ ] Implement `BanditStrategyWrapper` class
+- [ ] Write unit tests for `BanditAllocator`
+- [ ] Write integration tests for `BanditStrategyWrapper`
+
+**Phase 2 (Week 3): Validation**
+- [ ] Create demo script comparing bandit vs baselines
+- [ ] Run 5-year backtest on historical data
+- [ ] Validate performance improvement over equal-weight
+- [ ] Check for lookahead bias and implementation errors
+
+**Phase 3 (Week 4): Production Readiness**
+- [ ] Add configuration file support
+- [ ] Integrate into benchmark suite
+- [ ] Add diagnostic visualizations (allocation evolution, reward plots)
+- [ ] Document usage in README and examples
+
+---
+
+### 12.3 Success Metrics
+
+**Minimum Acceptable Performance** (vs equal-weight baseline):
+- Sharpe ratio improvement: ≥ 10%
+- Drawdown reduction: ≥ 10%
+- No worse than best single strategy in any 2-year period
+
+**Target Performance**:
+- Sharpe ratio improvement: 15-25%
+- Drawdown reduction: 20-30%
+- Allocation concentrates on top 2-3 strategies by end of backtest
+
+---
+
+### 12.4 Risk Mitigation
+
+| Risk | Mitigation |
+|------|------------|
+| **Overfitting to recent data** | Use 12-week lookback, risk-adjusted rewards |
+| **Slow regime detection** | Decay factor or sliding window for faster adaptation |
+| **Over-concentration** | Minimum allocation constraint (5-8%) |
+| **Excessive turnover** | Weekly (not daily) rebalancing, soft allocation |
+| **Lookahead bias** | Strict reward calculation using only past data |
+| **Poor exploration** | UCB/Thompson naturally explore; min allocation enforces it |
+
+---
+
+### 12.5 Documentation Requirements
+
+**Files to Create**:
+1. `src/bandit_allocator.py` - Core MAB logic
+2. `src/bandit_strategy_wrapper.py` - Strategy integration (or extend `strategy_wrapper.py`)
+3. `examples/demo_bandit_meta_strategy.py` - Demo script
+4. `tests/test_bandit_allocator.py` - Unit tests
+5. `tests/test_bandit_strategy_wrapper.py` - Integration tests
+6. `config/bandit_config.yaml` - Default configuration
+
+**Files to Update**:
+1. `docs/STRATEGIES.md` - Add bandit meta-strategy description
+2. `docs/ARCHITECTURE.md` - Add MAB layer to architecture diagram
+3. `README.md` - Mention bandit meta-strategy in features list
+
+---
+
+## References
+
+**Academic Literature**:
+- Auer, P., Cesa-Bianchi, N., & Fischer, P. (2002). Finite-time analysis of the multiarmed bandit problem. *Machine Learning*, 47(2), 235-256.
+- Russo, D. et al. (2018). A tutorial on Thompson sampling. *Foundations and Trends in Machine Learning*, 11(1), 1-96.
+- Shen, W. et al. (2015). Thompson sampling for portfolio selection. *arXiv preprint*.
+
+**Industry Practice**:
+- AQR Capital: Factor timing using online learning
+- Two Sigma: Adaptive strategy allocation
+- Systematic trend-following funds: Regime-aware allocation
+
+**Internal Documentation**:
+- `docs/MULTI_ARMED_BANDITS.md` - MAB theory and algorithms
+- `docs/STRATEGIES.md` - Existing strategy documentation
+- `docs/ARCHITECTURE.md` - System architecture overview
+
+---
+
+**Document Version**: 2.0  
+**Last Updated**: December 15, 2025  
+**Authors**: Quantitative Engineering Team
 
 ---
 
