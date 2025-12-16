@@ -1,6 +1,24 @@
 # Data Loading and Processing in Examples
 
-This document explains how data is loaded and processed for the demo scripts in the `examples/` folder, and provides guidance to ensure safe and correct execution.
+## Quick Start: Prepare Data for All Demos
+
+**To prepare all data for the demo scripts, simply run:**
+
+```sh
+python scripts/prepare_data.py
+```
+
+This script will:
+- Download the raw historical data from S3 (if needed)
+- Process and clean the data
+- Save the processed data in `data/processed/`
+- Make the data ready for all demo scripts
+
+**You only need to run this script once (or whenever you want to refresh the data).**
+
+After running it, you can safely use any demo script in the `examples/` folder without additional data preparation.
+
+This document explains how data is loaded and processed for the demo scripts in the `examples/` folder, and provides guidance to ensure safe and correct execution. The full pipeline is automated by `scripts/prepare_data.py`.
 
 ## 1. Data Loading
 
