@@ -59,6 +59,7 @@ from src.data_loader import load_preprocessed_data
 from src.portfolio_engine import PortfolioEngine
 from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
+from src.demo_results_aggregator import DemoResultsAggregator
 from src.strategies import (
     BuyAndHoldStrategy,
     EqualWeightStrategy,
@@ -343,99 +344,6 @@ def print_table(results: List[Dict]):
         print(row)
 
 
-def plot_nav_curves_fast(results: List[Dict], output_dir: Path):
-    """Plot NAV curves for all strategies."""
-    plt.figure(figsize=(16, 10))
-    
-    for result in results:
-        if result['equity_curve'] is not None:
-            equity = result['equity_curve']
-            # Normalize to start at 100
-            normalized = (equity / equity.iloc[0]) * 100
-            plt.plot(normalized.index, normalized.values, 
-                    label=result['name'], linewidth=2, alpha=0.8)
-    
-    plt.title('NAV Comparison: 12 Benchmark Strategies (Fast Mode)', 
-              fontsize=16, fontweight='bold')
-    plt.xlabel('Date', fontsize=12)
-    plt.ylabel('Portfolio Value (Normalized to 100)', fontsize=12)
-    plt.legend(loc='best', fontsize=10, ncol=2)
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    
-    output_file = output_dir / '12_strategies_fast_nav_curves.png'
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    plt.close()
-
-
-def plot_metrics_comparison_fast(metrics_df: pd.DataFrame, output_dir: Path):
-    """Plot performance metrics comparison."""
-    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-    fig.suptitle('Performance Metrics Comparison: 12 Benchmark Strategies (Fast Mode)', 
-                 fontsize=16, fontweight='bold')
-    
-    metrics_to_plot = [
-        ('cagr', 'CAGR', True),
-        ('sharpe_ratio', 'Sharpe Ratio', True),
-        ('volatility', 'Volatility (Ann.)', False),
-        ('max_drawdown', 'Max Drawdown', False),
-        ('calmar_ratio', 'Calmar Ratio', True),
-        ('sortino_ratio', 'Sortino Ratio', True)
-    ]
-    
-    for idx, (metric, title, higher_better) in enumerate(metrics_to_plot):
-        ax = axes[idx // 3, idx % 3]
-        
-        data = metrics_df[metric].sort_values(ascending=not higher_better)
-        colors = ['green' if higher_better else 'red' 
-                 if i == 0 else 'blue' for i in range(len(data))]
-        
-        data.plot(kind='barh', ax=ax, color=colors, alpha=0.7)
-        ax.set_title(title, fontsize=12, fontweight='bold')
-        ax.set_xlabel('Value', fontsize=10)
-        ax.grid(axis='x', alpha=0.3)
-        
-        # Add value labels
-        for i, v in enumerate(data.values):
-            if metric in ['cagr', 'max_drawdown']:
-                label = f'{v:.1%}'
-            else:
-                label = f'{v:.3f}'
-            ax.text(v, i, label, va='center', fontsize=9)
-    
-    plt.tight_layout()
-    output_file = output_dir / '12_strategies_fast_metrics_comparison.png'
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    plt.close()
-
-
-def plot_correlation_heatmap_fast(results: List[Dict], output_dir: Path):
-    """Plot correlation heatmap of strategy returns."""
-    returns_df = pd.DataFrame()
-    
-    for result in results:
-        if result['equity_curve'] is not None:
-            equity = result['equity_curve']
-            returns = equity.pct_change().dropna()
-            returns_df[result['name']] = returns
-    
-    if returns_df.empty:
-        return
-    
-    corr_matrix = returns_df.corr()
-    
-    plt.figure(figsize=(14, 12))
-    sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm',
-                center=0, square=True, linewidths=1, cbar_kws={"shrink": 0.8})
-    plt.title('Strategy Returns Correlation Matrix (Fast Mode)', 
-              fontsize=16, fontweight='bold')
-    plt.tight_layout()
-    
-    output_file = output_dir / '12_strategies_fast_correlation_heatmap.png'
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    plt.close()
-
-
 def main():
     """Main execution function."""
     # Parse arguments
@@ -530,54 +438,54 @@ def main():
     if elapsed > 10:
         print("\n⚠ WARNING: Execution time exceeded 10 seconds target")
     
-    # Generate visualizations and save metrics
-    output_dir = Path('visualizations')
-    output_dir.mkdir(exist_ok=True)
-    
+    # Generate visualizations and save metrics using DemoResultsAggregator
     print("\n" + "=" * 80)
     print("GENERATING VISUALIZATIONS AND REPORTS")
     print("=" * 80)
     
     # Filter successful results
-    successful_results = [r for r in results if r['full_metrics'] is not None]
+    successful_results = [r for r in results if r['equity_curve'] is not None]
     
     if successful_results:
-        # Create metrics DataFrame
-        metrics_data = {}
+        # Create aggregator and record all strategies
+        aggregator = DemoResultsAggregator(rolling_window=30)  # 30-day for fast mode
+        
         for result in successful_results:
-            metrics_data[result['name']] = result['full_metrics']
-        metrics_df = pd.DataFrame(metrics_data).T
+            # Extract portfolio history if available
+            portfolio_history = None
+            if result['result'] is not None and hasattr(result['result'], 'weights_history'):
+                portfolio_history = result['result'].weights_history
+            
+            aggregator.record_strategy(
+                strategy_name=result['name'],
+                equity_curve=result['equity_curve'],
+                portfolio_history=portfolio_history
+            )
         
-        # 1. Plot NAV curves
-        plot_nav_curves_fast(successful_results, output_dir)
-        print("  ✓ NAV curves saved")
+        # Export structured CSV files
+        csv_output_dir = aggregator.export_csv(base_dir='results')
+        print(f"  ✓ Structured CSV files exported to: {csv_output_dir}")
         
-        # 2. Plot metrics comparison
-        plot_metrics_comparison_fast(metrics_df, output_dir)
-        print("  ✓ Metrics comparison saved")
+        # Generate summary plots
+        aggregator.plot_summary(output_dir=csv_output_dir, log_scale=False)
+        print(f"  ✓ Summary plots generated")
         
-        # 3. Plot correlation heatmap
-        plot_correlation_heatmap_fast(successful_results, output_dir)
-        print("  ✓ Correlation heatmap saved")
+        # Print summary statistics
+        summary_stats = aggregator.get_summary_stats()
+        print("\n" + "=" * 80)
+        print("SUMMARY STATISTICS")
+        print("=" * 80)
+        print(summary_stats.to_string(index=False))
         
-        # 4. Save metrics to CSV
-        csv_file = output_dir / '12_strategies_fast_metrics.csv'
-        metrics_df.to_csv(csv_file)
-        print(f"  ✓ Metrics CSV saved")
-        
-        # 5. Save metrics to JSON
-        json_file = output_dir / '12_strategies_fast_metrics.json'
-        metrics_dict = metrics_df.to_dict(orient='index')
-        with open(json_file, 'w') as f:
-            json.dump(metrics_dict, f, indent=2, default=str)
-        print(f"  ✓ Metrics JSON saved")
-        
-        print("\nOUTPUT FILES:")
-        print(f"  - {output_dir / '12_strategies_fast_nav_curves.png'}")
-        print(f"  - {output_dir / '12_strategies_fast_metrics_comparison.png'}")
-        print(f"  - {output_dir / '12_strategies_fast_correlation_heatmap.png'}")
-        print(f"  - {csv_file}")
-        print(f"  - {json_file}")
+        print("\n" + "=" * 80)
+        print("OUTPUT FILES:")
+        print(f"  - {csv_output_dir / 'nav.csv'}")
+        print(f"  - {csv_output_dir / 'returns.csv'}")
+        print(f"  - {csv_output_dir / 'drawdown.csv'}")
+        print(f"  - {csv_output_dir / 'sharpe.csv'}")
+        print(f"  - {csv_output_dir / 'weights_final.csv'}")
+        print(f"  - {csv_output_dir / 'weights_history.csv'}")
+        print(f"  - {csv_output_dir / 'summary_plots.png'}")
     
     print("\n" + "=" * 80)
 

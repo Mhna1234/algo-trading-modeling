@@ -63,6 +63,7 @@ from src.data_loader import load_preprocessed_data
 from src.portfolio_engine import PortfolioEngine
 from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
+from src.demo_results_aggregator import DemoResultsAggregator
 from src.strategies import (
     BuyAndHoldStrategy,
     EqualWeightStrategy,
@@ -249,134 +250,8 @@ def run_backtest(
         return None
 
 
-def compute_additional_metrics(equity_curve: pd.Series) -> Dict[str, float]:
-    """Compute additional performance metrics."""
-    returns = equity_curve.pct_change().dropna()
-    
-    # CAGR
-    n_years = len(equity_curve) / 252
-    cagr = (equity_curve.iloc[-1] / equity_curve.iloc[0]) ** (1 / n_years) - 1
-    
-    # Volatility
-    volatility = returns.std() * np.sqrt(252)
-    
-    # Sharpe Ratio
-    sharpe = (returns.mean() * 252 - 0.02) / (returns.std() * np.sqrt(252))
-    
-    # Max Drawdown
-    cummax = equity_curve.cummax()
-    drawdown = (equity_curve - cummax) / cummax
-    max_drawdown = drawdown.min()
-    
-    # Calmar Ratio
-    calmar = cagr / abs(max_drawdown) if max_drawdown != 0 else 0
-    
-    # Sortino Ratio
-    downside_returns = returns[returns < 0]
-    downside_std = downside_returns.std() * np.sqrt(252)
-    sortino = (returns.mean() * 252 - 0.02) / downside_std if downside_std > 0 else 0
-    
-    # Win Rate
-    win_rate = (returns > 0).sum() / len(returns)
-    
-    return {
-        'cagr': cagr,
-        'volatility': volatility,
-        'sharpe_ratio': sharpe,
-        'max_drawdown': max_drawdown,
-        'calmar_ratio': calmar,
-        'sortino_ratio': sortino,
-        'win_rate': win_rate
-    }
 
 
-def plot_nav_curves(results: List[Dict], output_dir: Path):
-    """Plot NAV curves for all strategies."""
-    plt.figure(figsize=(16, 10))
-    
-    for result in results:
-        equity = result['equity_curve']
-        # Normalize to start at 100
-        normalized = (equity / equity.iloc[0]) * 100
-        plt.plot(normalized.index, normalized.values, 
-                label=result['name'], linewidth=2, alpha=0.8)
-    
-    plt.title('NAV Comparison: 12 Benchmark Strategies', fontsize=16, fontweight='bold')
-    plt.xlabel('Date', fontsize=12)
-    plt.ylabel('Portfolio Value (Normalized to 100)', fontsize=12)
-    plt.legend(loc='best', fontsize=10, ncol=2)
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    
-    output_file = output_dir / '12_strategies_nav_curves.png'
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    logger.info(f"NAV curves saved to: {output_file}")
-    plt.close()
-
-
-def plot_metrics_comparison(metrics_df: pd.DataFrame, output_dir: Path):
-    """Plot performance metrics comparison."""
-    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-    fig.suptitle('Performance Metrics Comparison: 12 Benchmark Strategies', 
-                 fontsize=16, fontweight='bold')
-    
-    metrics_to_plot = [
-        ('cagr', 'CAGR', True),
-        ('sharpe_ratio', 'Sharpe Ratio', True),
-        ('volatility', 'Volatility (Ann.)', False),
-        ('max_drawdown', 'Max Drawdown', False),
-        ('calmar_ratio', 'Calmar Ratio', True),
-        ('sortino_ratio', 'Sortino Ratio', True)
-    ]
-    
-    for idx, (metric, title, higher_better) in enumerate(metrics_to_plot):
-        ax = axes[idx // 3, idx % 3]
-        
-        data = metrics_df[metric].sort_values(ascending=not higher_better)
-        colors = ['green' if higher_better else 'red' 
-                 if i == 0 else 'blue' for i in range(len(data))]
-        
-        data.plot(kind='barh', ax=ax, color=colors, alpha=0.7)
-        ax.set_title(title, fontsize=12, fontweight='bold')
-        ax.set_xlabel('Value', fontsize=10)
-        ax.grid(axis='x', alpha=0.3)
-        
-        # Add value labels
-        for i, v in enumerate(data.values):
-            if metric in ['cagr', 'max_drawdown']:
-                label = f'{v:.1%}'
-            else:
-                label = f'{v:.3f}'
-            ax.text(v, i, label, va='center', fontsize=9)
-    
-    plt.tight_layout()
-    output_file = output_dir / '12_strategies_metrics_comparison.png'
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    logger.info(f"Metrics comparison saved to: {output_file}")
-    plt.close()
-
-
-def plot_correlation_heatmap(results: List[Dict], output_dir: Path):
-    """Plot correlation heatmap of strategy returns."""
-    returns_df = pd.DataFrame()
-    
-    for result in results:
-        equity = result['equity_curve']
-        returns = equity.pct_change().dropna()
-        returns_df[result['name']] = returns
-    
-    corr_matrix = returns_df.corr()
-    
-    plt.figure(figsize=(14, 12))
-    sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm',
-                center=0, square=True, linewidths=1, cbar_kws={"shrink": 0.8})
-    plt.title('Strategy Returns Correlation Matrix', fontsize=16, fontweight='bold')
-    plt.tight_layout()
-    
-    output_file = output_dir / '12_strategies_correlation_heatmap.png'
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    logger.info(f"Correlation heatmap saved to: {output_file}")
-    plt.close()
 
 
 def print_bandit_summary(diagnostics: Dict):
@@ -602,55 +477,52 @@ def main():
     if USE_BANDIT_WRAPPER and bandit_diagnostics:
         print_bandit_summary(bandit_diagnostics)
     
-    # Compute comprehensive metrics
-    logger.info("Computing performance metrics...")
-    metrics_data = []
+    # Generate visualizations and reports using DemoResultsAggregator
+    logger.info("Aggregating results and generating reports...")
+    
+    # Create aggregator and record all strategies
+    aggregator = DemoResultsAggregator(rolling_window=60)  # 60-day for full mode
+    
     for result in results:
-        metrics = compute_additional_metrics(result['equity_curve'])
-        metrics['strategy'] = result['name']
-        metrics_data.append(metrics)
+        # Extract portfolio history if available
+        portfolio_history = None
+        if result['result'] is not None and hasattr(result['result'], 'weights_history'):
+            portfolio_history = result['result'].weights_history
+        
+        aggregator.record_strategy(
+            strategy_name=result['name'],
+            equity_curve=result['equity_curve'],
+            portfolio_history=portfolio_history
+        )
     
-    metrics_df = pd.DataFrame(metrics_data).set_index('strategy')
+    # Export structured CSV files
+    csv_output_dir = aggregator.export_csv(base_dir='results')
+    logger.info(f"Structured CSV files exported to: {csv_output_dir}")
     
-    # Create output directory
-    output_dir = Path('visualizations')
-    output_dir.mkdir(exist_ok=True)
+    # Generate summary plots
+    aggregator.plot_summary(output_dir=csv_output_dir, log_scale=False)
+    logger.info(f"Summary plots generated")
     
-    # Save metrics to CSV
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    csv_file = output_dir / f'12_strategies_full_metrics_{timestamp}.csv'
-    metrics_df.to_csv(csv_file)
-    logger.info(f"Metrics saved to: {csv_file}")
-    
-    # Save metrics to JSON
-    json_file = output_dir / f'12_strategies_full_metrics_{timestamp}.json'
-    metrics_dict = metrics_df.to_dict(orient='index')
-    with open(json_file, 'w') as f:
-        json.dump(metrics_dict, f, indent=2, default=str)
-    logger.info(f"Metrics JSON saved to: {json_file}")
-    
-    # Generate plots
-    logger.info("Generating visualizations...")
-    plot_nav_curves(results, output_dir)
-    plot_metrics_comparison(metrics_df, output_dir)
-    plot_correlation_heatmap(results, output_dir)
+    # Get summary statistics
+    summary_stats = aggregator.get_summary_stats()
     
     # Print summary table
     print("\n" + "=" * 80)
     print("PERFORMANCE SUMMARY")
     print("=" * 80)
     print()
-    print(metrics_df.to_string())
+    print(summary_stats.to_string(index=False))
     print()
     
     # Print top performers
     print("=" * 80)
     print("TOP PERFORMERS")
     print("=" * 80)
-    print(f"\nHighest CAGR: {metrics_df['cagr'].idxmax()} ({metrics_df['cagr'].max():.2%})")
-    print(f"Highest Sharpe: {metrics_df['sharpe_ratio'].idxmax()} ({metrics_df['sharpe_ratio'].max():.3f})")
-    print(f"Lowest Volatility: {metrics_df['volatility'].idxmin()} ({metrics_df['volatility'].min():.2%})")
-    print(f"Smallest Drawdown: {metrics_df['max_drawdown'].idxmax()} ({metrics_df['max_drawdown'].max():.2%})")
+    print(f"\nHighest Total Return: {summary_stats.loc[summary_stats['Total Return (%)'].idxmax(), 'Strategy']} ({summary_stats['Total Return (%)'].max():.2f}%)")
+    print(f"Highest CAGR: {summary_stats.loc[summary_stats['CAGR (%)'].idxmax(), 'Strategy']} ({summary_stats['CAGR (%)'].max():.2f}%)")
+    print(f"Highest Sharpe: {summary_stats.loc[summary_stats['Sharpe Ratio'].idxmax(), 'Strategy']} ({summary_stats['Sharpe Ratio'].max():.3f})")
+    print(f"Lowest Volatility: {summary_stats.loc[summary_stats['Volatility (%)'].idxmin(), 'Strategy']} ({summary_stats['Volatility (%)'].min():.2f}%)")
+    print(f"Smallest Drawdown: {summary_stats.loc[summary_stats['Max Drawdown (%)'].idxmax(), 'Strategy']} ({summary_stats['Max Drawdown (%)'].max():.2f}%)")
     
     elapsed = time.time() - start_time
     print(f"\n{'=' * 80}")
@@ -658,11 +530,14 @@ def main():
     print(f"{'=' * 80}\n")
     
     print("OUTPUT FILES GENERATED:")
-    print(f"  [OK] CSV metrics: {csv_file}")
-    print(f"  [OK] JSON metrics: {json_file}")
-    print(f"  [OK] NAV curves: {output_dir / '12_strategies_nav_curves.png'}")
-    print(f"  [OK] Metrics comparison: {output_dir / '12_strategies_metrics_comparison.png'}")
-    print(f"  [OK] Correlation heatmap: {output_dir / '12_strategies_correlation_heatmap.png'}")
+    print(f"  [OK] Structured CSV files: {csv_output_dir}")
+    print(f"      - nav.csv")
+    print(f"      - returns.csv")
+    print(f"      - drawdown.csv")
+    print(f"      - sharpe.csv")
+    print(f"      - weights_final.csv")
+    print(f"      - weights_history.csv")
+    print(f"  [OK] Summary plots: {csv_output_dir / 'summary_plots.png'}")
     print()
     
     logger.info("[OK] Full backtest completed successfully!")
