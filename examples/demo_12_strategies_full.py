@@ -81,6 +81,7 @@ from src.strategies import (
 from src.strategies.bandit_strategy_wrapper import BanditStrategyWrapper
 from src.bandits.ucb import UCBBandit
 from src.bandits.thompson import ThompsonSamplingBandit
+from src.bandits.exp3 import EXP3Bandit
 
 # Configure logging
 logging.basicConfig(
@@ -400,58 +401,57 @@ def main():
     print("=" * 80)
     
     results = []
-    bandit_diagnostics = None
-    
+    bandit_diagnostics = {}
+
+    # List of bandit algorithms to compare
+    bandit_algorithms = [
+        ('UCB', UCBBandit(
+            n_arms=len(strategies),
+            exploration_constant=BANDIT_CONFIG['exploration_constant']
+        )),
+        ('Thompson Sampling', ThompsonSamplingBandit(
+            n_arms=len(strategies),
+            random_seed=BANDIT_CONFIG.get('random_seed')
+        )),
+        ('EXP3', EXP3Bandit(
+            n_arms=len(strategies),
+            gamma=0.07,  # Typical value for EXP3, can be tuned
+            random_seed=BANDIT_CONFIG.get('random_seed')
+        )),
+    ]
+
     if USE_BANDIT_WRAPPER:
-        # Create bandit wrapper for all strategies
-        logger.info(f"Creating BanditStrategyWrapper with {BANDIT_CONFIG['algorithm'].upper()} algorithm")
-        
-        if BANDIT_CONFIG['algorithm'] == 'ucb':
-            bandit = UCBBandit(
-                n_arms=len(strategies),
-                exploration_constant=BANDIT_CONFIG['exploration_constant']
-            )
-        else:  # thompson
-            bandit = ThompsonSamplingBandit(
-                n_arms=len(strategies),
+        for bandit_name, bandit in bandit_algorithms:
+            logger.info(f"Running BanditStrategyWrapper with {bandit_name} algorithm")
+            wrapper = BanditStrategyWrapper(
+                child_strategies=list(strategies.values()),
+                bandit_allocator=bandit,
+                burn_in_periods=BANDIT_CONFIG['burn_in_periods'],
+                reward_type=BANDIT_CONFIG['reward_type'],
+                enable_soft_allocation=BANDIT_CONFIG['enable_soft_allocation'],
                 random_seed=BANDIT_CONFIG.get('random_seed')
             )
-        
-        wrapper = BanditStrategyWrapper(
-            child_strategies=list(strategies.values()),
-            bandit_allocator=bandit,
-            burn_in_periods=BANDIT_CONFIG['burn_in_periods'],
-            reward_type=BANDIT_CONFIG['reward_type'],
-            enable_soft_allocation=BANDIT_CONFIG['enable_soft_allocation'],
-            random_seed=BANDIT_CONFIG.get('random_seed')
-        )
-        
-        # Run single backtest with bandit wrapper
-        logger.info("Running backtest with BanditStrategyWrapper")
-        engine = PortfolioEngine(
-            prices=prices,
-            initial_capital=100000.0,
-            transaction_cost_bps=10,  # 0.1%
-            slippage_bps=1.0
-        )
-        
-        result = engine.run_backtest(
-            strategy_wrapper=wrapper,
-            start_date=prices.index[0],
-            end_date=prices.index[-1],
-            rebalance_freq='M'  # Monthly rebalancing
-        )
-        
-        bandit_diagnostics = wrapper.get_diagnostics()
-        
-        results.append({
-            'name': 'Bandit Meta-Strategy',
-            'result': result,
-            'equity_curve': result.equity_curve,
-            'metrics': result.summary_metrics
-        })
-        
-        logger.info("Bandit backtest completed")
+            engine = PortfolioEngine(
+                prices=prices,
+                initial_capital=100000.0,
+                transaction_cost_bps=10,  # 0.1%
+                slippage_bps=1.0
+            )
+            result = engine.run_backtest(
+                strategy_wrapper=wrapper,
+                start_date=prices.index[0],
+                end_date=prices.index[-1],
+                rebalance_freq='M'  # Monthly rebalancing
+            )
+            diagnostics = wrapper.get_diagnostics()
+            bandit_diagnostics[bandit_name] = diagnostics
+            results.append({
+                'name': f'Bandit Meta-Strategy ({bandit_name})',
+                'result': result,
+                'equity_curve': result.equity_curve,
+                'metrics': result.summary_metrics
+            })
+            logger.info(f"Bandit backtest completed for {bandit_name}")
     else:
         # Run individual strategy backtests (existing path)
         for strategy_name, strategy_instance in strategies.items():
@@ -463,49 +463,49 @@ def main():
                 rebalance_frequency=1,  # Daily
                 transaction_cost=0.001
             )
-            
             if result is not None:
                 results.append(result)
-    
+
     if len(results) == 0:
         logger.error("No strategies completed successfully!")
         return
-    
-    logger.info(f"\nSuccessfully completed {len(results)}/{len(strategies)} strategies")
-    
-    # Print bandit summary if enabled
+
+    logger.info(f"\nSuccessfully completed {len(results)} strategies")
+
+    # Print bandit summaries if enabled
     if USE_BANDIT_WRAPPER and bandit_diagnostics:
-        print_bandit_summary(bandit_diagnostics)
-    
+        for bandit_name, diagnostics in bandit_diagnostics.items():
+            print(f"\n{'='*80}\nBANDIT ALGORITHM: {bandit_name}\n{'='*80}")
+            print_bandit_summary(diagnostics)
+
     # Generate visualizations and reports using DemoResultsAggregator
     logger.info("Aggregating results and generating reports...")
-    
+
     # Create aggregator and record all strategies
     aggregator = DemoResultsAggregator(rolling_window=60)  # 60-day for full mode
-    
+
     for result in results:
         # Extract portfolio history if available
         portfolio_history = None
         if result['result'] is not None and hasattr(result['result'], 'weights_history'):
             portfolio_history = result['result'].weights_history
-        
         aggregator.record_strategy(
             strategy_name=result['name'],
             equity_curve=result['equity_curve'],
             portfolio_history=portfolio_history
         )
-    
+
     # Export structured CSV files
     csv_output_dir = aggregator.export_csv(base_dir='results')
     logger.info(f"Structured CSV files exported to: {csv_output_dir}")
-    
+
     # Generate summary plots
     aggregator.plot_summary(output_dir=csv_output_dir, log_scale=False)
     logger.info(f"Summary plots generated")
-    
+
     # Get summary statistics
     summary_stats = aggregator.get_summary_stats()
-    
+
     # Print summary table
     print("\n" + "=" * 80)
     print("PERFORMANCE SUMMARY")
@@ -513,7 +513,7 @@ def main():
     print()
     print(summary_stats.to_string(index=False))
     print()
-    
+
     # Print top performers
     print("=" * 80)
     print("TOP PERFORMERS")
@@ -523,12 +523,12 @@ def main():
     print(f"Highest Sharpe: {summary_stats.loc[summary_stats['Sharpe Ratio'].idxmax(), 'Strategy']} ({summary_stats['Sharpe Ratio'].max():.3f})")
     print(f"Lowest Volatility: {summary_stats.loc[summary_stats['Volatility (%)'].idxmin(), 'Strategy']} ({summary_stats['Volatility (%)'].min():.2f}%)")
     print(f"Smallest Drawdown: {summary_stats.loc[summary_stats['Max Drawdown (%)'].idxmax(), 'Strategy']} ({summary_stats['Max Drawdown (%)'].max():.2f}%)")
-    
+
     elapsed = time.time() - start_time
     print(f"\n{'=' * 80}")
     print(f"Total execution time: {elapsed:.1f} seconds ({elapsed/60:.1f} minutes)")
     print(f"{'=' * 80}\n")
-    
+
     print("OUTPUT FILES GENERATED:")
     print(f"  [OK] Structured CSV files: {csv_output_dir}")
     print(f"      - nav.csv")
@@ -539,7 +539,7 @@ def main():
     print(f"      - weights_history.csv")
     print(f"  [OK] Summary plots: {csv_output_dir / 'summary_plots.png'}")
     print()
-    
+
     logger.info("[OK] Full backtest completed successfully!")
 
 
