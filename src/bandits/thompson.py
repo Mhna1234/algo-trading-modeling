@@ -363,3 +363,59 @@ class ThompsonSamplingBandit(BanditAllocator):
             f"variance_scale={self.variance_scale}, "
             f"random_seed={self._random_seed})"
         )
+    
+"""
+from bayesianbandits import Arm, NormalBandit
+from typing import Dict, Any
+from src.bandits.base import BanditAllocator
+import numpy as np
+
+
+class BayesianThompsonSamplingBandit(BanditAllocator):
+
+    Proper Bayesian Thompson Sampling using Normal–Normal model.
+
+
+    def __init__(
+        self,
+        n_arms: int,
+        prior_mean: float = 0.0,
+        prior_std: float = 1.0,
+        reward_std: float = 1.0,
+        random_seed: int | None = None,
+    ):
+        super().__init__(n_arms)
+
+        self.arms = [
+            Arm.Normal(
+                mu=prior_mean,
+                sigma=prior_std,
+                known_sigma=reward_std,
+            )
+            for _ in range(n_arms)
+        ]
+
+        self.bandit = NormalBandit(self.arms, seed=random_seed)
+
+    def select_arm(self, t: int) -> int:
+        return int(self.bandit.sample())
+
+    def update(self, arm: int, reward: float) -> None:
+        super().update(arm, reward)
+        self.bandit.update(arm, reward)
+
+    def get_state(self) -> Dict[str, Any]:
+        state = super().get_state()
+        state["arms"] = [arm.to_dict() for arm in self.arms]
+        return state
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        super().set_state(state)
+        for arm, arm_state in zip(self.arms, state["arms"]):
+            arm.from_dict(arm_state)
+
+    def reset(self) -> None:
+        for arm in self.arms:
+            arm.reset()
+
+"""
