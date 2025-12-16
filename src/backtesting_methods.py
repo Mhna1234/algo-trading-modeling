@@ -28,7 +28,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 
 from .portfolio_engine import PortfolioEngine, PortfolioResult
-from .strategy_wrapper import BaseStrategyWrapper
+from .strategies import BaseStrategyWrapper
 from .utils import calculate_sharpe_ratio, calculate_max_drawdown
 
 logger = logging.getLogger(__name__)

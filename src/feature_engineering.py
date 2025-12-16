@@ -1,20 +1,42 @@
 """
 Feature Engineering Module
 
-This module computes technical indicators and features for algorithmic trading.
-It provides implementations for:
-- Price-based returns (daily, log returns)
+This module computes technical indicators and statistical features for algorithmic trading.
+
+Role:
+-----
+This is the CANONICAL source for technical indicator computation. All technical
+indicators should be computed here to avoid code duplication.
+
+- Used by: ML strategies, analysis tools, signal_generator (via delegation)
+- Focus: Pure computation of technical indicators and statistical features
+- Output: DataFrames with indicator values (not trading signals)
+
+Components:
+-----------
+- Price-based returns (simple, log returns)
 - Moving averages (simple, exponential)
-- Volatility measures (rolling, EWMA)
+- Volatility measures (rolling, EWMA, annualized)
 - Technical indicators (RSI, MACD, Bollinger Bands)
-- Statistical features (skewness, kurtosis)
+- Statistical features (skewness, kurtosis, rolling statistics)
+- Momentum features (multi-period)
 
 Mathematical Formulations:
+--------------------------
 - Simple Return: r_t = (P_t - P_{t-1}) / P_{t-1}
 - Log Return: r_t = ln(P_t / P_{t-1})
 - Rolling Volatility: σ_t = sqrt(Σ(r_{t-i})^2 / (n-1)) for i=0 to n-1
 - RSI: RSI_t = 100 - (100 / (1 + RS_t)), RS_t = AvgGain_t / AvgLoss_t
 - MACD: MACD_t = EMA_12(P_t) - EMA_26(P_t)
+- Bollinger Bands: Upper/Lower = MA ± (k × σ)
+
+Note:
+-----
+signal_generator.py converts these indicators into trading signals.
+This module only computes the raw indicator values.
+
+Author: Portfolio Engine Team
+Date: December 2025
 """
 
 import pandas as pd
@@ -29,8 +51,31 @@ class FeatureEngineer:
     """
     Comprehensive feature engineering for financial time series data.
     
-    This class provides methods to compute various technical indicators,
-    statistical features, and transformations commonly used in algorithmic trading.
+    This is the CANONICAL source for technical indicator computation.
+    
+    Purpose:
+    --------
+    - Compute raw technical indicators (RSI values, MACD lines, Bollinger Bands, etc.)
+    - Calculate statistical features for ML models
+    - Provide consistent, well-tested indicator implementations
+    
+    NOT for:
+    --------
+    - Generating trading signals (use signal_generator.py)
+    - Portfolio weight optimization (use optimizer.py)
+    - Backtesting (use portfolio_engine.py)
+    
+    Output:
+    -------
+    Returns DataFrames with raw indicator values, NOT trading signals.
+    For example:
+    - compute_rsi() returns RSI values (0-100)
+    - signal_generator.mean_reversion_rsi() converts to signals (-1, 0, +1)
+    
+    Methods:
+    --------
+    All methods return DataFrames/dicts with computed features.
+    Use make_features() to compute all features at once.
     """
     
     def __init__(self):

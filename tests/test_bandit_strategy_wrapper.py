@@ -20,7 +20,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 # Import classes to test
-from src.bandit_strategy_wrapper import BanditStrategyWrapper, StrategyPerformanceTracker
+from src.strategies.bandit_strategy_wrapper import BanditStrategyWrapper, StrategyPerformanceTracker
 from src.bandits import BanditAllocator, UCBBandit, ThompsonSamplingBandit
 from src.portfolio_engine import PortfolioState
 

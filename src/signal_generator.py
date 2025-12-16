@@ -1,32 +1,67 @@
 """
 Signal Generation Module
 
-This module provides comprehensive signal generation and data management for trading strategies.
-It combines data container functionality with advanced signal generation in a unified class.
+This module provides signal generation and data container functionality for trading strategies.
+
+Role:
+-----
+1. **Data Container**: Holds price/return data and provides access methods (used by all strategy wrappers)
+2. **Signal Generator**: Converts technical indicators into trading signals
+3. **Weight Generator**: Generates initial weights for portfolio optimization
+
+Relationship with feature_engineering.py:
+------------------------------------------
+- feature_engineering.py: Computes raw technical indicators (RSI, MACD, etc.)
+- signal_generator.py: Converts indicators to trading signals (-1, 0, +1)
+
+Example:
+    feature_engineering: Computes RSI values (0-100)
+    signal_generator: Converts RSI to signals (oversold=+1, overbought=-1, neutral=0)
 
 Components:
+-----------
     StrategySignalGenerator: Unified class for data management and signal generation
-        - Price and return data management
-        - Basic signal generation (momentum, mean reversion, volatility)
-        - Advanced technical indicators (MA crossover, MACD, RSI, Bollinger Bands)
-        - Forecast-based signals (expected return thresholds)
-        - Volatility-scaled signals
-        - Combined signals with multiple strategies
-        - Data access methods for strategy wrappers
-        - Initial weight generation
-        - Covariance and expected return estimation
+        - Price and return data container (self.prices, self.returns)
+        - Basic metrics: momentum(), mean_reversion(), volatility()
+        - Signal generation from indicators: momentum_macd(), mean_reversion_rsi(), etc.
+        - Forecast-based signals: forecast_based_signals()
+        - Signal combination and smoothing
+        - Initial weight generation: generate_initial_weights()
+        - Data access: get_return_matrix(), get_covariance_matrix(), etc.
+        - Regime classification features for ML strategies
     
     Strategy: Alias for StrategySignalGenerator (backward compatibility)
+    SignalGenerator: Alias for StrategySignalGenerator (backward compatibility)
 
 Mathematical Formulations:
+--------------------------
+    Signal Generation Logic:
     - Basic Signal: signal_t = sign(indicator_t - threshold)
-    - Volatility-Scaled Signal: weight_t = signal_t / σ_t
+    - Volatility-Scaled: weight_t = signal_t / σ_t
     - Z-Score Signal: z_t = (x_t - μ_t) / σ_t
-    - Momentum Signal: signal_t = sign(MA_fast - MA_slow)
+    
+    Signal Types:
+    - Momentum: signal_t = sign(MA_fast - MA_slow) or sign(MACD_histogram)
     - Mean Reversion: signal_t = -sign(z_score) if |z_score| > threshold
-    - MACD: MACD_t = EMA_fast(P_t) - EMA_slow(P_t)
-    - RSI: RSI_t = 100 - (100 / (1 + RS_t))
-    - Bollinger Bands: Upper/Lower = MA ± (num_std × σ)
+    - RSI: +1 if RSI < 30 (oversold), -1 if RSI > 70 (overbought), 0 otherwise
+    - Bollinger: +1 if price < lower_band, -1 if price > upper_band, 0 otherwise
+
+Usage:
+------
+    # Create signal generator (data container)
+    strategy = StrategySignalGenerator(prices)
+    
+    # Access data
+    returns = strategy.get_return_matrix()
+    cov = strategy.get_covariance_matrix()
+    
+    # Generate signals
+    momentum_sigs = strategy.momentum_macd()
+    rsi_sigs = strategy.mean_reversion_rsi()
+    combined = strategy.generate_signals(strategies=['macd', 'rsi'])
+    
+    # Generate initial weights
+    weights = strategy.generate_initial_weights(method='momentum', top_n=10)
 
 Author: Portfolio Engine Team
 Date: December 2025
@@ -40,19 +75,36 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Import feature engineering for technical indicators
+# This avoids code duplication - FeatureEngineer handles all technical indicators
+try:
+    from src.feature_engineering import FeatureEngineer
+except ImportError:
+    # For standalone usage
+    FeatureEngineer = None
+
 
 class StrategySignalGenerator:
     """
     Unified data container and signal generator for trading strategies.
     
-    This class provides comprehensive functionality for:
+    This class serves as:
+    1. Data container for price/return data (used by all strategy wrappers)
+    2. Signal generator converting indicators to trading signals
+    3. Initial weight generator for strategy initialization
+    
+    Role Separation:
+    - Uses FeatureEngineer for technical indicator computation (RSI, MACD, etc.)
+    - Focuses on signal generation logic and trading signals
+    - Provides data access methods for strategy wrappers
+    
+    This class provides:
     - Price and return data management
     - Basic signal generation (momentum, mean reversion, volatility)
-    - Advanced technical indicators (MA crossover, MACD, RSI, Bollinger Bands)
-    - Forecast-based signals
-    - Data access methods for strategy wrappers
+    - Signal generation from technical indicators (MA crossover, MACD, RSI, Bollinger)
+    - Forecast-based signals and combinations
     - Initial weight generation
-    - Risk metrics calculation
+    - Regime classification features for ML strategies
     
     Parameters
     ----------
@@ -460,6 +512,9 @@ class StrategySignalGenerator:
                           overbought_threshold: float = 70) -> pd.DataFrame:
         """
         Generate mean-reversion signals based on RSI indicator.
+        
+        Note: Uses inline RSI calculation. For detailed RSI computation,
+        see FeatureEngineer.compute_rsi() in feature_engineering.py.
         
         Mathematical formulation:
         RSI_t = 100 - (100 / (1 + RS_t))

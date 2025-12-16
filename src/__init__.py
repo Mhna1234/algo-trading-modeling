@@ -54,7 +54,7 @@ __author__ = "AI Assistant"
 from .portfolio_engine import PortfolioEngine, PortfolioState, PortfolioResult
 
 # Strategy wrappers - 12 strategies used in demo
-from .strategy_wrapper import (
+from .strategies import (
     BaseStrategyWrapper,
     # Core strategies
     EqualWeightStrategy,
@@ -75,7 +75,10 @@ from .strategy_wrapper import (
     ARIMAGARCHForecastingStrategy,
     # Utility functions
     list_available_strategies,
-    create_strategy
+    create_strategy,
+    # Meta-strategies
+    BanditStrategyWrapper,
+    StrategyPerformanceTracker
 )
 
 # Signal generation and forecasting (EXISTING)
@@ -125,6 +128,9 @@ __all__ = [
     # Utility functions
     'list_available_strategies',
     'create_strategy',
+    # Meta-strategies
+    'BanditStrategyWrapper',
+    'StrategyPerformanceTracker',
     
     # Signal Generation
     'StrategySignalGenerator',

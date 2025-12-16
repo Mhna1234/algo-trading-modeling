@@ -32,7 +32,7 @@ from src.strategies import (
     InverseVolatilityStrategy
 )
 from src.bandits import UCBBandit, ThompsonSamplingBandit
-from src.bandit_strategy_wrapper import BanditStrategyWrapper
+from src.strategies.bandit_strategy_wrapper import BanditStrategyWrapper
 from src.portfolio_engine import PortfolioEngine
 
 
@@ -103,11 +103,8 @@ def run_bandit_demo():
     mean_rev_strategy = MeanReversionStrategy(
         strategy=strategy,
         optimizer=optimizer,
-        top_k=3,
-        window=10,
-        objective='mvo',
-        risk_aversion=2.0,
-        max_weight=0.5
+        lookback=21,
+        z_score_normalize=True
     )
     print(f"   - {mean_rev_strategy.name}")
     
@@ -115,9 +112,7 @@ def run_bandit_demo():
     inv_vol_strategy = InverseVolatilityStrategy(
         strategy=strategy,
         optimizer=optimizer,
-        vol_window=20,
-        objective='risk_parity',
-        max_weight=0.5
+        lookback=126
     )
     print(f"   - {inv_vol_strategy.name}")
     print()
@@ -157,8 +152,8 @@ def run_bandit_demo():
     thompson_wrapper = BanditStrategyWrapper(
         child_strategies=[
             MomentumStrategy(strategy, optimizer, top_k=3, lookback=20, max_weight=0.5),
-            MeanReversionStrategy(strategy, optimizer, top_k=3, window=10, max_weight=0.5),
-            InverseVolatilityStrategy(strategy, optimizer, vol_window=20, max_weight=0.5)
+            MeanReversionStrategy(strategy, optimizer, lookback=21, z_score_normalize=True),
+            InverseVolatilityStrategy(strategy, optimizer, lookback=126)
         ],
         bandit_allocator=thompson_bandit,
         strategy=strategy,

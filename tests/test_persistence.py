@@ -16,7 +16,7 @@ import pandas as pd
 from pandas import Series, DataFrame
 
 from src.bandits import UCBBandit, ThompsonSamplingBandit
-from src.bandit_strategy_wrapper import BanditStrategyWrapper, StrategyPerformanceTracker
+from src.strategies.bandit_strategy_wrapper import BanditStrategyWrapper, StrategyPerformanceTracker
 from src.strategies import BaseStrategyWrapper
 
 

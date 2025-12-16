@@ -18,22 +18,27 @@ This project provides a production-ready algorithmic trading system with:
 ```
 algo-trading-modeling/
 ├── src/                          # Core source code
+│   ├── MODULE_ORGANIZATION.md   # 📖 Module organization guide (READ THIS!)
 │   ├── backtester.py            # Legacy backtesting wrapper
 │   ├── backtesting_methods.py   # Advanced validation methods
-│   ├── bandit_strategy_wrapper.py  # MAB-based strategy allocation
 │   ├── data_loader.py           # Data loading and preprocessing
 │   ├── data_retrieval.py        # Market data fetching (S3/yfinance)
 │   ├── evaluator.py             # Performance metrics calculation
-│   ├── feature_engineering.py   # Technical indicators & features
+│   ├── feature_engineering.py   # Technical indicators (RSI, MACD, etc.)
+│   ├── signal_generator.py      # Signal generation & data container
 │   ├── optimizer.py             # Portfolio optimization algorithms
 │   ├── portfolio_engine.py      # Core portfolio management system
 │   ├── rewards.py               # Reward calculation for bandits
-│   ├── signal_generator.py      # Signal generation interface
-│   ├── strategy_wrapper.py      # 12 validated benchmark strategies
 │   ├── utils.py                 # Helper functions
+│   ├── strategies/              # 25 trading strategies (organized)
+│   │   ├── base_strategy_wrapper.py    # Abstract base class
+│   │   ├── benchmark_strategies.py     # 12 validated strategies
+│   │   ├── advanced_strategies.py      # 13 experimental strategies
+│   │   └── bandit_strategy_wrapper.py  # MAB meta-strategy
 │   └── bandits/                 # Multi-Armed Bandit implementations
-│       ├── ucb_bandit.py       # Upper Confidence Bound algorithm
-│       └── thompson_bandit.py  # Thompson Sampling algorithm
+│       ├── base.py              # Abstract bandit interface
+│       ├── ucb.py               # Upper Confidence Bound algorithm
+│       └── thompson.py          # Thompson Sampling algorithm
 │
 ├── data/                         # Data storage
 │   ├── raw/                     # Raw market data
@@ -305,13 +310,32 @@ Sample performance metrics from validated benchmark strategies (see [FULL_DEMO_R
 
 See `visualizations/` for detailed comparison charts and metrics exports.
 
+## 📖 Code Organization
+
+**IMPORTANT**: Before contributing or modifying code, read [src/MODULE_ORGANIZATION.md](src/MODULE_ORGANIZATION.md)
+
+This guide explains:
+- Role of each module (feature_engineering vs signal_generator vs strategies)
+- How to avoid code duplication
+- Common patterns and decision trees
+- Which module to use for what purpose
+
+Key principles:
+- `feature_engineering.py` - Computes technical indicators (RSI, MACD values)
+- `signal_generator.py` - Converts indicators to trading signals (-1, 0, +1)
+- `strategies/` - Complete trading strategies combining signals + optimization
+- `optimizer.py` - Portfolio optimization
+- `portfolio_engine.py` - Backtesting and execution
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please ensure:
+- **Read [src/MODULE_ORGANIZATION.md](src/MODULE_ORGANIZATION.md) first**
 - Code follows PEP 8 style guidelines
 - All tests pass
 - New features include documentation
 - Commit messages are descriptive
+- No code duplication between modules
 
 ## 📝 License
 

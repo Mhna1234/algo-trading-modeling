@@ -77,7 +77,7 @@ from src.strategies import (
     SharpeMaximizationStrategy,
     CVaRMinimizationStrategy
 )
-from src.bandit_strategy_wrapper import BanditStrategyWrapper
+from src.strategies.bandit_strategy_wrapper import BanditStrategyWrapper
 from src.bandits.ucb import UCBBandit
 from src.bandits.thompson import ThompsonSamplingBandit
 

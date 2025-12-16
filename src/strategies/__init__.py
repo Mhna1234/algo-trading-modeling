@@ -55,6 +55,12 @@ from .advanced_strategies import (
     ARIMAGARCHForecastingStrategy
 )
 
+# Import bandit strategy wrapper for meta-strategy allocation
+from .bandit_strategy_wrapper import (
+    BanditStrategyWrapper,
+    StrategyPerformanceTracker
+)
+
 __all__ = [
     # Base classes and utilities
     'BaseStrategyWrapper',
@@ -89,4 +95,8 @@ __all__ = [
     'LinearRegressionStrategy',
     'SVMRegimeStrategy',
     'ARIMAGARCHForecastingStrategy',
+    
+    # Meta-strategy (Bandit Allocator)
+    'BanditStrategyWrapper',
+    'StrategyPerformanceTracker',
 ]

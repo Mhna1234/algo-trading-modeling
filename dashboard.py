@@ -33,7 +33,7 @@ from src.data_loader import load_data
 from src.portfolio_engine import PortfolioEngine
 from src.signal_generator import Strategy
 from src.optimizer import PortfolioOptimizer
-from src.strategy_wrapper import (
+from src.strategies import (
     EqualWeightStrategy, BuyAndHoldStrategy, MomentumStrategy,
     MeanReversionStrategy, InverseVolatilityStrategy,
     GlobalMinimumVarianceStrategy, CVaRMinimizationStrategy,

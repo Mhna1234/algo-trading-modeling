@@ -171,7 +171,7 @@ class PortfolioEngine:
     Examples
     --------
     >>> from src.portfolio_engine import PortfolioEngine
-    >>> from src.strategy_wrapper import MomentumStrategy
+    >>> from src.strategies import MomentumStrategy
     >>> 
     >>> # Create engine
     >>> portfolio = PortfolioEngine(prices, initial_capital=1_000_000)

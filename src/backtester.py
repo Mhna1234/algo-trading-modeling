@@ -6,7 +6,7 @@ while using the new PortfolioEngine architecture underneath.
 
 For new code, use PortfolioEngine and strategy wrappers directly:
     from src.portfolio_engine import PortfolioEngine
-    from src.strategy_wrapper import MomentumStrategy
+    from src.strategies import MomentumStrategy
     
     portfolio = PortfolioEngine(prices)
     strategy = MomentumStrategy(...)
@@ -29,7 +29,7 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 
 from .portfolio_engine import PortfolioEngine, PortfolioResult
-from .strategy_wrapper import MomentumStrategy, BaseStrategyWrapper
+from .strategies import MomentumStrategy, BaseStrategyWrapper
 from .utils import (
     TradingConfig, calculate_returns, rebalance_dates, 
     calculate_sharpe_ratio, calculate_max_drawdown, timing_decorator
@@ -204,14 +204,14 @@ class Backtester:
         
         # Create strategy wrapper based on objective
         if objective == 'cvar':
-            from .strategy_wrapper import CVaRMinimizationStrategy
+            from .strategies import CVaRMinimizationStrategy
             wrapper = CVaRMinimizationStrategy(
                 self.strategy, self.optimizer,
                 alpha=kwargs.get('alpha', 0.95),
                 max_weight=kwargs.get('max_weight', 0.4)
             )
         elif objective in ['momentum', 'mom']:
-            from .strategy_wrapper import MomentumStrategy
+            from .strategies import MomentumStrategy
             wrapper = MomentumStrategy(
                 self.strategy, self.optimizer,
                 top_k=top_n,
