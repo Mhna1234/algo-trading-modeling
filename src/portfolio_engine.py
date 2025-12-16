@@ -583,7 +583,7 @@ class PortfolioEngine:
         weight_drift = (target_weights - current_asset_weights).abs()
         
         # Identify assets that need rebalancing
-        needs_rebalancing = weight_drift > drift_threshold
+        needs_rebalancing = weight_drift >= drift_threshold
         
         if not needs_rebalancing.any():
             # No trades needed - all weights within tolerance
