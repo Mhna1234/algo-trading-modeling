@@ -267,6 +267,34 @@ See `docs/BACKTESTING_METHODS.md` for mathematical formulations.
 
 Comprehensive documentation is available:
 
+## 🏆 Reward Functions
+
+The system provides several reward functions for evaluating strategy performance, especially in the context of multi-armed bandit allocation. These are implemented in [src/rewards.py](src/rewards.py):
+
+- **Simple Return Reward** (`return_to_reward`):
+    - Converts raw returns to a reward, with clipping to prevent outlier domination.
+    - Fast, but ignores risk and volatility.
+    - Usage: `return_to_reward(ret)`
+
+- **Sharpe-like Reward** (`sharpe_like_reward`):
+    - Computes a risk-adjusted reward (return divided by volatility, with a floor to prevent division by zero).
+    - Recommended default for most applications.
+    - Usage: `sharpe_like_reward(ret, vol)`
+
+- **Drawdown-Penalized Reward** (`drawdown_penalized_reward`):
+    - Penalizes strategies for large drawdowns, even if they recover.
+    - Usage: `drawdown_penalized_reward(ret, drawdown, lambda_dd=1.0)`
+
+- **Multi-Objective Reward** (`multi_objective_reward`):
+    - Blends return, Sharpe, and drawdown penalties with configurable weights.
+    - Usage: `multi_objective_reward(ret, vol, drawdown, weight_return=0.3, weight_sharpe=0.4, weight_dd=0.3)`
+
+- **Convenience Wrapper** (`compute_reward`):
+    - Selects and computes the appropriate reward type based on input and `reward_type` argument (`'return'`, `'sharpe'`, `'drawdown'`, `'multi'`).
+    - Usage: `compute_reward(ret, vol, drawdown, reward_type='sharpe')`
+
+All reward functions handle NaN inputs gracefully and use clipping to prevent extreme values from dominating the bandit's learning process. See [src/rewards.py](src/rewards.py) for detailed docstrings and examples.
+
 ### Core Documentation
 - **[README.md](README.md)** - This file: project overview and quick start
 - **[VALIDATION_COMPLETE.md](VALIDATION_COMPLETE.md)** - Strategy validation results
