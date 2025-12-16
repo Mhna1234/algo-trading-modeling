@@ -38,20 +38,38 @@ algo-trading-modeling/
 │   └── bandits/                 # Multi-Armed Bandit implementations
 │       ├── base.py              # Abstract bandit interface
 │       ├── ucb.py               # Upper Confidence Bound algorithm
-│       └── thompson.py          # Thompson Sampling algorithm
+│   ├── thompson.py          # Thompson Sampling algorithm
+│   └── exp3.py              # EXP3 algorithm (adversarial bandit)
 │
 ├── data/                         # Data storage
-│   ├── raw/                     # Raw market data
-│   └── processed/               # Processed & feature-engineered data
+ **Upper Confidence Bound (UCB)** - Balance exploration and exploitation with confidence bounds
+ **Thompson Sampling** - Bayesian approach with posterior sampling
+ **EXP3** - Exponential-weight algorithm for Exploration and Exploitation, robust to adversarial and non-stationary rewards
 │
 ├── examples/                     # Example scripts and demos
-│   ├── simple_example.py        # Quick start example
-│   ├── demo_12_strategies_fast.py    # Fast demo (6 months, weekly rebalancing)
-│   ├── demo_12_strategies_full.py    # Full demo (10 years, monthly rebalancing)
-│   ├── demo_backtesting_methods.py   # Advanced backtesting methods
+ Configurable burn-in period for initial exploration
+ Multiple reward functions (returns, Sharpe ratio, Sortino ratio)
+ Soft allocation (probabilistic) or hard allocation (winner-takes-all)
+ Built-in persistence and state management
+ EXP3 supports reward shifting/scaling for non-standard reward ranges
 │   ├── demo_bandit_strategy_wrapper.py  # MAB strategy allocation demo
 │   ├── demo_bandit_comparison.py     # UCB vs Thompson Sampling comparison
 │   ├── demo_ucb_bandit.py            # UCB algorithm demo
+#### EXP3 Usage Example
+
+```python
+from src.bandits import EXP3Bandit
+
+# Initialize EXP3 with 5 arms, gamma=0.07
+bandit = EXP3Bandit(n_arms=5, gamma=0.07, reward_shift=0.5, reward_scale=1.0)
+
+for t in range(100):
+    arm = bandit.select_arm(t)
+    # ... obtain reward for selected arm ...
+    bandit.update(arm, reward)
+```
+
+See [BANDIT_EXPLANATION.md](BANDIT_EXPLANATION.md) for detailed MAB methodology and EXP3 details.
 │   ├── demo_rewards.py               # Reward calculation demo
 │   └── demo_svm_regime_strategy.py   # SVM regime classification demo
 │
