@@ -9,7 +9,7 @@ This module provides a complete portfolio management system that:
 - Works with any strategy wrapper implementing BaseStrategyWrapper
 
 Author: Portfolio Engine Team
-Date: December 2025
+Date: November 2025
 """
 
 from __future__ import annotations
@@ -583,7 +583,8 @@ class PortfolioEngine:
         weight_drift = (target_weights - current_asset_weights).abs()
         
         # Identify assets that need rebalancing
-        needs_rebalancing = weight_drift >= drift_threshold
+        # Use epsilon comparison to handle floating point precision errors
+        needs_rebalancing = weight_drift >= (drift_threshold - 1e-9)
         
         if not needs_rebalancing.any():
             # No trades needed - all weights within tolerance
