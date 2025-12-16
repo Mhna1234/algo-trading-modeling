@@ -50,14 +50,14 @@
     "win_rate": 0.448
   },
   "6. GMVP": {
-    "total_return": 0.12318539259440131,
-    "cagr": 0.2615454261374395,
-    "volatility": 0.08227299753381145,
-    "sharpe_ratio": 2.6454156098264447,
-    "max_drawdown": -0.02516055937703258,
-    "calmar_ratio": 10.395056096256234,
-    "sortino_ratio": 5.555439494517797,
-    "win_rate": 0.36
+    "total_return": 0.13846002972017346,
+    "cagr": 0.2960912392704582,
+    "volatility": 0.08179788053980436,
+    "sharpe_ratio": 2.9935163444306796,
+    "max_drawdown": -0.021981710331475907,
+    "calmar_ratio": 13.469890868613676,
+    "sortino_ratio": 6.711766118711786,
+    "win_rate": 0.352
   },
   "7. Inverse Volatility": {
     "total_return": 0.12657791713436573,
@@ -80,14 +80,14 @@
     "win_rate": 0.392
   },
   "9. Max Diversification": {
-    "total_return": 0.13846002991349105,
-    "cagr": 0.296091239710627,
-    "volatility": 0.08179788065417509,
-    "sharpe_ratio": 2.9935163445468422,
-    "max_drawdown": -0.021981710329356568,
-    "calmar_ratio": 13.469890889936678,
-    "sortino_ratio": 6.711766114539683,
-    "win_rate": 0.352
+    "total_return": 0.14628806819017592,
+    "cagr": 0.31397633527516544,
+    "volatility": 0.08876855396110954,
+    "sharpe_ratio": 2.9208868750618846,
+    "max_drawdown": -0.02976147748030376,
+    "calmar_ratio": 10.549756324529115,
+    "sortino_ratio": 5.184216836934054,
+    "win_rate": 0.376
   },
   "10. Max Decorrelation": {
     "total_return": 0.11699811146825434,

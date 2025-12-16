@@ -652,14 +652,42 @@ class GlobalMinimumVarianceStrategy(BaseStrategyWrapper):
         cov = returns_window.cov().values
         
         # Compute GMVP weights
-        gmvp_weights = self._compute_gmvp_weights(cov)
-        
-        # Apply maximum weight constraint
         max_weight = self.params.get('max_weight', 0.5)
-        gmvp_weights = np.clip(gmvp_weights, 0, max_weight)
         
-        # Renormalize to sum to 1
-        gmvp_weights = gmvp_weights / gmvp_weights.sum()
+        # Check if unconstrained solution violates constraints
+        unconstrained_weights = self._compute_gmvp_weights(cov)
+        
+        # If no constraint violations, use analytical solution
+        if np.all(unconstrained_weights >= 0) and np.all(unconstrained_weights <= max_weight):
+            gmvp_weights = unconstrained_weights
+        else:
+            # Use constrained optimization (QP solver)
+            try:
+                n = len(self.strategy.assets)
+                w = cp.Variable(n)
+                
+                # Minimize portfolio variance with constraints
+                objective = cp.quad_form(w, cov)
+                constraints = [
+                    cp.sum(w) == 1,
+                    w >= 0,
+                    w <= max_weight
+                ]
+                
+                problem = cp.Problem(cp.Minimize(objective), constraints)
+                problem.solve(solver=cp.OSQP, verbose=False)
+                
+                if w.value is not None and problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+                    gmvp_weights = w.value
+                    gmvp_weights = gmvp_weights / gmvp_weights.sum()  # Renormalize
+                else:
+                    # Fallback to clipped version
+                    gmvp_weights = np.clip(unconstrained_weights, 0, max_weight)
+                    gmvp_weights = gmvp_weights / gmvp_weights.sum()
+            except Exception as e:
+                logger.warning(f"Constrained GMVP optimization failed: {e}, using clipped weights")
+                gmvp_weights = np.clip(unconstrained_weights, 0, max_weight)
+                gmvp_weights = gmvp_weights / gmvp_weights.sum()
         
         # Optional: Integer rebalancing for practical implementation
         if self.params.get('use_integer_rebalance', False):
@@ -968,28 +996,55 @@ class MaximumDiversificationStrategy(BaseStrategyWrapper):
         
         # Maximum diversification: maximize portfolio diversification ratio
         # DR = (w^T σ) / sqrt(w^T Σ w)
-        # This is equivalent to minimizing portfolio volatility / weighted average volatility
+        # Equivalent reformulation: minimize -w^T σ / sqrt(w^T Σ w)
+        # Or: maximize (w^T σ)^2 / (w^T Σ w) which is QP-compatible
         try:
             import cvxpy as cp
             
             n = len(volatilities)
-            w = cp.Variable(n)
             
-            # Objective: maximize (w^T σ) / sqrt(w^T Σ w)
-            # Equivalent: minimize portfolio volatility, weight by inverse volatility
-            portfolio_variance = cp.quad_form(w, cov_matrix)
-            weighted_volatility = w @ volatilities
-            
-            # Maximize diversification ratio = minimize volatility / weighted_vol
-            # Use inverse volatility as initial weights (good heuristic)
-            constraints = [
-                cp.sum(w) == 1,
-                w >= min_weight,
-                w <= max_weight
-            ]
-            
-            problem = cp.Problem(cp.Minimize(portfolio_variance), constraints)
-            problem.solve(solver=cp.OSQP, verbose=False)
+            # Approach 1: Use ECOS/SCS solver which handles SOCP
+            try:
+                w = cp.Variable(n)
+                
+                # Objective: maximize w^T σ (weighted average volatility)
+                # Subject to: w^T Σ w <= 1 (portfolio variance constraint)
+                weighted_volatility = w @ volatilities
+                portfolio_variance = cp.quad_form(w, cov_matrix)
+                
+                constraints = [
+                    portfolio_variance <= 1,  # Normalized variance constraint
+                    w >= 0,  # Long-only
+                    w >= min_weight * cp.sum(w),  # Minimum weight (relative)
+                    w <= max_weight * cp.sum(w)   # Maximum weight (relative)
+                ]
+                
+                problem = cp.Problem(cp.Maximize(weighted_volatility), constraints)
+                problem.solve(solver=cp.SCS, verbose=False)
+                
+                if w.value is None or problem.status not in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+                    raise ValueError(f"SCS solver failed: {problem.status}")
+                    
+            except Exception as e_scs:
+                # Approach 2: Reformulate as pure QP (OSQP compatible)
+                # Maximize DR ≈ minimize portfolio variance with inverse-vol weighted objective
+                logger.warning(f"SCS solver failed: {e_scs}, trying QP reformulation")
+                w = cp.Variable(n)
+                
+                # Minimize variance, but bias toward high individual volatility assets
+                # This approximates maximum diversification
+                inv_vol_target = volatilities / np.sum(volatilities)
+                deviation_penalty = cp.sum_squares(w - inv_vol_target)
+                objective = cp.quad_form(w, cov_matrix) + 0.1 * deviation_penalty
+                
+                constraints = [
+                    cp.sum(w) == 1,
+                    w >= min_weight,
+                    w <= max_weight
+                ]
+                
+                problem = cp.Problem(cp.Minimize(objective), constraints)
+                problem.solve(solver=cp.OSQP, verbose=False)
             
             if w.value is not None and problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
                 weights = w.value
