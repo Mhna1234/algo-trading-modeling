@@ -1,0 +1,7 @@
+Strategy,Approach,Total_Return_%,Annual_Return_%,Sharpe_Ratio,Max_Drawdown_%,Volatility_%,Win_Rate_%,Avg_Turnover_%,Total_Costs_$,Final_Value_$
+Equal Weight,Soft (5%),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,100000.0
+Equal Weight,Hard (Always),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,100000.0
+Momentum Top-10,Soft (5%),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,100000.0
+Momentum Top-10,Hard (Always),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,100000.0
+Risk Parity,Soft (5%),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,100000.0
+Risk Parity,Hard (Always),0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,100000.0

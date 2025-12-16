@@ -1,64 +1,64 @@
 strategy,asset,weight
-Bandit Meta-Strategy (EXP3),KO,0.1959936460155164
-Bandit Meta-Strategy (EXP3),JNJ,0.1826427165205974
-Bandit Meta-Strategy (EXP3),MSFT,0.1099622831325969
-Bandit Meta-Strategy (EXP3),PG,0.0810206374869965
-Bandit Meta-Strategy (EXP3),XOM,0.07353854158523655
-Bandit Meta-Strategy (EXP3),GOOGL,0.06984420290563569
-Bandit Meta-Strategy (EXP3),WMT,0.05044246728840898
-Bandit Meta-Strategy (EXP3),NFLX,0.03697926389939963
-Bandit Meta-Strategy (EXP3),NVDA,0.03536450060664056
-Bandit Meta-Strategy (EXP3),V,0.026018194533531998
-Bandit Meta-Strategy (EXP3),DIS,0.02397390267477865
-Bandit Meta-Strategy (EXP3),PFE,0.016091582813856014
-Bandit Meta-Strategy (EXP3),META,0.01570907653491472
-Bandit Meta-Strategy (EXP3),HD,0.015527533824939167
-Bandit Meta-Strategy (EXP3),MA,0.013053635703882108
-Bandit Meta-Strategy (EXP3),TSLA,0.012354459381005703
-Bandit Meta-Strategy (EXP3),JPM,0.01131100078796068
-Bandit Meta-Strategy (EXP3),BAC,0.010766002776684826
-Bandit Meta-Strategy (EXP3),AMZN,0.010661135316883976
-Bandit Meta-Strategy (EXP3),AAPL,0.009369087014700194
-Bandit Meta-Strategy (EXP3),CASH,-0.0006238708041665699
-Bandit Meta-Strategy (Thompson Sampling),JNJ,0.18994308698766096
-Bandit Meta-Strategy (Thompson Sampling),KO,0.18301103829597873
-Bandit Meta-Strategy (Thompson Sampling),PG,0.15431274018251911
-Bandit Meta-Strategy (Thompson Sampling),MSFT,0.13772211148921643
-Bandit Meta-Strategy (Thompson Sampling),GOOGL,0.04252268443684811
-Bandit Meta-Strategy (Thompson Sampling),NFLX,0.03979262399820125
-Bandit Meta-Strategy (Thompson Sampling),WMT,0.03975097001309096
-Bandit Meta-Strategy (Thompson Sampling),XOM,0.03157807658458107
-Bandit Meta-Strategy (Thompson Sampling),V,0.029735161635249786
-Bandit Meta-Strategy (Thompson Sampling),NVDA,0.027773243380742198
-Bandit Meta-Strategy (Thompson Sampling),DIS,0.02291052110242426
-Bandit Meta-Strategy (Thompson Sampling),META,0.014109735277847457
-Bandit Meta-Strategy (Thompson Sampling),PFE,0.014014184765217014
-Bandit Meta-Strategy (Thompson Sampling),HD,0.01171165543191608
-Bandit Meta-Strategy (Thompson Sampling),MA,0.011435419993336709
-Bandit Meta-Strategy (Thompson Sampling),TSLA,0.011434983879615874
-Bandit Meta-Strategy (Thompson Sampling),JPM,0.010309590317615943
-Bandit Meta-Strategy (Thompson Sampling),BAC,0.010079826875529264
-Bandit Meta-Strategy (Thompson Sampling),AMZN,0.009656733882574212
-Bandit Meta-Strategy (Thompson Sampling),AAPL,0.008712273031030868
-Bandit Meta-Strategy (Thompson Sampling),CASH,-0.0005166615611961211
-Bandit Meta-Strategy (UCB),JNJ,0.1651805500333203
-Bandit Meta-Strategy (UCB),KO,0.13354786577590363
-Bandit Meta-Strategy (UCB),NFLX,0.10395395837172697
-Bandit Meta-Strategy (UCB),GOOGL,0.09354841537857704
-Bandit Meta-Strategy (UCB),NVDA,0.09142752937894123
-Bandit Meta-Strategy (UCB),PG,0.06326641248137731
-Bandit Meta-Strategy (UCB),WMT,0.06268730978439649
-Bandit Meta-Strategy (UCB),XOM,0.05816882594746207
-Bandit Meta-Strategy (UCB),MSFT,0.03920763842434778
-Bandit Meta-Strategy (UCB),META,0.033685163610026096
-Bandit Meta-Strategy (UCB),PFE,0.030109348797263208
-Bandit Meta-Strategy (UCB),V,0.024727804508054826
-Bandit Meta-Strategy (UCB),DIS,0.02290609897874403
-Bandit Meta-Strategy (UCB),AMZN,0.013912580514659295
-Bandit Meta-Strategy (UCB),TSLA,0.011797731685564992
-Bandit Meta-Strategy (UCB),HD,0.01168414814310138
-Bandit Meta-Strategy (UCB),MA,0.011433212751824984
-Bandit Meta-Strategy (UCB),JPM,0.010307600381031347
-Bandit Meta-Strategy (UCB),BAC,0.01007326217003087
-Bandit Meta-Strategy (UCB),AAPL,0.008698087360294336
-Bandit Meta-Strategy (UCB),CASH,-0.00032354447664803397
+Bandit Meta-Strategy (EXP3),KO,0.19773513478236637
+Bandit Meta-Strategy (EXP3),JNJ,0.18417604335759435
+Bandit Meta-Strategy (EXP3),MSFT,0.1094128268177886
+Bandit Meta-Strategy (EXP3),PG,0.0818352164307742
+Bandit Meta-Strategy (EXP3),XOM,0.07400237673440539
+Bandit Meta-Strategy (EXP3),GOOGL,0.06977419591281263
+Bandit Meta-Strategy (EXP3),WMT,0.05059340192471068
+Bandit Meta-Strategy (EXP3),NFLX,0.03636851431003673
+Bandit Meta-Strategy (EXP3),NVDA,0.03530980959204368
+Bandit Meta-Strategy (EXP3),V,0.024898584972985156
+Bandit Meta-Strategy (EXP3),DIS,0.02367126403673775
+Bandit Meta-Strategy (EXP3),PFE,0.015653664653881225
+Bandit Meta-Strategy (EXP3),HD,0.015636170388210163
+Bandit Meta-Strategy (EXP3),META,0.014651080404744346
+Bandit Meta-Strategy (EXP3),MA,0.01210979677653634
+Bandit Meta-Strategy (EXP3),TSLA,0.011940594638714594
+Bandit Meta-Strategy (EXP3),JPM,0.011081476341106233
+Bandit Meta-Strategy (EXP3),BAC,0.010853100160914975
+Bandit Meta-Strategy (EXP3),AMZN,0.010802679919644738
+Bandit Meta-Strategy (EXP3),AAPL,0.009972494593525606
+Bandit Meta-Strategy (EXP3),CASH,-0.0004784267495337084
+Bandit Meta-Strategy (Thompson Sampling),JNJ,0.1948891041102759
+Bandit Meta-Strategy (Thompson Sampling),KO,0.1822595381878763
+Bandit Meta-Strategy (Thompson Sampling),PG,0.1513450118026022
+Bandit Meta-Strategy (Thompson Sampling),MSFT,0.1375497077647029
+Bandit Meta-Strategy (Thompson Sampling),GOOGL,0.04441846061019441
+Bandit Meta-Strategy (Thompson Sampling),WMT,0.040134421295420095
+Bandit Meta-Strategy (Thompson Sampling),NFLX,0.03612161617594539
+Bandit Meta-Strategy (Thompson Sampling),XOM,0.03323449455853947
+Bandit Meta-Strategy (Thompson Sampling),NVDA,0.029463843720627318
+Bandit Meta-Strategy (Thompson Sampling),V,0.024702842618361982
+Bandit Meta-Strategy (Thompson Sampling),DIS,0.022906504899476012
+Bandit Meta-Strategy (Thompson Sampling),META,0.014963796153694692
+Bandit Meta-Strategy (Thompson Sampling),PFE,0.014692188596458725
+Bandit Meta-Strategy (Thompson Sampling),HD,0.011974152559496817
+Bandit Meta-Strategy (Thompson Sampling),TSLA,0.011581564722716977
+Bandit Meta-Strategy (Thompson Sampling),MA,0.011434197778603347
+Bandit Meta-Strategy (Thompson Sampling),JPM,0.010311246323717356
+Bandit Meta-Strategy (Thompson Sampling),BAC,0.010079524538128286
+Bandit Meta-Strategy (Thompson Sampling),AMZN,0.009654281609620124
+Bandit Meta-Strategy (Thompson Sampling),AAPL,0.00873735505856538
+Bandit Meta-Strategy (Thompson Sampling),CASH,-0.0004538530850239224
+Bandit Meta-Strategy (UCB),JNJ,0.20132624201654245
+Bandit Meta-Strategy (UCB),KO,0.16748695699500515
+Bandit Meta-Strategy (UCB),GOOGL,0.08502702276926251
+Bandit Meta-Strategy (UCB),PG,0.07136072214316076
+Bandit Meta-Strategy (UCB),WMT,0.06590008892197653
+Bandit Meta-Strategy (UCB),NVDA,0.06435681691829001
+Bandit Meta-Strategy (UCB),XOM,0.06416565091171829
+Bandit Meta-Strategy (UCB),NFLX,0.05597154833337103
+Bandit Meta-Strategy (UCB),MSFT,0.03927175475844525
+Bandit Meta-Strategy (UCB),PFE,0.03140874937155425
+Bandit Meta-Strategy (UCB),META,0.028356459721845577
+Bandit Meta-Strategy (UCB),V,0.024044177895015967
+Bandit Meta-Strategy (UCB),DIS,0.022968933284627256
+Bandit Meta-Strategy (UCB),AMZN,0.013392894307905655
+Bandit Meta-Strategy (UCB),HD,0.012187275505416924
+Bandit Meta-Strategy (UCB),TSLA,0.01199641524253665
+Bandit Meta-Strategy (UCB),MA,0.011312683472544015
+Bandit Meta-Strategy (UCB),JPM,0.010343020590237081
+Bandit Meta-Strategy (UCB),BAC,0.010076166619815207
+Bandit Meta-Strategy (UCB),AAPL,0.009328201352454218
+Bandit Meta-Strategy (UCB),CASH,-0.00028178113172493965
