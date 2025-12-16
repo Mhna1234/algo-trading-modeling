@@ -69,3 +69,6 @@ PyPortfolioOpt>=1.5.0
 pulp>=2.7.0
 osqp>=0.6.2
 scs>=3.2.0
+
+
+#bayesianbandits
