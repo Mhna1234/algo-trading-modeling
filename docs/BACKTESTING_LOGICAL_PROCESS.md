@@ -1,5 +1,8 @@
 # Backtesting Logical Process
 
+> **Implementation Status Note (Dec 2025):**
+> As of December 2025, the current codebase does **not** implement soft rebalancing or drift threshold logic. All trades are executed at each rebalance, regardless of drift. For full compliance, see the TODOs in IMPLEMENTATION_SUGGESTIONS.md.
+
 ## Overview
 
 This document outlines the **step-by-step logical process** for backtesting trading strategies with soft rebalancing, transaction costs, and comprehensive performance metrics. This is a **reference implementation guide** that defines the exact algorithmic flow for quarterly rebalancing over a 10-year period.
