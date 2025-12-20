@@ -196,8 +196,8 @@ class PortfolioEngine:
         self,
         prices: DataFrame,
         initial_capital: float = 1_000_000.0,
-        transaction_cost_bps: float = 10.0,  # 0.10% commission (updated for realistic costs)
-        slippage_bps: float = 5.0,            # 0.05% slippage (updated for realistic costs)
+        transaction_cost_bps: float = 5.0,
+        slippage_bps: float = 1.0,
         benchmark_tickers: Optional[List[str]] = None,
         cash_symbol: str = 'CASH'
     ):
@@ -261,9 +261,7 @@ class PortfolioEngine:
         start_date: str,
         end_date: Optional[str] = None,
         rebalance_freq: str = 'M',
-        initial_capital: Optional[float] = None,
-        soft_rebalance: bool = True,
-        drift_threshold: float = 0.05
+        initial_capital: Optional[float] = None
     ) -> PortfolioResult:
         """
         Run complete backtest with strategy wrapper.
@@ -284,10 +282,6 @@ class PortfolioEngine:
             - 'Q': Quarterly
         initial_capital : float, optional
             Override initial capital for this backtest
-        soft_rebalance : bool, default=True
-            If True, only rebalance when weight drift exceeds threshold
-        drift_threshold : float, default=0.05
-            Minimum weight drift (5%) to trigger rebalancing
         
         Returns
         -------
@@ -347,11 +341,8 @@ class PortfolioEngine:
                         logger.warning(f"Weights sum to {new_weights.sum():.3f} on {date.date()}, normalizing")
                         new_weights = new_weights / new_weights.sum()
                     
-                    # Execute rebalance (soft or hard based on parameter)
-                    if soft_rebalance:
-                        self._execute_soft_rebalance(date, new_weights, drift_threshold)
-                    else:
-                        self._execute_rebalance(date, new_weights)
+                    # Execute rebalance
+                    self._execute_rebalance(date, new_weights)
                     self._last_rebalance_date = date
                     
                 except (ValueError, KeyError, IndexError) as e:
@@ -542,101 +533,6 @@ class PortfolioEngine:
         self._transaction_costs_series.loc[date] = transaction_costs
         self._slippage_costs_series.loc[date] = slippage_costs
     
-    
-    def _execute_soft_rebalance(self, date: pd.Timestamp, target_weights: Series, drift_threshold: float = 0.05):
-        """
-        Execute soft rebalancing - only trade if weight drift exceeds threshold.
-        
-        This implements the "soft rebalancing" logic where positions are only adjusted
-        if they have drifted more than drift_threshold (default 5%) from target weights.
-        
-        Parameters
-        ----------
-        date : pd.Timestamp
-            Rebalance date
-        target_weights : pd.Series
-            Target weights for risky assets (excluding cash)
-        drift_threshold : float, default=0.05
-            Minimum weight drift to trigger trade (5% = 0.05)
-        """
-        # Get current prices
-        current_prices = self._prices.loc[date]
-        
-        # Calculate current actual weights after market movements (natural drift)
-        position_values = self._current_shares * current_prices
-        total_value = position_values.sum() + self._current_cash
-        
-        # Prevent division by zero
-        if total_value <= 0:
-            return
-        
-        current_asset_weights = position_values / total_value
-        
-        # Normalize target weights
-        target_weights = target_weights.clip(lower=0)
-        target_weights_sum = target_weights.sum()
-        
-        if target_weights_sum > 1.0:
-            target_weights = target_weights / target_weights_sum
-        
-        # Calculate weight drift for each asset
-        weight_drift = (target_weights - current_asset_weights).abs()
-        
-        # Identify assets that need rebalancing
-        # Use epsilon comparison to handle floating point precision errors
-        needs_rebalancing = weight_drift >= (drift_threshold - 1e-9)
-        
-        if not needs_rebalancing.any():
-            # No trades needed - all weights within tolerance
-            self._turnover_history.loc[date] = 0.0
-            self._transaction_costs_series.loc[date] = 0.0
-            self._slippage_costs_series.loc[date] = 0.0
-            return
-        
-        # Execute rebalance for assets exceeding threshold
-        # Target dollar amounts
-        target_dollars = target_weights * self._current_equity
-        target_shares = target_dollars / current_prices
-        
-        # Calculate trades
-        trades_shares = target_shares - self._current_shares
-        trades_dollars = trades_shares * current_prices
-        
-        # Calculate turnover (sum of absolute trades as fraction of equity)
-        turnover = trades_dollars.abs().sum() / self._current_equity
-        
-        # Calculate costs
-        transaction_cost_rate = self.transaction_cost_bps / 10000.0
-        slippage_rate = self.slippage_bps / 10000.0
-        
-        transaction_costs = turnover * self._current_equity * transaction_cost_rate
-        slippage_costs = turnover * self._current_equity * slippage_rate
-        total_costs = transaction_costs + slippage_costs
-        
-        # Execute trades - deduct costs from the portfolio
-        self._current_shares = target_shares
-        
-        # Cash weight after rebalancing
-        cash_weight = 1.0 - target_weights.sum()
-        self._current_cash = cash_weight * self._current_equity - total_costs
-        
-        # Update equity after costs
-        self._current_equity = self._current_equity - total_costs
-        
-        # Update weights
-        position_values = self._current_shares * current_prices
-        total_value = position_values.sum() + self._current_cash
-        
-        asset_weights = position_values / total_value
-        self._current_weights = pd.concat([
-            asset_weights,
-            Series([self._current_cash / total_value], index=[self.cash_symbol])
-        ])
-        
-        # Record trades and costs
-        self._turnover_history.loc[date] = turnover
-        self._transaction_costs_series.loc[date] = transaction_costs
-        self._slippage_costs_series.loc[date] = slippage_costs
     def _execute_int_rebalance(self, date: pd.Timestamp, target_weights: Series):
         """
         Execute rebalancing trades with INTEGER share constraints.

@@ -185,7 +185,14 @@ class DataLoader:
         for ticker in tickers:
             ticker_data = data[ticker]
             if isinstance(ticker_data, pd.DataFrame):
-                if 'Close' in ticker_data.columns:
+                # Case-insensitive column search
+                columns_lower = {col.lower(): col for col in ticker_data.columns}
+
+                if 'close' in columns_lower:
+                    closes[ticker] = ticker_data[columns_lower['close']]
+                elif 'adj close' in columns_lower:
+                    closes[ticker] = ticker_data[columns_lower['adj close']]
+                elif 'Close' in ticker_data.columns:
                     closes[ticker] = ticker_data['Close']
                 elif 'Adj Close' in ticker_data.columns:
                     closes[ticker] = ticker_data['Adj Close']
