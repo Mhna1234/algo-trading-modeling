@@ -400,6 +400,7 @@ def main():
     print("RUNNING BACKTESTS")
     print("=" * 80)
     
+
     results = []
     bandit_diagnostics = {}
 
@@ -420,51 +421,53 @@ def main():
         )),
     ]
 
-    if USE_BANDIT_WRAPPER:
-        for bandit_name, bandit in bandit_algorithms:
-            logger.info(f"Running BanditStrategyWrapper with {bandit_name} algorithm")
-            wrapper = BanditStrategyWrapper(
-                child_strategies=list(strategies.values()),
-                bandit_allocator=bandit,
-                burn_in_periods=BANDIT_CONFIG['burn_in_periods'],
-                reward_type=BANDIT_CONFIG['reward_type'],
-                enable_soft_allocation=BANDIT_CONFIG['enable_soft_allocation'],
-                random_seed=BANDIT_CONFIG.get('random_seed')
-            )
-            engine = PortfolioEngine(
-                prices=prices,
-                initial_capital=100000.0,
-                transaction_cost_bps=10,  # 0.1%
-                slippage_bps=1.0
-            )
-            result = engine.run_backtest(
-                strategy_wrapper=wrapper,
-                start_date=prices.index[0],
-                end_date=prices.index[-1],
-                rebalance_freq='M'  # Monthly rebalancing
-            )
-            diagnostics = wrapper.get_diagnostics()
-            bandit_diagnostics[bandit_name] = diagnostics
-            results.append({
-                'name': f'Bandit Meta-Strategy ({bandit_name})',
-                'result': result,
-                'equity_curve': result.equity_curve,
-                'metrics': result.summary_metrics
-            })
-            logger.info(f"Bandit backtest completed for {bandit_name}")
-    else:
-        # Run individual strategy backtests (existing path)
-        for strategy_name, strategy_instance in strategies.items():
-            result = run_backtest(
-                strategy_instance=strategy_instance,
-                strategy_name=strategy_name,
-                prices=prices,
-                initial_capital=100000.0,
-                rebalance_frequency=1,  # Daily
-                transaction_cost=0.001
-            )
-            if result is not None:
-                results.append(result)
+    # Run all 12 benchmark strategies individually
+    logger.info("Running all 12 benchmark strategies individually...")
+    for strategy_name, strategy_instance in strategies.items():
+        result = run_backtest(
+            strategy_instance=strategy_instance,
+            strategy_name=strategy_name,
+            prices=prices,
+            initial_capital=100000.0,
+            rebalance_frequency=1,  # Daily
+            transaction_cost=0.001
+        )
+        if result is not None:
+            results.append(result)
+
+    # Run all bandit meta-strategies
+    logger.info("Running all bandit meta-strategies...")
+    for bandit_name, bandit in bandit_algorithms:
+        logger.info(f"Running BanditStrategyWrapper with {bandit_name} algorithm")
+        wrapper = BanditStrategyWrapper(
+            child_strategies=list(strategies.values()),
+            bandit_allocator=bandit,
+            burn_in_periods=BANDIT_CONFIG['burn_in_periods'],
+            reward_type=BANDIT_CONFIG['reward_type'],
+            enable_soft_allocation=BANDIT_CONFIG['enable_soft_allocation'],
+            random_seed=BANDIT_CONFIG.get('random_seed')
+        )
+        engine = PortfolioEngine(
+            prices=prices,
+            initial_capital=100000.0,
+            transaction_cost_bps=10,  # 0.1%
+            slippage_bps=1.0
+        )
+        result = engine.run_backtest(
+            strategy_wrapper=wrapper,
+            start_date=prices.index[0],
+            end_date=prices.index[-1],
+            rebalance_freq='M'  # Monthly rebalancing
+        )
+        diagnostics = wrapper.get_diagnostics()
+        bandit_diagnostics[bandit_name] = diagnostics
+        results.append({
+            'name': f'Bandit Meta-Strategy ({bandit_name})',
+            'result': result,
+            'equity_curve': result.equity_curve,
+            'metrics': result.summary_metrics
+        })
+        logger.info(f"Bandit backtest completed for {bandit_name}")
 
     if len(results) == 0:
         logger.error("No strategies completed successfully!")
