@@ -138,8 +138,8 @@ from src.data_loader import DataLoader
 loader = DataLoader()
 prices = loader.load_data('data/processed/price_data_2020-01-01_2023-12-31.csv')
 
-# Initialize portfolio engine
-portfolio = PortfolioEngine(prices)
+# Initialize portfolio engine with soft rebalancing
+portfolio = PortfolioEngine(prices, enable_soft_rebalance=True, drift_threshold=0.05)
 
 # Create and run strategy
 strategy = MomentumStrategy(lookback=20, n_positions=10)
@@ -244,7 +244,9 @@ See `docs/BACKTESTING_METHODS.md` for mathematical formulations.
 - Strategy-agnostic architecture
 - Real-time metric calculation
 - Realistic transaction cost modeling (slippage + fees)
-- Configurable rebalancing frequencies (daily, weekly, monthly)
+- Configurable rebalancing frequencies (daily, weekly, monthly, quarterly)
+- **Soft rebalancing logic** (trade only when weight drift exceeds threshold)
+- **Drift threshold parameter** (default 5%) for realistic trading simulation
 - Position sizing and risk management
 - Multiple optimization methods (mean-variance, risk parity, etc.)
 
@@ -255,6 +257,7 @@ See `docs/BACKTESTING_METHODS.md` for mathematical formulations.
 - Win rate and profit factor
 - Turnover and transaction costs
 - Concentration metrics (Herfindahl-Hirschman Index)
+- **Drift tracking and reporting for soft rebalancing**
 
 ### Data Management
 - AWS S3 integration for scalable data storage
@@ -410,7 +413,8 @@ For questions or feedback, please open an issue on GitHub.
 - ✅ Validated and documented 12 benchmark strategies
 - ✅ Implemented Multi-Armed Bandit (UCB & Thompson Sampling) for strategy allocation
 - ✅ Added comprehensive reward calculation system (returns, Sharpe, Sortino)
-- ✅ Optimized rebalancing frequencies (monthly for realistic transaction costs)
+- ✅ Optimized rebalancing frequencies (monthly, quarterly, with soft rebalancing)
+- ✅ **Soft rebalancing and drift threshold logic implemented in portfolio engine**
 - ✅ Enhanced visualization and reporting capabilities
 - ✅ Streamlined data workflow with pre-processing pipeline
 - ✅ Complete test coverage for bandit implementations
