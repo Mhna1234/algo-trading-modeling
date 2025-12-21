@@ -67,7 +67,9 @@ class BacktestingMethods:
                  prices: pd.DataFrame,
                  initial_capital: float = 1000000.0,
                  transaction_cost_bps: float = 5.0,
-                 slippage_bps: float = 1.0):
+                 slippage_bps: float = 1.0,
+                 enable_soft_rebalance: bool = False,
+                 drift_threshold: float = 0.05):
         """
         Initialize backtesting methods framework.
         
@@ -81,6 +83,8 @@ class BacktestingMethods:
         self.initial_capital = initial_capital
         self.transaction_cost_bps = transaction_cost_bps
         self.slippage_bps = slippage_bps
+        self.enable_soft_rebalance = enable_soft_rebalance
+        self.drift_threshold = drift_threshold
         
     def vanilla_backtest(self,
                         strategy: BaseStrategyWrapper,
@@ -107,12 +111,13 @@ class BacktestingMethods:
             transaction_cost_bps=self.transaction_cost_bps,
             slippage_bps=self.slippage_bps
         )
-        
         result = portfolio.run_backtest(
             strategy,
             start_date=start_date,
             end_date=end_date,
-            rebalance_freq=rebalance_freq
+            rebalance_freq=rebalance_freq,
+            soft_rebalance=self.enable_soft_rebalance,
+            drift_threshold=self.drift_threshold
         )
         
         return BacktestMethodResult(
@@ -197,13 +202,14 @@ class BacktestingMethods:
                     transaction_cost_bps=self.transaction_cost_bps,
                     slippage_bps=self.slippage_bps
                 )
-                
                 # Note: Strategy should be re-initialized with train period for optimization
                 result = portfolio.run_backtest(
                     strategy,
                     start_date=test_start.strftime('%Y-%m-%d'),
                     end_date=test_end.strftime('%Y-%m-%d'),
-                    rebalance_freq=rebalance_freq
+                    rebalance_freq=rebalance_freq,
+                    soft_rebalance=self.enable_soft_rebalance,
+                    drift_threshold=self.drift_threshold
                 )
                 
                 results.append(result)
