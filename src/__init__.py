@@ -90,6 +90,9 @@ from .optimizer import PortfolioOptimizer, optimize_portfolio_forecasted
 # Advanced backtesting methods (NEW v2.0)
 from .backtesting_methods import BacktestingMethods, BacktestMethodResult
 
+# Risk-free asset (NEW v2.2)
+from .risk_free_asset import RiskFreeAsset, RiskFreeStrategyWrapper
+
 # Legacy compatibility (UPDATED)
 from .backtester import Backtester, BacktestResults
 from .evaluator import Evaluator, PerformanceEvaluator, evaluate_performance

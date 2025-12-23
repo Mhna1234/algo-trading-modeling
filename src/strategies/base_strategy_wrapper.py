@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional
 import pandas as pd
 from pandas import Series
 import logging
+import numpy as np
 
 from src.portfolio_engine import PortfolioState
 
@@ -105,6 +106,21 @@ class BaseStrategyWrapper(ABC):
             'type': self.__class__.__name__,
             'parameters': self.params
         }
+    
+    def get_rebalancing_frequency(self) -> str:
+        """Return rebalancing frequency hint (default 'M'). PortfolioEngine uses this."""
+        return self.params.get('rebalancing_frequency', 'M')
+    
+    def evaluate_reward(self, returns: pd.Series, risk_free_rate: float = 0.0) -> float:
+        """Compute reward for bandit (default Sharpe-like)."""
+        from src.rewards import sharpe_like_reward
+        ret = returns.mean() * 252  # Annualized return
+        vol = returns.std() * np.sqrt(252)
+        return sharpe_like_reward(ret, vol, risk_free_rate=risk_free_rate)
+    
+    def get_metadata(self) -> Dict[str, Any]:
+        """Return strategy info."""
+        return {'name': self.name, **self.params}
 
 
 def list_available_strategies() -> Dict[str, type]:

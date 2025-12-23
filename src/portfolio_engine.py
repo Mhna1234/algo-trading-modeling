@@ -22,6 +22,9 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame, Series
 
+from .transaction_cost_model import TransactionCostModel, LinearTransactionCostModel
+from .rebalancing_scheduler import RebalancingScheduler, SimpleRebalancingScheduler
+
 warnings.filterwarnings('ignore')
 logger = logging.getLogger(__name__)
 
@@ -167,6 +170,14 @@ class PortfolioEngine:
         Benchmark tickers to download and compare against
     cash_symbol : str, default='CASH'
         Symbol used for cash in weights
+    cost_model : TransactionCostModel, optional
+        Model for calculating transaction costs
+    rebalance_freq : str, default='M'
+        Global rebalancing frequency ('D', 'W', 'M', 'Q')
+    scheduler : RebalancingScheduler, optional
+        Scheduler for rebalancing logic
+    risk_free_asset : RiskFreeAsset, optional
+        Risk-free asset for unallocated capital
     
     Examples
     --------
@@ -199,7 +210,11 @@ class PortfolioEngine:
         transaction_cost_bps: float = 10.0,  # 0.10% commission (updated for realistic costs)
         slippage_bps: float = 5.0,            # 0.05% slippage (updated for realistic costs)
         benchmark_tickers: Optional[List[str]] = None,
-        cash_symbol: str = 'CASH'
+        cash_symbol: str = 'CASH',
+        cost_model: Optional[TransactionCostModel] = None,
+        rebalance_freq: str = 'M',
+        scheduler: Optional[RebalancingScheduler] = None,
+        risk_free_asset: Optional['RiskFreeAsset'] = None
     ):
         """Initialize portfolio engine with price data and parameters."""
         # Core data
@@ -216,6 +231,10 @@ class PortfolioEngine:
         self.transaction_cost_bps = float(transaction_cost_bps)
         self.slippage_bps = float(slippage_bps)
         self.cash_symbol = cash_symbol
+        self.rebalance_freq = rebalance_freq
+        self.cost_model = cost_model or LinearTransactionCostModel(transaction_cost_bps)
+        self.scheduler = scheduler or SimpleRebalancingScheduler(rebalance_freq, prices=self._prices)
+        self.risk_free_asset = risk_free_asset
         
         # State tracking (initialized in run_backtest)
         self._equity_curve = Series(dtype=float)
@@ -260,10 +279,11 @@ class PortfolioEngine:
         strategy_wrapper: 'BaseStrategyWrapper',
         start_date: str,
         end_date: Optional[str] = None,
-        rebalance_freq: str = 'M',
         initial_capital: Optional[float] = None,
         soft_rebalance: bool = True,
-        drift_threshold: float = 0.05
+        drift_threshold: float = 0.05,
+        backtest_method: str = 'walk_forward',
+        rebalance_freq: Optional[str] = None
     ) -> PortfolioResult:
         """
         Run complete backtest with strategy wrapper.
@@ -276,27 +296,99 @@ class PortfolioEngine:
             Start date for backtest (YYYY-MM-DD)
         end_date : str, optional
             End date for backtest (defaults to last date in prices)
-        rebalance_freq : str, default='M'
-            Rebalancing frequency:
-            - 'D': Daily
-            - 'W': Weekly
-            - 'M': Monthly (end of month)
-            - 'Q': Quarterly
         initial_capital : float, optional
             Override initial capital for this backtest
         soft_rebalance : bool, default=True
             If True, only rebalance when weight drift exceeds threshold
         drift_threshold : float, default=0.05
             Minimum weight drift (5%) to trigger rebalancing
-        
+        backtest_method : str, default='walk_forward'
+            Backtesting methodology ('vanilla', 'walk_forward', 'cross_validation', 
+            'monte_carlo', 'randomized')
+        rebalance_freq : str, optional
+            Rebalancing frequency to override default ('D', 'W', 'M', 'Q')
+            
         Returns
         -------
         PortfolioResult
             Complete backtest results with all metrics and data
         """
+        # Delegate to advanced backtesting methods if specified
+        if backtest_method != 'vanilla':
+            from .backtesting_engine import BacktestingMethods
+            
+            backtester = BacktestingMethods(
+                prices=self._prices,
+                initial_capital=self.initial_capital if initial_capital is None else initial_capital,
+                transaction_cost_bps=self.transaction_cost_bps,
+                slippage_bps=self.slippage_bps,
+                enable_soft_rebalance=soft_rebalance,
+                drift_threshold=drift_threshold
+            )
+            
+            if backtest_method == 'walk_forward':
+                result = backtester.walk_forward_backtest(
+                    strategy=strategy_wrapper,
+                    start_date=start_date,
+                    end_date=end_date,
+                    train_window_months=24,
+                    test_window_months=6,
+                    step_months=3,
+                    rebalance_freq=self.rebalance_freq,
+                    anchored=False
+                )
+                # Return the first (most recent) result for compatibility
+                return result.individual_results[-1] if result.individual_results else None
+            elif backtest_method == 'cross_validation':
+                result = backtester.cross_validation_backtest(
+                    strategy=strategy_wrapper,
+                    start_date=start_date,
+                    end_date=end_date,
+                    n_splits=5,
+                    test_size_months=6,
+                    rebalance_freq=self.rebalance_freq
+                )
+                # Return aggregate result (could be improved)
+                return result.individual_results[0] if result.individual_results else None
+            elif backtest_method == 'monte_carlo':
+                result = backtester.monte_carlo_backtest(
+                    strategy=strategy_wrapper,
+                    start_date=start_date,
+                    end_date=end_date,
+                    n_simulations=100,
+                    method='bootstrap',
+                    rebalance_freq=self.rebalance_freq
+                )
+                # Return aggregate result
+                return result.individual_results[0] if result.individual_results else None
+            elif backtest_method == 'randomized':
+                result = backtester.randomized_backtest(
+                    strategy=strategy_wrapper,
+                    start_date=start_date,
+                    end_date=end_date,
+                    n_trials=50,
+                    randomization_type='start_date',
+                    rebalance_freq=self.rebalance_freq
+                )
+                # Return aggregate result
+                return result.individual_results[0] if result.individual_results else None
+            else:
+                raise ValueError(f"Unknown backtest_method: {backtest_method}")
+        
         # Reset state
         if initial_capital is not None:
             self.initial_capital = float(initial_capital)
+        
+        # Override rebalance frequency if provided
+        original_rebalance_freq = None
+        original_scheduler = None
+        if rebalance_freq is not None and rebalance_freq != self.rebalance_freq:
+            original_rebalance_freq = self.rebalance_freq
+            original_scheduler = self.scheduler
+            self.rebalance_freq = rebalance_freq
+            from .rebalancing_scheduler import SimpleRebalancingScheduler
+            self.scheduler = SimpleRebalancingScheduler(rebalance_freq, prices=self._prices)
+        
         self._reset_state()
         
         # Get strategy info
@@ -316,10 +408,10 @@ class PortfolioEngine:
             raise ValueError(f"No data between {start_date} and {end_date}")
         
         # Get rebalance dates
-        rebalance_dates = self._get_rebalance_dates(start_date, end_date, rebalance_freq)
+        rebalance_dates = self.scheduler.get_global_rebalance_dates(start_date, end_date)
         
         print(f"Running backtest: {start_date.date()} to {end_date.date()}")
-        print(f"Rebalancing: {rebalance_freq} ({len(rebalance_dates)} rebalances)")
+        print(f"Rebalancing: {self.rebalance_freq} ({len(rebalance_dates)} rebalances)")
         print(f"Strategy: {self._strategy_name}")
         
         # Initialize on first date
@@ -342,10 +434,23 @@ class PortfolioEngine:
                     
                     new_weights = new_weights.reindex(self.assets).fillna(0.0)
                     
-                    # Ensure weights are valid
-                    if new_weights.sum() > 1.01:  # Allow small tolerance
-                        logger.warning(f"Weights sum to {new_weights.sum():.3f} on {date.date()}, normalizing")
-                        new_weights = new_weights / new_weights.sum()
+                    # Handle risk-free asset allocation
+                    weight_sum = new_weights.sum()
+                    if weight_sum > 1.01:  # Allow small tolerance
+                        logger.warning(f"Weights sum to {weight_sum:.3f} on {date.date()}, normalizing")
+                        new_weights = new_weights / weight_sum
+                        risk_free_weight = 0.0
+                    elif weight_sum < 0.99:  # Allow for under-allocation
+                        risk_free_weight = 1.0 - weight_sum
+                        logger.info(f"Allocating {risk_free_weight:.3f} to risk-free asset on {date.date()}")
+                    else:
+                        risk_free_weight = 0.0
+                    
+                    # Add risk-free weight to cash if risk-free asset is configured
+                    if self.risk_free_asset is not None and risk_free_weight > 0:
+                        # Risk-free asset earns return but doesn't need rebalancing
+                        # The return will be accounted for in daily updates
+                        pass  # Cash already represents risk-free allocation
                     
                     # Execute rebalance (soft or hard based on parameter)
                     if soft_rebalance:
@@ -377,6 +482,11 @@ class PortfolioEngine:
         
         print("Backtest complete!")
         
+        # Restore original rebalance frequency if it was overridden
+        if original_rebalance_freq is not None:
+            self.rebalance_freq = original_rebalance_freq
+            self.scheduler = original_scheduler
+        
         # Build and return result
         return self._build_result()
     
@@ -405,32 +515,6 @@ class PortfolioEngine:
         self._rolling_vol = Series(dtype=float)
         self._var_series = Series(dtype=float)
         self._cvar_series = Series(dtype=float)
-    
-    def _get_rebalance_dates(
-        self,
-        start_date: pd.Timestamp,
-        end_date: pd.Timestamp,
-        freq: str
-    ) -> List[pd.Timestamp]:
-        """Generate rebalancing dates based on frequency."""
-        dates = self._prices.loc[start_date:end_date].index
-        
-        if freq == 'D':
-            return dates.tolist()
-        elif freq == 'W':
-            # Last business day of each week
-            is_week_end = dates.to_series().groupby(dates.to_period('W')).transform('last') == dates
-            return dates[is_week_end].tolist()
-        elif freq == 'M':
-            # Last business day of each month
-            is_month_end = dates.to_series().groupby(dates.to_period('M')).transform('last') == dates
-            return dates[is_month_end].tolist()
-        elif freq == 'Q':
-            # Last business day of each quarter
-            is_quarter_end = dates.to_series().groupby(dates.to_period('Q')).transform('last') == dates
-            return dates[is_quarter_end].tolist()
-        else:
-            raise ValueError(f"Unknown frequency: {freq}")
     
     def _build_portfolio_state(self, date: pd.Timestamp) -> PortfolioState:
         """Build PortfolioState object for strategy wrapper."""
@@ -511,31 +595,50 @@ class PortfolioEngine:
         # Calculate costs - turnover already includes both sides
         # transaction_cost_bps is the cost per trade (e.g., 10 bps = 0.1%)
         # We apply it once to the total turnover
-        transaction_cost_rate = self.transaction_cost_bps / 10000.0
         slippage_rate = self.slippage_bps / 10000.0
-        total_cost_rate = transaction_cost_rate + slippage_rate
         
         # Costs are applied to the dollar volume traded
-        transaction_costs = turnover * self._current_equity * transaction_cost_rate
+        transaction_costs = self.cost_model.calculate_cost(trades_dollars.abs().sum(), 'portfolio')
         slippage_costs = turnover * self._current_equity * slippage_rate
         total_costs = transaction_costs + slippage_costs
         
-        # Execute trades - deduct costs from the portfolio
+        # Execute trades - deduct costs from the portfolio proportionally
         self._current_shares = target_shares
-        self._current_cash = cash_weight * self._current_equity - total_costs
         
-        # Update equity after costs
-        self._current_equity = self._current_equity - total_costs
+        # Calculate portfolio value after trades (before costs)
+        position_values = self._current_shares * current_prices
+        portfolio_value_after_trades = position_values.sum() + (cash_weight * self._current_equity)
+        
+        # Deduct costs from total portfolio value
+        portfolio_value_after_costs = portfolio_value_after_trades - total_costs
+        
+        # Update equity
+        self._current_equity = portfolio_value_after_costs
+        
+        # Calculate cash as residual (prevent negative cash)
+        position_values_after_costs = position_values * (portfolio_value_after_costs / portfolio_value_after_trades)
+        self._current_cash = portfolio_value_after_costs - position_values_after_costs.sum()
+        
+        # Ensure cash is not negative (minimum 0)
+        if self._current_cash < 0:
+            # If costs exceed available cash, scale down positions proportionally
+            scale_factor = portfolio_value_after_costs / position_values_after_costs.sum()
+            self._current_shares = self._current_shares * scale_factor
+            self._current_cash = 0.0
+            position_values_after_costs = self._current_shares * current_prices
         
         # Update weights
-        position_values = self._current_shares * current_prices
-        total_value = position_values.sum() + self._current_cash
-        
-        asset_weights = position_values / total_value
-        self._current_weights = pd.concat([
-            asset_weights,
-            Series([self._current_cash / total_value], index=[self.cash_symbol])
-        ])
+        total_value = position_values_after_costs.sum() + self._current_cash
+        if total_value > 0:
+            asset_weights = position_values_after_costs / total_value
+            self._current_weights = pd.concat([
+                asset_weights,
+                Series([self._current_cash / total_value], index=[self.cash_symbol])
+            ])
+        else:
+            # Edge case: portfolio value is zero
+            self._current_weights = Series(0.0, index=self.assets + [self.cash_symbol])
+            self._current_weights[self.cash_symbol] = 1.0
         
         # Record trades and costs
         self._turnover_history.loc[date] = turnover
@@ -606,32 +709,50 @@ class PortfolioEngine:
         turnover = trades_dollars.abs().sum() / self._current_equity
         
         # Calculate costs
-        transaction_cost_rate = self.transaction_cost_bps / 10000.0
         slippage_rate = self.slippage_bps / 10000.0
         
-        transaction_costs = turnover * self._current_equity * transaction_cost_rate
+        transaction_costs = self.cost_model.calculate_cost(trades_dollars.abs().sum(), 'portfolio')
         slippage_costs = turnover * self._current_equity * slippage_rate
         total_costs = transaction_costs + slippage_costs
         
-        # Execute trades - deduct costs from the portfolio
+        # Execute trades - deduct costs from the portfolio proportionally
         self._current_shares = target_shares
         
-        # Cash weight after rebalancing
+        # Calculate portfolio value after trades (before costs)
+        position_values = self._current_shares * current_prices
         cash_weight = 1.0 - target_weights.sum()
-        self._current_cash = cash_weight * self._current_equity - total_costs
+        portfolio_value_after_trades = position_values.sum() + (cash_weight * self._current_equity)
         
-        # Update equity after costs
-        self._current_equity = self._current_equity - total_costs
+        # Deduct costs from total portfolio value
+        portfolio_value_after_costs = portfolio_value_after_trades - total_costs
+        
+        # Update equity
+        self._current_equity = portfolio_value_after_costs
+        
+        # Calculate cash as residual (prevent negative cash)
+        position_values_after_costs = position_values * (portfolio_value_after_costs / portfolio_value_after_trades)
+        self._current_cash = portfolio_value_after_costs - position_values_after_costs.sum()
+        
+        # Ensure cash is not negative (minimum 0)
+        if self._current_cash < 0:
+            # If costs exceed available cash, scale down positions proportionally
+            scale_factor = portfolio_value_after_costs / position_values_after_costs.sum()
+            self._current_shares = self._current_shares * scale_factor
+            self._current_cash = 0.0
+            position_values_after_costs = self._current_shares * current_prices
         
         # Update weights
-        position_values = self._current_shares * current_prices
-        total_value = position_values.sum() + self._current_cash
-        
-        asset_weights = position_values / total_value
-        self._current_weights = pd.concat([
-            asset_weights,
-            Series([self._current_cash / total_value], index=[self.cash_symbol])
-        ])
+        total_value = position_values_after_costs.sum() + self._current_cash
+        if total_value > 0:
+            asset_weights = position_values_after_costs / total_value
+            self._current_weights = pd.concat([
+                asset_weights,
+                Series([self._current_cash / total_value], index=[self.cash_symbol])
+            ])
+        else:
+            # Edge case: portfolio value is zero
+            self._current_weights = Series(0.0, index=self.assets + [self.cash_symbol])
+            self._current_weights[self.cash_symbol] = 1.0
         
         # Record trades and costs
         self._turnover_history.loc[date] = turnover
@@ -711,27 +832,41 @@ class PortfolioEngine:
         turnover = trades_dollars.abs().sum() / self._current_equity
         
         # Calculate costs
-        transaction_cost_rate = self.transaction_cost_bps / 10000.0
         slippage_rate = self.slippage_bps / 10000.0
         
-        transaction_costs = turnover * self._current_equity * transaction_cost_rate
+        transaction_costs = self.cost_model.calculate_cost(trades_dollars.abs().sum(), 'portfolio')
         slippage_costs = turnover * self._current_equity * slippage_rate
         total_costs = transaction_costs + slippage_costs
         
-        # Execute trades - deduct costs from the portfolio
+        # Execute trades - deduct costs from the portfolio proportionally
         self._current_shares = target_shares
         
-        # Cash = unused capital from integer constraints - transaction costs
-        self._current_cash = (self._current_equity - used_capital) - total_costs
+        # Calculate portfolio value after trades (before costs)
+        position_values = self._current_shares * current_prices
+        portfolio_value_after_trades = position_values.sum() + (self._current_equity - used_capital)
         
-        # Update equity after costs
-        self._current_equity = self._current_equity - total_costs
+        # Deduct costs from total portfolio value
+        portfolio_value_after_costs = portfolio_value_after_trades - total_costs
+        
+        # Update equity
+        self._current_equity = portfolio_value_after_costs
+        
+        # Calculate cash as residual (prevent negative cash)
+        position_values_after_costs = position_values * (portfolio_value_after_costs / portfolio_value_after_trades)
+        self._current_cash = portfolio_value_after_costs - position_values_after_costs.sum()
+        
+        # Ensure cash is not negative (minimum 0)
+        if self._current_cash < 0:
+            # If costs exceed available cash, scale down positions proportionally
+            scale_factor = portfolio_value_after_costs / position_values_after_costs.sum()
+            self._current_shares = self._current_shares * scale_factor
+            self._current_cash = 0.0
+            position_values_after_costs = self._current_shares * current_prices
         
         # Update weights (recalculate actual weights after integer constraints)
-        position_values = self._current_shares * current_prices
-        total_value = position_values.sum() + self._current_cash
+        total_value = position_values_after_costs.sum() + self._current_cash
         
-        asset_weights = position_values / total_value
+        asset_weights = position_values_after_costs / total_value
         self._current_weights = pd.concat([
             asset_weights,
             Series([self._current_cash / total_value], index=[self.cash_symbol])
@@ -749,7 +884,16 @@ class PortfolioEngine:
         
         # Calculate position values
         position_values = self._current_shares * current_prices
-        total_value = position_values.sum() + self._current_cash
+        
+        # Apply risk-free return to cash if risk-free asset is configured
+        cash_value = self._current_cash
+        if self.risk_free_asset is not None:
+            # Cash earns risk-free return
+            risk_free_return = self.risk_free_asset.get_daily_return(date)
+            cash_value = self._current_cash * (1.0 + risk_free_return)
+            self._current_cash = cash_value  # Update cash balance
+        
+        total_value = position_values.sum() + cash_value
         
         # Update equity
         self._current_equity = total_value

@@ -86,7 +86,8 @@ def sharpe_like_reward(
     ret: float,
     vol: float,
     clip: Tuple[float, float] = (-2.0, 2.0),
-    vol_floor: float = 1e-6
+    vol_floor: float = 1e-6,
+    risk_free_rate: float = 0.0
 ) -> float:
     """
     Calculate risk-adjusted reward (Sharpe-like ratio).
@@ -95,7 +96,7 @@ def sharpe_like_reward(
     return and volatility, preventing the bandit from overallocating to
     high-risk strategies.
     
-    Formula: reward = return / (volatility + vol_floor)
+    Formula: reward = (return - risk_free_rate) / (volatility + vol_floor)
     
     **When to use:**
     - Multi-period evaluation (5+ periods for stable vol estimates)
@@ -127,6 +128,14 @@ def sharpe_like_reward(
     vol_floor : float, default=1e-6
         Minimum volatility to prevent division by zero
         Ensures stability even with constant returns
+    risk_free_rate : float, default=0.0
+        Risk-free rate to subtract for opportunity cost adjustment
+    
+    Returns
+    -------
+    float
+        Risk-adjusted reward in range [clip[0], clip[1]]
+        Returns 0.0 for NaN inputs
     
     Returns
     -------
@@ -170,8 +179,11 @@ def sharpe_like_reward(
     # Add floor to prevent division by zero
     vol_safe = max(vol, vol_floor)
     
+    # Adjust for opportunity cost
+    excess_ret = ret - risk_free_rate
+    
     # Calculate Sharpe-like ratio
-    sharpe = ret / vol_safe
+    sharpe = excess_ret / vol_safe
     
     # Clip to bounds
     return max(clip[0], min(clip[1], sharpe))
