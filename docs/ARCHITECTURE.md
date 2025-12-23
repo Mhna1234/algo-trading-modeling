@@ -6,14 +6,14 @@ The Portfolio Engine is a strategy-agnostic portfolio management system designed
 1. **Signal Generation** (`signal_generator.py` - Strategy class)
 2. **Risk Optimization** (`optimizer.py` - PortfolioOptimizer class)  
 3. **Portfolio Execution** (`portfolio_engine.py` - PortfolioEngine class)
-4. **Strategy Integration** (`strategy_wrapper.py` - 12 validated benchmark strategies)
+4. **Strategy Integration** (`src/strategies/benchmark_strategies.py` - 12 validated benchmark strategies)
 5. **Multi-Armed Bandit Allocation** (`bandit_strategy_wrapper.py` - Dynamic strategy selection)
 6. **Advanced Validation** (`backtesting_methods.py` - 5 validation methods)
 7. **Performance Evaluation** (`evaluator.py` - Evaluator class)
 8. **Data Management** (`data_loader.py` - DataLoader class)
 
-**Current Version:** v3.0.0 (December 15, 2025)
-- **12 validated benchmark strategies** in `src/strategy_wrapper.py`
+**Current Version:** v3.0.0 (December 23, 2025)
+- **12 validated benchmark strategies** in `src/strategies/benchmark_strategies.py`
 - **Multi-Armed Bandit system** (UCB & Thompson Sampling) in `src/bandit_strategy_wrapper.py`
 - **Multiple reward functions** (returns, Sharpe, Sortino) in `src/rewards.py`
 - **5 advanced backtesting methods** in `src/backtesting_methods.py`
@@ -28,7 +28,7 @@ The Portfolio Engine is a strategy-agnostic portfolio management system designed
 - Portfolio Engine doesn't know about signals or forecasts
 - It only receives target weights and executes them
 - Any strategy can plug in via BaseStrategyWrapper interface
-- All strategies consolidated in single file (`src/strategy_wrapper.py`)
+- All strategies consolidated in single file (`src/strategies/benchmark_strategies.py`)
 
 ### 2. Real-Time Metric Calculation
 - All metrics calculated during backtest, not after
@@ -114,8 +114,11 @@ algo-trading-modeling/
 │   ├── feature_engineering.py      # Technical indicators & features
 │   ├── optimizer.py                # Risk optimization (PortfolioOptimizer)
 │   ├── portfolio_engine.py         # Backtest execution (PortfolioEngine)
-│   ├── strategy_wrapper.py         # 12 validated benchmark strategies
-│   ├── bandit_strategy_wrapper.py  # MAB strategy allocation
+│   ├── strategies/              # 25 trading strategies (organized)
+│   │   ├── base_strategy_wrapper.py    # Abstract base class
+│   │   ├── benchmark_strategies.py     # 12 validated strategies
+│   │   ├── advanced_strategies.py      # 13 experimental strategies
+│   │   └── bandit_strategy_wrapper.py  # MAB meta-strategy
 │   ├── rewards.py                  # Reward calculation for MAB
 │   ├── backtesting_methods.py      # 5 validation methods
 │   ├── evaluator.py                # Performance evaluation
@@ -183,7 +186,7 @@ _update_metrics(date)
 - `_rolling_sharpe`, `_rolling_vol`: Rolling metrics
 - `_var_series`, `_cvar_series`: Risk metrics
 
-### 2. StrategyWrapper (`src/strategy_wrapper.py`)
+### 2. StrategyWrapper (`src/strategies/benchmark_strategies.py`)
 
 **Base Interface:**
 ```python
@@ -634,7 +637,7 @@ dashboard_data = portfolio.get_dashboard_data()
 
 ### Adding New Strategies
 
-1. **Option A: Add to `strategy_wrapper.py`:**
+1. **Option A: Add to `src/strategies/benchmark_strategies.py`:**
 ```python
 class MyCustomStrategy(BaseStrategyWrapper):
     """
@@ -803,7 +806,7 @@ mean = portfolio_state.price_history.mean()
 ## Current Implementation Status
 
 ### ✅ Completed Features (v3.0.0)
-- **12 validated benchmark strategies** in `strategy_wrapper.py`
+- **12 validated benchmark strategies** in `src/strategies/benchmark_strategies.py`
 - **Multi-Armed Bandit system** (UCB & Thompson Sampling)
   - `bandit_strategy_wrapper.py` - MAB integration
   - `bandits/ucb_bandit.py` - UCB algorithm

@@ -4,11 +4,11 @@ This guide provides detailed information about the **12 validated benchmark stra
 
 ## Strategy Overview (12 Validated Benchmark Strategies)
 
-All 12 strategies have been rigorously validated with comprehensive testing including 10-year full backtests (2015-2025) with monthly rebalancing and realistic transaction cost modeling. All strategies are implemented in `src/strategy_wrapper.py`.
+All 12 strategies have been rigorously validated with comprehensive testing including 10-year full backtests (2015-2025) with monthly rebalancing and realistic transaction cost modeling. All strategies are implemented in `src/strategies/benchmark_strategies.py`.
 
-**Version**: 3.0.0 | **Last Updated**: December 15, 2025
+**Version**: 3.0.0 | **Last Updated**: December 23, 2025
 
-See [VALIDATION_COMPLETE.md](../VALIDATION_COMPLETE.md) for detailed validation results.
+See [BACKTESTING_METHODS.md](BACKTESTING_METHODS.md) for detailed validation results.
 
 ### Passive/Baseline Strategies (2)
 1. **Buy & Hold** - Market cap weighted benchmark
@@ -41,7 +41,7 @@ In addition to the 12 benchmark strategies, the system includes a **Multi-Armed 
 - **Configurable Rewards** - Returns, Sharpe ratio, or Sortino ratio
 - **Soft Allocation** - Probabilistic strategy selection
 
-See [BANDIT_EXPLANATION.md](../BANDIT_EXPLANATION.md) for details.
+See [MULTI_ARMED_BANDITS.md](MULTI_ARMED_BANDITS.md) for details.
 
 ## Validated Performance (10-Year Monthly, 2015-2025)
 

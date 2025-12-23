@@ -38,40 +38,29 @@ algo-trading-modeling/
 │   └── bandits/                 # Multi-Armed Bandit implementations
 │       ├── base.py              # Abstract bandit interface
 │       ├── ucb.py               # Upper Confidence Bound algorithm
-│   ├── thompson.py          # Thompson Sampling algorithm
-│   └── exp3.py              # EXP3 algorithm (adversarial bandit)
+│       ├── thompson.py          # Thompson Sampling algorithm
+│       └── exp3.py              # EXP3 algorithm (adversarial bandit)
 │
 ├── data/                         # Data storage
- **Upper Confidence Bound (UCB)** - Balance exploration and exploitation with confidence bounds
- **Thompson Sampling** - Bayesian approach with posterior sampling
- **EXP3** - Exponential-weight algorithm for Exploration and Exploitation, robust to adversarial and non-stationary rewards
+│   ├── processed/                # Processed data (CSV)
+│   └── raw/                      # Raw market data (CSV)
 │
 ├── examples/                     # Example scripts and demos
- Configurable burn-in period for initial exploration
- Multiple reward functions (returns, Sharpe ratio, Sortino ratio)
- Soft allocation (probabilistic) or hard allocation (winner-takes-all)
- Built-in persistence and state management
- EXP3 supports reward shifting/scaling for non-standard reward ranges
+│   ├── DATA_LOADING_GUIDE.md     # Data loading documentation
+│   ├── simple_example.py         # Basic usage example
+│   ├── demo_12_strategies_fast.py  # Fast 6-month comparison
+│   ├── demo_12_strategies_full.py  # Full 10-year comparison
+│   ├── demo_backtesting_methods.py # Validation methods demo
 │   ├── demo_bandit_strategy_wrapper.py  # MAB strategy allocation demo
 │   ├── demo_bandit_comparison.py     # UCB vs Thompson Sampling comparison
 │   ├── demo_ucb_bandit.py            # UCB algorithm demo
-#### EXP3 Usage Example
-
-```python
-from src.bandits import EXP3Bandit
-
-# Initialize EXP3 with 5 arms, gamma=0.07
-bandit = EXP3Bandit(n_arms=5, gamma=0.07, reward_shift=0.5, reward_scale=1.0)
-
-for t in range(100):
-    arm = bandit.select_arm(t)
-    # ... obtain reward for selected arm ...
-    bandit.update(arm, reward)
-```
-
-See [BANDIT_EXPLANATION.md](BANDIT_EXPLANATION.md) for detailed MAB methodology and EXP3 details.
+│   ├── demo_exp3_bandit.py           # EXP3 algorithm demo
 │   ├── demo_rewards.py               # Reward calculation demo
-│   └── demo_svm_regime_strategy.py   # SVM regime classification demo
+│   ├── demo_soft_rebalancing.py      # Soft rebalancing demo
+│   ├── demo_soft_rebalancing_bandits.py  # Soft rebalancing with bandits
+│   ├── demo_soft_rebalancing_walkforward.py  # Walk-forward soft rebalancing
+│   ├── demo_svm_regime_strategy.py   # SVM regime classification demo
+│   └── visualizations/               # Output visualization examples
 │
 ├── notebooks/                    # Jupyter notebooks for analysis
 │   └── exploratory_analysis.ipynb
@@ -84,9 +73,16 @@ See [BANDIT_EXPLANATION.md](BANDIT_EXPLANATION.md) for detailed MAB methodology 
 ├── docs/                         # Documentation
 │   ├── ARCHITECTURE.md          # System architecture
 │   ├── STRATEGIES.md            # Strategy descriptions
-│   ├── BACKTESTING_METHODS.md   # Validation methods
+│   ├── BACKTESTING_METHODS.md   # Validation methods with results
+│   ├── BACKTESTING_STRATEGIES.md # Backtesting methodology guide
 │   ├── S3_DATA_RETRIEVAL.md     # AWS S3 setup guide
-│   └── TRADING_FUNDAMENTALS.md  # Trading concepts
+│   ├── TRADING_FUNDAMENTALS.md  # Trading concepts
+│   ├── MAB_IMPLEMENTATION_PLAN.md # MAB implementation (completed)
+│   ├── MULTI_ARMED_BANDITS.md   # MAB theory and algorithms
+│   └── TASK_TRACKER.md          # Development roadmap
+│   ├── TASKS.md                 # Development roadmap
+│   ├── TASK_TRACKER.md          # Task tracking
+│   └── MULTI_ARMED_BANDITS.md   # MAB theory
 │
 ├── tests/                        # Unit tests
 ├── visualizations/               # Output visualizations & results
@@ -208,7 +204,7 @@ The system includes **12 validated benchmark strategies** that cover all major p
 11. **Sharpe Ratio Maximization** - Mean-variance optimization
 12. **CVaR Minimization** - Conditional Value-at-Risk minimization
 
-All strategies are validated for mathematical correctness, integration, and performance. See [VALIDATION_COMPLETE.md](VALIDATION_COMPLETE.md) for detailed validation results.
+All strategies are validated for mathematical correctness, integration, and performance. See [BACKTESTING_METHODS.md](docs/BACKTESTING_METHODS.md) for detailed validation results.
 
 ## 🎰 Multi-Armed Bandit (MAB) Allocation
 
@@ -224,7 +220,7 @@ The system includes sophisticated MAB algorithms for dynamic strategy allocation
 - Soft allocation (probabilistic) or hard allocation (winner-takes-all)
 - Built-in persistence and state management
 
-See [BANDIT_EXPLANATION.md](BANDIT_EXPLANATION.md) for detailed MAB methodology.
+See [MULTI_ARMED_BANDITS.md](docs/MULTI_ARMED_BANDITS.md) for detailed MAB methodology.
 
 ## 🔬 Backtesting Methods
 
@@ -318,21 +314,17 @@ All reward functions handle NaN inputs gracefully and use clipping to prevent ex
 
 ### Core Documentation
 - **[README.md](README.md)** - This file: project overview and quick start
-- **[VALIDATION_COMPLETE.md](VALIDATION_COMPLETE.md)** - Strategy validation results
-- **[BANDIT_EXPLANATION.md](BANDIT_EXPLANATION.md)** - Multi-Armed Bandit methodology
-- **[BANDIT_INTEGRATION.md](BANDIT_INTEGRATION.md)** - MAB integration guide
-- **[DATA_WORKFLOW.md](DATA_WORKFLOW.md)** - Data preparation workflow
-- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Quick command reference
-- **[QUICKSTART_S3.md](QUICKSTART_S3.md)** - S3 setup quick start
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design
+- **[STRATEGIES.md](docs/STRATEGIES.md)** - Complete strategy guide (25 strategies)
+- **[BACKTESTING_METHODS.md](docs/BACKTESTING_METHODS.md)** - Validation methods with results
+- **[MULTI_ARMED_BANDITS.md](docs/MULTI_ARMED_BANDITS.md)** - MAB theory and implementation
+- **[TASK_TRACKER.md](docs/TASK_TRACKER.md)** - Development roadmap and status
 
-### Technical Documentation (docs/)
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture
-- **[STRATEGIES.md](docs/STRATEGIES.md)** - Strategy descriptions
-- **[BACKTESTING_METHODS.md](docs/BACKTESTING_METHODS.md)** - Validation methods
-- **[S3_DATA_RETRIEVAL.md](docs/S3_DATA_RETRIEVAL.md)** - AWS S3 setup guide
-- **[TRADING_FUNDAMENTALS.md](docs/TRADING_FUNDAMENTALS.md)** - Trading concepts
-- **[MAB_IMPLEMENTATION_PLAN.md](docs/MAB_IMPLEMENTATION_PLAN.md)** - MAB implementation plan
-- **[MULTI_ARMED_BANDITS.md](docs/MULTI_ARMED_BANDITS.md)** - MAB theory
+### Additional Documentation
+- **[BACKTESTING_STRATEGIES.md](docs/BACKTESTING_STRATEGIES.md)** - Backtesting methodology concepts
+- **[TRADING_FUNDAMENTALS.md](docs/TRADING_FUNDAMENTALS.md)** - Trading and finance fundamentals
+- **[S3_DATA_RETRIEVAL.md](docs/S3_DATA_RETRIEVAL.md)** - AWS S3 data integration guide
+- **[MAB_IMPLEMENTATION_PLAN.md](docs/MAB_IMPLEMENTATION_PLAN.md)** - MAB implementation details
 
 ## 🧪 Testing
 
@@ -344,7 +336,7 @@ pytest --cov=src tests/  # With coverage
 
 ## 📊 Example Results
 
-Sample performance metrics from validated benchmark strategies (see [FULL_DEMO_RESULTS.md](FULL_DEMO_RESULTS.md) for complete results):
+Sample performance metrics from validated benchmark strategies (see `results/` directory for complete results):
 
 **Configuration**: 10-year backtest (2015-2024), monthly rebalancing, 0.1% transaction costs
 
@@ -405,7 +397,7 @@ For questions or feedback, please open an issue on GitHub.
 
 ---
 
-**Version**: 3.0.0 | **Last Updated**: December 15, 2025
+**Version**: 3.0.0 | **Last Updated**: December 23, 2025
 
 ## 🎉 Recent Updates
 
