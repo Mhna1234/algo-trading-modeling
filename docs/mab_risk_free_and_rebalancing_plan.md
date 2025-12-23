@@ -1,5 +1,14 @@
 # MAB Risk-Free Asset & Rebalancing Architecture Plan
 
+## Implementation Status Summary
+**Status:** ✅ 4/5 Phases Complete (December 2025)  
+**Risk-Free Asset:** Fully implemented with dynamic FRED API rates  
+**Rebalancing:** Modular scheduler with global/per-strategy control  
+**Transaction Costs:** Centralized modeling with opportunity cost  
+**Testing:** ⚠️ Needs comprehensive test suite  
+
+---
+
 ## Motivation
 
 - Enhance portfolio realism and flexibility by introducing a configurable risk-free asset (cash/money-market).
@@ -9,50 +18,56 @@
 
 ---
 
-## Current-State Summary
+## Current-State Summary (Post-Implementation)
 
 - **Strategies**: Multiple portfolio strategies (heuristic, risk-based, optimized) implemented as arms.
 - **MAB Layer**: Allocates capital across strategies; strategies act as arms.
-- **Rewards**: May be risk-adjusted (Sharpe, volatility-penalized, transaction-cost aware).
-- **Rebalancing**: Logic exists, but frequency control and separation of global/strategy-specific rebalancing may be limited.
-- **Transaction Costs**: Accounted for in some reward calculations.
-- **Cash/Risk-Free Asset**: No explicit risk-free asset; capital is assumed to be fully invested in risky strategies.
+- **Rewards**: Risk-adjusted (Sharpe, volatility-penalized, transaction-cost aware) with opportunity cost vs. risk-free.
+- **Rebalancing**: Modular control with RebalancingScheduler supporting global and per-strategy frequencies.
+- **Transaction Costs**: Centralized in TransactionCostModel with consistent application.
+- **Cash/Risk-Free Asset**: ✅ Fully implemented - RiskFreeAsset class with dynamic rates, can be used as arm or base asset.
 
 ---
 
-## Deep Code Review (Read-Only Findings)
+## Deep Code Review (Post-Implementation Findings)
 
 - **Allocation Decisions**:  
-  - Typically made in the MAB or portfolio engine layer (see src/portfolio_engine.py, src/backtester.py).
-  - Allocations are distributed across strategies, often assuming full investment.
+  - Made in PortfolioEngine with BanditAllocator integration
+  - Support for both full investment and unallocated capital flowing to risk-free
 - **Rebalancing Triggers**:  
-  - Rebalancing is likely triggered at fixed intervals (global), with some strategies possibly having internal logic.
-  - No explicit abstraction for per-strategy rebalancing frequency.
+  - ✅ RebalancingScheduler handles global and per-strategy rebalancing
+  - Two-stage rebalancing: Global → Bandit allocation → Per-strategy rebalancing
 - **Reward Computation**:  
-  - Rewards are computed post-allocation, may include risk-adjustment and transaction costs.
-  - Opportunity cost (vs. risk-free) is not explicitly modeled.
+  - ✅ Rewards include risk-adjustment, transaction costs, and opportunity cost vs. risk-free
+  - Centralized in rewards.py with configurable risk-free rate
 - **Fully Invested Assumptions**:  
-  - Implicit throughout: capital is always allocated to risky strategies; no explicit cash buffer or risk-free asset.
+  - ✅ Broken: PortfolioEngine supports unallocated capital
+  - Risk-free can be used as base asset or as an arm
 - **Cash Concept**:  
-  - No explicit cash or risk-free asset abstraction.
+  - ✅ Implemented: RiskFreeAsset class with dynamic rate updates
 - **Rebalancing Frequency**:  
-  - No clear, modular location for per-strategy rebalancing frequency; likely handled globally or ad hoc.
+  - ✅ Modular: RebalancingScheduler with per-strategy frequency support
 
 ---
 
-## Gap Analysis
+## Gap Analysis (Post-Implementation)
 
+**✅ All Major Gaps Filled:**
 - **Missing Abstractions**:
-  - No risk-free asset or cash module/class.
-  - No abstraction for rebalancing schedule (global vs. per-strategy).
-  - Transaction cost logic may be scattered or tightly coupled to reward computation.
+  - ✅ RiskFreeAsset class implemented
+  - ✅ RebalancingScheduler abstraction implemented
+  - ✅ TransactionCostModel centralized
 - **Tight Couplings**:
-  - Allocation and rebalancing logic may be intertwined, making it hard to introduce two-stage rebalancing.
-  - Assumption of full investment blocks easy integration of a risk-free asset.
-- **Assumptions to Break**:
-  - Fully invested capital: must allow for unallocated capital to flow to risk-free asset.
-  - Static rebalancing: must support both global and per-strategy schedules.
-  - Hard-coded rates: risk-free rate must be dynamic/configurable.
+  - ✅ Allocation and rebalancing logic decoupled via scheduler
+  - ✅ Two-stage rebalancing implemented
+- **Assumptions Broken**:
+  - ✅ Fully invested capital: unallocated capital flows to risk-free
+  - ✅ Static rebalancing: global and per-strategy schedules supported
+  - ✅ Hard-coded rates: dynamic/configurable risk-free rates
+
+**Remaining Minor Gaps:**
+- ⚠️ Comprehensive test coverage for new abstractions
+- ⚠️ Empirical validation of risk-free as arm vs. base asset trade-offs
 
 ---
 
@@ -123,31 +138,53 @@
 
 ## Phased Implementation Plan
 
-### Phase 1: Abstraction & Decoupling
+### Phase 1: Abstraction & Decoupling ✅ COMPLETED
+**Status:** Implemented and integrated into PortfolioEngine  
+**Completion Date:** December 2025
 
-- Refactor to decouple allocation, rebalancing, and reward logic.
-- Introduce abstract interfaces for Strategy, TransactionCostModel, and RebalancingScheduler.
+- ✅ Refactor to decouple allocation, rebalancing, and reward logic.
+- ✅ Introduce abstract interfaces for Strategy, TransactionCostModel, and RebalancingScheduler.
+- ✅ PortfolioEngine now accepts TransactionCostModel and RebalancingScheduler as parameters
+- ✅ Concrete implementations: LinearTransactionCostModel, SimpleRebalancingScheduler
 
-### Phase 2: Risk-Free Asset Integration
+### Phase 2: Risk-Free Asset Integration ✅ COMPLETED
+**Status:** Fully implemented with dynamic rates and demo  
+**Completion Date:** December 2025
 
-- Implement RiskFreeAsset class.
-- Add support for dynamic rate retrieval and config fallback.
-- Refactor allocation logic to allow for unallocated capital.
+- ✅ Implement RiskFreeAsset class with FRED API integration
+- ✅ Add support for dynamic rate retrieval and config fallback
+- ✅ Refactor allocation logic to allow for unallocated capital
+- ✅ RiskFreeStrategyWrapper for treating risk-free as an arm
+- ✅ Demo script (demo_risk_free_integration.py) showing integration
+- ✅ Comparison results available (demo_rfa_comparison.csv)
 
-### Phase 3: Rebalancing Enhancements
+### Phase 3: Rebalancing Enhancements ✅ COMPLETED
+**Status:** Two-stage rebalancing supported  
+**Completion Date:** December 2025
 
-- Implement RebalancingScheduler for global and per-strategy control.
-- Ensure two-stage rebalancing is supported.
+- ✅ Implement RebalancingScheduler for global and per-strategy control
+- ✅ SimpleRebalancingScheduler supports different frequencies (D, W, M, Q)
+- ✅ Per-strategy rebalancing frequency configuration
+- ✅ Two-stage rebalancing architecture: Global → Bandit → Per-Strategy
 
-### Phase 4: Transaction & Opportunity Cost Consistency
+### Phase 4: Transaction & Opportunity Cost Consistency ✅ COMPLETED
+**Status:** Centralized and opportunity cost included  
+**Completion Date:** December 2025
 
-- Centralize transaction cost logic.
-- Update reward attribution to include opportunity cost vs. risk-free.
+- ✅ Centralize transaction cost logic in TransactionCostModel
+- ✅ Update reward attribution to include opportunity cost vs. risk-free in rewards.py
+- ✅ Sharpe ratio calculations account for risk-free rate
+- ✅ Transaction costs applied consistently across rebalancing
 
-### Phase 5: Configurability & Testing
+### Phase 5: Configurability & Testing 🔄 PARTIALLY COMPLETED
+**Status:** Configurable but testing incomplete  
+**Current Status:** December 2025
 
-- Add configuration options for risk-free modeling (arm vs. base asset), rates, and rebalancing schedules.
-- Develop comprehensive tests for new abstractions and logic.
+- ✅ Add configuration options for risk-free modeling (arm vs. base asset), rates, and rebalancing schedules
+- ✅ Risk-free rate sources: FRED API, config, fallback
+- ✅ Rebalancing frequencies configurable per strategy
+- ⚠️ Develop comprehensive tests for new abstractions and logic (NOT YET IMPLEMENTED)
+- ⚠️ No dedicated test files for RiskFreeAsset, TransactionCostModel, RebalancingScheduler
 
 ---
 
@@ -182,6 +219,20 @@
 
 ## Summary
 
-This plan provides a modular, extensible path to integrating a risk-free asset, explicit rebalancing control, and robust transaction/opportunity cost handling into the MAB portfolio allocation framework. The approach balances flexibility, testability, and research needs, while highlighting key trade-offs and risks for future development.
+**Implementation Status: 4/5 Phases Complete**  
+This plan has been successfully implemented with all core functionality in place. The MAB portfolio allocation framework now supports risk-free assets, modular rebalancing control, and consistent transaction/opportunity cost handling. The architecture provides the flexibility and extensibility needed for research and production deployment.
+
+**Key Achievements:**
+- ✅ Complete risk-free asset integration with dynamic FRED API rates
+- ✅ Modular rebalancing scheduler supporting global and per-strategy frequencies  
+- ✅ Centralized transaction cost modeling
+- ✅ Opportunity cost adjustments in reward calculations
+- ✅ Two-stage rebalancing architecture implemented
+- ✅ Demo scripts and comparison results available
+
+**Remaining Work:**
+- ⚠️ Comprehensive test suite for new abstractions (Phase 5 incomplete)
+
+The approach successfully balances flexibility, testability, and research needs while addressing the identified trade-offs and risks.
 
 ---
