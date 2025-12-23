@@ -17,7 +17,7 @@
 - **✅ RiskFreeAsset Integration:** Complete with dynamic rates and opportunity cost
 - **✅ MAB Implementation:** Complete (UCB, Thompson Sampling, EXP3)
 - **✅ Soft Rebalancing:** Implemented with drift threshold logic
-- **⚠️ Dashboard:** Needs development (Streamlit app exists but basic)
+- **⚠️ Dashboard:** Results prepared for external dashboard team
 
 ### Recent Major Accomplishments
 - **✅ Task 4:** PortfolioEngine refactoring with walk-forward as default
@@ -101,26 +101,15 @@
 **Status:** PENDING
 **Deadline:** January 14, 2026
 
-#### ⏳ Task 12: Configuration & Documentation
+#### ⏳ Tasks 12-18: Production Preparation
 **Status:** PENDING
-**Files:** `config/bandit_config.yaml`, docs updates
-- ⏳ Configuration file for MAB parameters
-- ⏳ Documentation updates (STRATEGIES.md, ARCHITECTURE.md)
-- ⏳ README updates with MAB features
-
-#### ⏳ Task 13: Dashboard Integration
-**Status:** PENDING
-**Files:** `dashboard.py`
-- ⏳ MAB strategy selection visualizations
-- ⏳ Allocation evolution plots
-- ⏳ Performance attribution dashboards
-
-#### ⏳ Task 14: Benchmark Integration
-**Status:** PENDING
-**Files:** `examples/demo_12_strategies_*.py`
-- ⏳ Add MAB as 23rd strategy to benchmark suite
-- ⏳ Performance comparison with existing strategies
-- ⏳ Automated benchmark reporting
+**Files:** Various
+- ⏳ Configuration and documentation completion
+- ⏳ Results generation for dashboard team
+- ⏳ Lambda uploader implementation
+- ⏳ Code consolidation and optimization
+- ⏳ MAB frequency optimization
+- ⏳ Integer share allocation
 
 ---
 
@@ -143,32 +132,28 @@
 
 ---
 
-## 👥 Team Responsibilities
+## 👥 Team Structure
 
-### Quantitative Strategist - Mhna (Current Lead)
-**Focus:** MAB implementation and strategy optimization
-- ✅ RiskFreeAsset integration (Task 5)
-- 🔄 MAB implementation (Tasks 6-14)
-- ⏳ Integer share allocation (future)
-- ⏳ Fee-aware optimization (future)
+The project is organized with specialized roles focusing on different aspects of the algorithmic trading system.
 
-### Data Engineer - Awawdy
-**Focus:** Real-time data streaming and infrastructure
+### Quantitative Research
+**Focus:** Strategy development, optimization, and MAB implementation
+- ✅ RiskFreeAsset integration
+- 🔄 MAB implementation and enhancement
+- ⏳ Integer share allocation
+- ⏳ Fee-aware optimization
+
+### Data Engineering
+**Focus:** Data infrastructure and real-time streaming
 - ✅ S3 data pipeline implementation
 - ⏳ Real-time data streaming setup
 - ⏳ Data quality monitoring systems
 
-### Dashboard Developer - John
-**Focus:** Visualization and user interface
-- ⏳ Dashboard requirements definition
-- ⏳ MAB visualization integration
-- ⏳ Real-time monitoring features
-
-### Team Lead - Eman
-**Focus:** Project coordination and quality assurance
-- ✅ Integration oversight and testing
-- ⏳ Quality assurance framework
-- ⏳ Production deployment planning
+### Results & Integration
+**Focus:** Providing results to dashboard team and system integration
+- ⏳ Generate comprehensive backtest results for dashboard consumption
+- ⏳ Lambda function for automated results upload to S3
+- ⏳ Quality assurance and production deployment
 
 ---
 
@@ -249,19 +234,82 @@
 - ⏳ Documentation updates (STRATEGIES.md, ARCHITECTURE.md)
 - ⏳ README updates with MAB features
 
-### Task 13: Dashboard Integration ⏳ PENDING
-**Status:** PENDING
-**Files:** `dashboard.py`
-- ⏳ MAB strategy selection visualizations
-- ⏳ Allocation evolution plots
-- ⏳ Performance attribution dashboards
+### Task 13: Results Generation for Dashboard ⏳ PENDING
+**Objective:** Generate comprehensive results for dashboard team consumption
 
-### Task 14: Benchmark Integration ⏳ PENDING
-**Status:** PENDING
-**Files:** `examples/demo_12_strategies_*.py`
-- ⏳ Add MAB as 23rd strategy to benchmark suite
-- ⏳ Performance comparison with existing strategies
-- ⏳ Automated benchmark reporting
+**Deliverables:**
+- Dashboard-friendly data formats (JSON/CSV)
+- Complete backtest results export
+- NAV, weights, returns, and metrics datasets
+
+**Validation:**
+- Data structure compatibility with dashboard requirements
+- Complete coverage of all strategies and time periods
+
+### Task 14: Lambda Results Uploader ⏳ PENDING
+**Objective:** Implement automated results upload to S3 for dashboard access
+
+**Deliverables:**
+- AWS Lambda function in `lambda/benchmark_results_uploader/`
+- Partitioned S3 structure for efficient querying
+- Validation and serialization of backtest outputs
+
+**Validation:**
+- Successful upload to S3
+- Data integrity preservation
+- Dashboard accessibility
+
+### Task 15: Backtesting Logic Consolidation ⏳ PENDING
+**Objective:** Consolidate all backtesting functionality into single module
+
+**Deliverables:**
+- All backtesting logic in `src/backtesting_engine.py`
+- Removal of redundant backtesting files
+- Comprehensive validation methods in one place
+
+**Validation:**
+- All existing functionality preserved
+- No breaking changes to API
+- Improved maintainability
+
+### Task 16: PortfolioEngine Code Reduction ⏳ PENDING
+**Objective:** Refactor PortfolioEngine to reduce complexity while maintaining functionality
+
+**Deliverables:**
+- Simplified PortfolioEngine class structure
+- Maintained all existing features and logic
+- Improved code readability and maintainability
+
+**Validation:**
+- All tests pass
+- Performance unchanged
+- Functionality preserved
+
+### Task 17: MAB Frequency Optimization ⏳ PENDING
+**Objective:** Optimize rebalancing frequency for enhanced MAB trading results
+
+**Deliverables:**
+- Analysis of optimal frequencies (daily/weekly/monthly)
+- Frequency-adaptive MAB algorithms
+- Performance improvements through better timing
+
+**Validation:**
+- Backtested performance improvements
+- Statistical significance of results
+- Computational efficiency maintained
+
+### Task 18: Integer Share Allocation ⏳ PENDING
+**Objective:** Implement realistic trading with whole share quantities
+
+**Deliverables:**
+- Integer share buying and selling logic
+- Proper handling of fractional shares and rounding
+- Realistic transaction simulation
+
+**Validation:**
+- Realistic position sizes
+- Proper cash management
+- Market impact considerations
 
 ---
 
@@ -277,7 +325,7 @@
 ### Phase Completion Milestones
 - **Phase 1 (Dec 31):** Core MAB classes implemented and integrated
 - **Phase 2 (Jan 7):** Comprehensive testing and validation complete
-- **Phase 3 (Jan 14):** Production-ready with documentation and dashboard integration
+- **Phase 3 (Jan 14):** Production-ready with results for dashboard team and code optimization
 
 ---
 
@@ -289,7 +337,8 @@
 ### Technical Debt
 - Reward function optimization needs refinement
 - Cross-validation integration pending
-- Dashboard framework needs initial implementation
+- Code consolidation and reduction needed
+- Integer share allocation implementation
 
 ### Future Considerations
 - Real-time MAB adaptation for live trading
@@ -323,17 +372,19 @@
 
 ### Short Term (Next 2 Weeks)
 1. Complete Phase 2 testing and validation
-2. Implement dashboard integration
-3. Finalize documentation and configuration
+2. Implement Lambda results uploader (Task 14)
+3. Consolidate backtesting logic (Task 15)
+4. Reduce PortfolioEngine code complexity (Task 16)
 
-### Long Term (January 2026)
-1. Production deployment
-2. Real-time trading integration
-3. Advanced MAB features (contextual bandits)
+### Medium Term (January 2026)
+1. Optimize MAB frequency for better results (Task 17)
+2. Implement integer share allocation (Task 18)
+3. Generate comprehensive results for dashboard team (Task 13)
+4. Finalize production deployment
 
 ---
 
-**Document Version:** 3.0  
+**Document Version:** 3.1  
 **Last Updated:** December 23, 2025  
 **Next Review:** December 30, 2025</content>
 <parameter name="filePath">c:\Users\mhna2\projects\algo_trading_project\algo-trading-modeling\docs\TASK_TRACKER.md
