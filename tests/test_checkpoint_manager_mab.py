@@ -121,7 +121,7 @@ class TestMABStatePersistence:
         manager = CheckpointManager(temp_checkpoint_dir)
         
         # Create and train a Thompson bandit
-        bandit = ThompsonSamplingBandit(n_arms=3, random_seed=42, prior_mean=0.05)
+        bandit = ThompsonSamplingBandit(n_arms=3, random_seed=42, prior_mean=0.05, known_reward_std=0.1)
         
         # Simulate some learning
         bandit.update(0, 0.1)
@@ -132,13 +132,15 @@ class TestMABStatePersistence:
         state = manager._serialize_bandit_state(bandit)
         
         # Verify state contains expected keys
-        expected_keys = ["counts", "sums", "sum_squares", "prior_mean", 
-                        "prior_variance", "variance_scale", "random_seed"]
+        expected_keys = ["counts", "sums", "prior_mean", 
+                        "prior_std", "known_reward_std", "random_seed"]
         for key in expected_keys:
             assert key in state
         
         # Verify values
         assert state["prior_mean"] == 0.05
+        assert state["prior_std"] == 1.0  # default
+        assert state["known_reward_std"] == 0.1
         assert state["random_seed"] == 42
         assert len(state["counts"]) == 3
 
@@ -168,7 +170,7 @@ class TestMABStatePersistence:
         manager = CheckpointManager(temp_checkpoint_dir)
         
         # Create original bandit
-        original_bandit = ThompsonSamplingBandit(n_arms=3, random_seed=123, prior_mean=0.1)
+        original_bandit = ThompsonSamplingBandit(n_arms=3, random_seed=123, prior_mean=0.1, known_reward_std=0.2)
         original_bandit.update(0, 0.1)
         original_bandit.update(1, 0.2)
         
@@ -179,6 +181,8 @@ class TestMABStatePersistence:
         
         # Verify state was restored
         assert new_bandit.prior_mean == 0.1
+        assert new_bandit.prior_std == 1.0  # default
+        assert new_bandit.known_reward_std == 0.2
         assert new_bandit._random_seed == 123
         assert new_bandit.counts == [1, 1, 0]
         assert new_bandit.sums == [0.1, 0.2, 0.0]
@@ -260,3 +264,111 @@ class TestMABStatePersistence:
         # Should work normally
         assert isinstance(loaded_result, PortfolioResult)
         assert loaded_result.strategy_name == "Test Strategy"
+
+
+class TestThompsonSamplingMathematicalCorrectness:
+    """Test mathematical correctness of Thompson Sampling implementation."""
+
+    def test_posterior_calculation_with_known_variance(self):
+        """Test that posterior mean and variance are calculated correctly using Normal-Normal conjugate."""
+        # Create bandit with specific parameters
+        prior_mean = 0.0
+        prior_std = 1.0
+        known_reward_std = 0.5  # σ = 0.5, so precision = 1/0.25 = 4
+        bandit = ThompsonSamplingBandit(
+            n_arms=2,
+            prior_mean=prior_mean,
+            prior_std=prior_std,
+            known_reward_std=known_reward_std,
+            random_seed=42
+        )
+        
+        # Update arm 0 with some rewards
+        rewards = [0.1, 0.2, 0.3]
+        for reward in rewards:
+            bandit.update(0, reward)
+        
+        # Get statistics
+        stats = bandit.get_arm_statistics()
+        
+        # Manual calculation of posterior
+        n = len(rewards)
+        sum_rewards = sum(rewards)
+        prior_precision = 1 / (prior_std ** 2)
+        reward_precision = 1 / (known_reward_std ** 2)
+        posterior_precision = prior_precision + n * reward_precision
+        expected_posterior_mean = (prior_mean * prior_precision + sum_rewards * reward_precision) / posterior_precision
+        expected_posterior_var = 1 / posterior_precision
+        
+        # Verify posterior mean
+        assert abs(stats['means'][0] - expected_posterior_mean) < 1e-10
+        
+        # Verify posterior variance
+        assert abs(stats['variances'][0] - expected_posterior_var) < 1e-10
+        
+        # Verify untried arm uses prior
+        assert stats['means'][1] == prior_mean
+        assert stats['variances'][1] == prior_std ** 2
+
+    def test_posterior_prior_influence(self):
+        """Test that prior always influences posterior, even with many observations."""
+        prior_mean = 0.5
+        prior_std = 0.1  # Strong prior
+        known_reward_std = 1.0  # Weak likelihood precision
+        bandit = ThompsonSamplingBandit(
+            n_arms=2,
+            prior_mean=prior_mean,
+            prior_std=prior_std,
+            known_reward_std=known_reward_std
+        )
+        
+        # Add many observations far from prior
+        for _ in range(100):
+            bandit.update(0, 2.0)  # Far from prior mean of 0.5
+        
+        stats = bandit.get_arm_statistics()
+        posterior_mean = stats['means'][0]
+        
+        # Posterior should be pulled towards prior (between 2.0 and 0.5)
+        assert 0.5 < posterior_mean < 2.0
+        
+        # With strong prior and many observations, should be closer to data but still influenced
+        empirical_mean = 2.0
+        assert abs(posterior_mean - empirical_mean) > 0.1  # Should not be exactly empirical mean
+
+    def test_conjugate_posterior_formulas(self):
+        """Test specific conjugate posterior formulas with known values."""
+        # Test case: prior N(0, 1), reward_std=0.5, one observation x=1.0
+        bandit = ThompsonSamplingBandit(
+            n_arms=2,
+            prior_mean=0.0,
+            prior_std=1.0,
+            known_reward_std=0.5
+        )
+        
+        bandit.update(0, 1.0)
+        
+        stats = bandit.get_arm_statistics()
+        
+        # Manual calculation:
+        # prior_precision = 1/1² = 1
+        # reward_precision = 1/0.5² = 4
+        # posterior_precision = 1 + 1*4 = 5
+        # posterior_mean = (0*1 + 1.0*4) / 5 = 4/5 = 0.8
+        # posterior_var = 1/5 = 0.2
+        
+        expected_mean = 0.8
+        expected_var = 0.2
+        
+        assert abs(stats['means'][0] - expected_mean) < 1e-10
+        assert abs(stats['variances'][0] - expected_var) < 1e-10
+
+    def test_zero_prior_std_raises_error(self):
+        """Test that zero prior_std raises ValueError."""
+        with pytest.raises(ValueError, match="prior_std must be > 0"):
+            ThompsonSamplingBandit(n_arms=2, prior_std=0.0)
+
+    def test_zero_known_reward_std_raises_error(self):
+        """Test that zero known_reward_std raises ValueError."""
+        with pytest.raises(ValueError, match="known_reward_std must be > 0"):
+            ThompsonSamplingBandit(n_arms=2, known_reward_std=0.0)

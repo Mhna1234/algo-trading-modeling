@@ -13,18 +13,19 @@ from src.bandits.base import BanditAllocator
 
 class ThompsonSamplingBandit(BanditAllocator):
     """
-    Thompson Sampling bandit with Bayesian normal model for continuous rewards.
+    Thompson Sampling bandit with Normal-Normal conjugate model for continuous rewards.
     
-    This implementation uses a simple Bayesian approach:
-    - Each arm has a Normal posterior distribution N(μ_k, σ²_k)
-    - μ_k is estimated from observed rewards (empirical mean)
-    - σ²_k is estimated from observed variance + prior uncertainty
-    - At each selection, sample from each arm's posterior and pick highest
+    This implementation uses the exact Bayesian Normal-Normal conjugate posterior:
+    - Prior: N(prior_mean, prior_std²)
+    - Likelihood: N(θ, reward_std²) with known reward_std
+    - Posterior: N(μ_post, σ_post²) where:
+      * μ_post = (prior_mean/prior_std² + sum(rewards)/reward_std²) / (1/prior_std² + n/reward_std²)
+      * σ_post² = 1 / (1/prior_std² + n/reward_std²)
     
     The algorithm naturally balances exploration and exploitation:
-    - Untried arms: high uncertainty (wide posterior) → often sampled
-    - Well-tried arms: low uncertainty (narrow posterior) → sample depends on mean
-    - Arms with good rewards: high mean → frequently sampled
+    - Untried arms: use prior distribution
+    - Well-tried arms: posterior narrows around true mean
+    - Arms with good rewards: high posterior mean → frequently sampled
     
     Parameters
     ----------
@@ -32,10 +33,10 @@ class ThompsonSamplingBandit(BanditAllocator):
         Number of arms available for selection
     prior_mean : float, default=0.0
         Prior belief about arm means (typically 0.0 for neutral prior)
-    prior_variance : float, default=1.0
-        Prior uncertainty about arm means (higher = more exploration initially)
-    variance_scale : float, default=1.0
-        Scaling factor for posterior variance (higher = more exploration)
+    prior_std : float, default=1.0
+        Prior standard deviation about arm means (higher = more exploration initially)
+    known_reward_std : float, default=1.0
+        Known standard deviation of rewards (must be > 0)
     random_seed : Optional[int], default=None
         Random seed for reproducibility. If None, results will be stochastic.
         
@@ -45,14 +46,12 @@ class ThompsonSamplingBandit(BanditAllocator):
         Number of times each arm has been selected
     sums : List[float]
         Sum of rewards for each arm
-    sum_squares : List[float]
-        Sum of squared rewards for each arm (for variance estimation)
     random_state : random.Random
         Random number generator
         
     Examples
     --------
-    >>> bandit = ThompsonSamplingBandit(n_arms=3, random_seed=42)
+    >>> bandit = ThompsonSamplingBandit(n_arms=3, known_reward_std=0.1, random_seed=42)
     >>> 
     >>> # Simulate rewards
     >>> for t in range(20):
@@ -80,8 +79,8 @@ class ThompsonSamplingBandit(BanditAllocator):
         self,
         n_arms: int,
         prior_mean: float = 0.0,
-        prior_variance: float = 1.0,
-        variance_scale: float = 1.0,
+        prior_std: float = 1.0,
+        known_reward_std: float = 1.0,
         random_seed: Optional[int] = None
     ):
         """
@@ -93,33 +92,32 @@ class ThompsonSamplingBandit(BanditAllocator):
             Number of arms, must be >= 2
         prior_mean : float, default=0.0
             Prior belief about arm means
-        prior_variance : float, default=1.0
-            Prior uncertainty, must be > 0
-        variance_scale : float, default=1.0
-            Posterior variance scaling, must be > 0
+        prior_std : float, default=1.0
+            Prior standard deviation, must be > 0
+        known_reward_std : float, default=1.0
+            Known reward standard deviation, must be > 0
         random_seed : Optional[int], default=None
             Random seed for reproducibility
             
         Raises
         ------
         ValueError
-            If n_arms < 2, prior_variance <= 0, or variance_scale <= 0
+            If n_arms < 2, prior_std <= 0, or known_reward_std <= 0
         """
         super().__init__(n_arms)
         
-        if prior_variance <= 0:
-            raise ValueError(f"prior_variance must be > 0, got {prior_variance}")
-        if variance_scale <= 0:
-            raise ValueError(f"variance_scale must be > 0, got {variance_scale}")
+        if prior_std <= 0:
+            raise ValueError(f"prior_std must be > 0, got {prior_std}")
+        if known_reward_std <= 0:
+            raise ValueError(f"known_reward_std must be > 0, got {known_reward_std}")
         
         self.prior_mean = prior_mean
-        self.prior_variance = prior_variance
-        self.variance_scale = variance_scale
+        self.prior_std = prior_std
+        self.known_reward_std = known_reward_std
         
         # Statistics for each arm
         self.counts: List[int] = [0] * n_arms
         self.sums: List[float] = [0.0] * n_arms
-        self.sum_squares: List[float] = [0.0] * n_arms
         
         # Random number generator
         self.random_state = random.Random(random_seed)
@@ -142,7 +140,7 @@ class ThompsonSamplingBandit(BanditAllocator):
         Notes
         -----
         Algorithm:
-        1. For each arm k, compute posterior mean μ_k and variance σ²_k
+        1. For each arm k, compute posterior mean μ_k and variance σ²_k using Normal-Normal conjugate
         2. Sample θ_k ~ N(μ_k, σ²_k) from each posterior
         3. Select arm with highest sample: argmax_k θ_k
         
@@ -154,18 +152,16 @@ class ThompsonSamplingBandit(BanditAllocator):
             if self.counts[arm] == 0:
                 # Untried arm: sample from prior
                 posterior_mean = self.prior_mean
-                posterior_std = self.prior_variance ** 0.5
+                posterior_std = self.prior_std
             else:
-                # Compute posterior parameters
-                posterior_mean = self.sums[arm] / self.counts[arm]
-                
-                # Estimate variance: Var = E[X²] - E[X]²
-                mean_of_squares = self.sum_squares[arm] / self.counts[arm]
-                variance = max(mean_of_squares - posterior_mean**2, 1e-6)
-                
-                # Posterior standard deviation (scaled by uncertainty)
-                # Higher count → lower uncertainty → narrower posterior
-                posterior_std = (self.variance_scale * variance / self.counts[arm]) ** 0.5
+                # Compute posterior parameters using Normal-Normal conjugate
+                n = self.counts[arm]
+                sum_rewards = self.sums[arm]
+                prior_precision = 1 / (self.prior_std ** 2)
+                reward_precision = 1 / (self.known_reward_std ** 2)
+                posterior_precision = prior_precision + n * reward_precision
+                posterior_mean = (self.prior_mean * prior_precision + sum_rewards * reward_precision) / posterior_precision
+                posterior_std = (1 / posterior_precision) ** 0.5
             
             # Sample from posterior
             sample = self.random_state.gauss(posterior_mean, posterior_std)
@@ -195,7 +191,6 @@ class ThompsonSamplingBandit(BanditAllocator):
         Updates sufficient statistics:
         - count: n_k += 1
         - sum: sum_k += reward
-        - sum_squares: sum_squares_k += reward²
         
         These statistics are used to compute posterior mean and variance.
         """
@@ -204,7 +199,6 @@ class ThompsonSamplingBandit(BanditAllocator):
         # Update sufficient statistics
         self.counts[arm] += 1
         self.sums[arm] += reward
-        self.sum_squares[arm] += reward * reward
     
     def get_state(self) -> Dict[str, Any]:
         """
@@ -216,22 +210,20 @@ class ThompsonSamplingBandit(BanditAllocator):
             State dictionary containing:
             - n_arms: number of arms
             - prior_mean: prior mean parameter
-            - prior_variance: prior variance parameter
-            - variance_scale: variance scaling factor
+            - prior_std: prior standard deviation parameter
+            - known_reward_std: known reward standard deviation
             - random_seed: random seed (if set)
             - counts: selection counts per arm
             - sums: sum of rewards per arm
-            - sum_squares: sum of squared rewards per arm
         """
         state = super().get_state()
         state.update({
             'prior_mean': self.prior_mean,
-            'prior_variance': self.prior_variance,
-            'variance_scale': self.variance_scale,
+            'prior_std': self.prior_std,
+            'known_reward_std': self.known_reward_std,
             'random_seed': self._random_seed,
             'counts': self.counts.copy(),
             'sums': self.sums.copy(),
-            'sum_squares': self.sum_squares.copy(),
         })
         return state
     
@@ -253,8 +245,8 @@ class ThompsonSamplingBandit(BanditAllocator):
         
         # Validate state structure
         required_keys = [
-            'prior_mean', 'prior_variance', 'variance_scale',
-            'counts', 'sums', 'sum_squares'
+            'prior_mean', 'prior_std', 'known_reward_std',
+            'counts', 'sums'
         ]
         for key in required_keys:
             if key not in state:
@@ -269,19 +261,14 @@ class ThompsonSamplingBandit(BanditAllocator):
             raise ValueError(
                 f"sums length {len(state['sums'])} does not match n_arms={self.n_arms}"
             )
-        if len(state['sum_squares']) != self.n_arms:
-            raise ValueError(
-                f"sum_squares length {len(state['sum_squares'])} does not match n_arms={self.n_arms}"
-            )
         
         # Restore state
         self.prior_mean = state['prior_mean']
-        self.prior_variance = state['prior_variance']
-        self.variance_scale = state['variance_scale']
+        self.prior_std = state['prior_std']
+        self.known_reward_std = state['known_reward_std']
         self._random_seed = state.get('random_seed')
         self.counts = state['counts'].copy()
         self.sums = state['sums'].copy()
-        self.sum_squares = state['sum_squares'].copy()
         
         # Re-seed random state if seed was saved
         if self._random_seed is not None:
@@ -298,7 +285,6 @@ class ThompsonSamplingBandit(BanditAllocator):
         """
         self.counts = [0] * self.n_arms
         self.sums = [0.0] * self.n_arms
-        self.sum_squares = [0.0] * self.n_arms
         
         # Reset random state
         if self._random_seed is not None:
@@ -332,18 +318,19 @@ class ThompsonSamplingBandit(BanditAllocator):
             if self.counts[arm] == 0:
                 # Untried arm: use prior
                 means.append(self.prior_mean)
-                variances.append(self.prior_variance)
-                std_devs.append(self.prior_variance ** 0.5)
+                variances.append(self.prior_std ** 2)
+                std_devs.append(self.prior_std)
             else:
-                # Compute posterior parameters
-                mean = self.sums[arm] / self.counts[arm]
-                mean_of_squares = self.sum_squares[arm] / self.counts[arm]
-                variance = max(mean_of_squares - mean**2, 1e-6)
+                # Compute posterior parameters using Normal-Normal conjugate
+                n = self.counts[arm]
+                sum_rewards = self.sums[arm]
+                prior_precision = 1 / (self.prior_std ** 2)
+                reward_precision = 1 / (self.known_reward_std ** 2)
+                posterior_precision = prior_precision + n * reward_precision
+                posterior_mean = (self.prior_mean * prior_precision + sum_rewards * reward_precision) / posterior_precision
+                posterior_var = 1 / posterior_precision
                 
-                # Posterior uncertainty
-                posterior_var = self.variance_scale * variance / self.counts[arm]
-                
-                means.append(mean)
+                means.append(posterior_mean)
                 variances.append(posterior_var)
                 std_devs.append(posterior_var ** 0.5)
         
@@ -359,8 +346,8 @@ class ThompsonSamplingBandit(BanditAllocator):
         return (
             f"ThompsonSamplingBandit(n_arms={self.n_arms}, "
             f"prior_mean={self.prior_mean}, "
-            f"prior_variance={self.prior_variance}, "
-            f"variance_scale={self.variance_scale}, "
+            f"prior_std={self.prior_std}, "
+            f"known_reward_std={self.known_reward_std}, "
             f"random_seed={self._random_seed})"
         )
     

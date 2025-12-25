@@ -18,44 +18,43 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         
         self.assertEqual(bandit.n_arms, 3)
         self.assertEqual(bandit.prior_mean, 0.0)
-        self.assertEqual(bandit.prior_variance, 1.0)
-        self.assertEqual(bandit.variance_scale, 1.0)
+        self.assertEqual(bandit.prior_std, 1.0)
+        self.assertEqual(bandit.known_reward_std, 1.0)
         self.assertEqual(bandit.counts, [0, 0, 0])
         self.assertEqual(bandit.sums, [0.0, 0.0, 0.0])
-        self.assertEqual(bandit.sum_squares, [0.0, 0.0, 0.0])
     
     def test_initialization_custom_parameters(self):
         """Test initialization with custom parameters."""
         bandit = ThompsonSamplingBandit(
             n_arms=4,
             prior_mean=0.5,
-            prior_variance=2.0,
-            variance_scale=0.5,
+            prior_std=2.0**0.5,  # sqrt(2) ≈ 1.414
+            known_reward_std=0.5,
             random_seed=42
         )
         
         self.assertEqual(bandit.prior_mean, 0.5)
-        self.assertEqual(bandit.prior_variance, 2.0)
-        self.assertEqual(bandit.variance_scale, 0.5)
+        self.assertAlmostEqual(bandit.prior_std, 2.0**0.5)
+        self.assertEqual(bandit.known_reward_std, 0.5)
         self.assertEqual(bandit._random_seed, 42)
     
-    def test_initialization_invalid_prior_variance(self):
-        """Test initialization fails with invalid prior variance."""
+    def test_initialization_invalid_prior_std(self):
+        """Test initialization fails with invalid prior std."""
         with self.assertRaises(ValueError) as ctx:
-            ThompsonSamplingBandit(n_arms=3, prior_variance=0.0)
-        self.assertIn("prior_variance must be > 0", str(ctx.exception))
+            ThompsonSamplingBandit(n_arms=3, prior_std=0.0)
+        self.assertIn("prior_std must be > 0", str(ctx.exception))
         
         with self.assertRaises(ValueError):
-            ThompsonSamplingBandit(n_arms=3, prior_variance=-1.0)
+            ThompsonSamplingBandit(n_arms=3, prior_std=-1.0)
     
-    def test_initialization_invalid_variance_scale(self):
-        """Test initialization fails with invalid variance scale."""
+    def test_initialization_invalid_known_reward_std(self):
+        """Test initialization fails with invalid known_reward_std."""
         with self.assertRaises(ValueError) as ctx:
-            ThompsonSamplingBandit(n_arms=3, variance_scale=0.0)
-        self.assertIn("variance_scale must be > 0", str(ctx.exception))
+            ThompsonSamplingBandit(n_arms=3, known_reward_std=0.0)
+        self.assertIn("known_reward_std must be > 0", str(ctx.exception))
         
         with self.assertRaises(ValueError):
-            ThompsonSamplingBandit(n_arms=3, variance_scale=-1.0)
+            ThompsonSamplingBandit(n_arms=3, known_reward_std=-1.0)
     
     def test_reproducibility_with_seed(self):
         """Test selections are reproducible when using random seed."""
@@ -128,30 +127,15 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         bandit.update(arm=1, reward=0.7)
         self.assertAlmostEqual(bandit.sums[1], 0.7)
     
-    def test_update_accumulates_sum_squares(self):
-        """Test update() correctly accumulates squared rewards."""
-        bandit = ThompsonSamplingBandit(n_arms=3, random_seed=42)
-        
-        bandit.update(arm=0, reward=0.5)
-        self.assertAlmostEqual(bandit.sum_squares[0], 0.25)
-        
-        bandit.update(arm=0, reward=0.3)
-        self.assertAlmostEqual(bandit.sum_squares[0], 0.25 + 0.09)
-        
-        bandit.update(arm=1, reward=0.7)
-        self.assertAlmostEqual(bandit.sum_squares[1], 0.49)
-    
     def test_update_handles_negative_rewards(self):
         """Test update() correctly handles negative rewards."""
         bandit = ThompsonSamplingBandit(n_arms=3, random_seed=42)
         
         bandit.update(arm=1, reward=-0.5)
         self.assertAlmostEqual(bandit.sums[1], -0.5)
-        self.assertAlmostEqual(bandit.sum_squares[1], 0.25)
         
         bandit.update(arm=1, reward=-1.0)
         self.assertAlmostEqual(bandit.sums[1], -1.5)
-        self.assertAlmostEqual(bandit.sum_squares[1], 0.25 + 1.0)
     
     def test_update_handles_zero_rewards(self):
         """Test update() correctly handles zero rewards."""
@@ -159,10 +143,9 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         
         bandit.update(arm=2, reward=0.0)
         self.assertAlmostEqual(bandit.sums[2], 0.0)
-        self.assertAlmostEqual(bandit.sum_squares[2], 0.0)
     
     def test_posterior_mean_computation(self):
-        """Test posterior mean is computed correctly."""
+        """Test posterior mean is computed correctly using conjugate prior."""
         bandit = ThompsonSamplingBandit(n_arms=3, random_seed=42)
         
         # Add rewards to arm 0
@@ -172,8 +155,9 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         
         stats = bandit.get_arm_statistics()
         
-        # Mean should be (1.0 + 2.0 + 3.0) / 3 = 2.0
-        self.assertAlmostEqual(stats['means'][0], 2.0)
+        # With prior N(0,1), reward_std=1, sum=6, n=3
+        # posterior_mean = (0*1 + 6*1) / (1 + 3*1) = 6/4 = 1.5
+        self.assertAlmostEqual(stats['means'][0], 1.5)
     
     def test_posterior_variance_decreases_with_observations(self):
         """Test posterior variance decreases as more observations are made."""
@@ -243,8 +227,8 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         bandit = ThompsonSamplingBandit(
             n_arms=3,
             prior_mean=0.5,
-            prior_variance=2.0,
-            variance_scale=0.8,
+            prior_std=2.0**0.5,  # sqrt(2) ≈ 1.414
+            known_reward_std=0.8,
             random_seed=42
         )
         bandit.update(arm=0, reward=0.5)
@@ -254,8 +238,8 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         
         self.assertEqual(state['n_arms'], 3)
         self.assertEqual(state['prior_mean'], 0.5)
-        self.assertEqual(state['prior_variance'], 2.0)
-        self.assertEqual(state['variance_scale'], 0.8)
+        self.assertAlmostEqual(state['prior_std'], 2.0**0.5)
+        self.assertEqual(state['known_reward_std'], 0.8)
         self.assertEqual(state['random_seed'], 42)
         self.assertEqual(state['counts'], [1, 1, 0])
         self.assertAlmostEqual(state['sums'][0], 0.5)
@@ -288,11 +272,10 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         invalid_state = {
             'n_arms': 3,
             'prior_mean': 0.0,
-            'prior_variance': 1.0,
-            'variance_scale': 1.0,
+            'prior_std': 1.0,
+            'known_reward_std': 1.0,
             'counts': [1, 1],  # Wrong length
             'sums': [0.5, 0.5, 0.5],
-            'sum_squares': [0.25, 0.25, 0.25],
         }
         with self.assertRaises(ValueError) as ctx:
             bandit.set_state(invalid_state)
@@ -312,7 +295,6 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         # Verify state cleared
         self.assertEqual(bandit.counts, [0, 0, 0])
         self.assertEqual(bandit.sums, [0.0, 0.0, 0.0])
-        self.assertEqual(bandit.sum_squares, [0.0, 0.0, 0.0])
     
     def test_reset_restores_reproducibility(self):
         """Test reset() with seed restores reproducible behavior."""
@@ -361,7 +343,8 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         bandit = ThompsonSamplingBandit(
             n_arms=3,
             prior_mean=0.5,
-            prior_variance=2.0,
+            prior_std=2.0**0.5,  # sqrt(2) so prior variance = 2.0
+            known_reward_std=1.0,
             random_seed=42
         )
         
@@ -381,8 +364,8 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         bandit = ThompsonSamplingBandit(
             n_arms=5,
             prior_mean=0.5,
-            prior_variance=2.0,
-            variance_scale=0.8,
+            prior_std=2.0**0.5,
+            known_reward_std=0.8,
             random_seed=42
         )
         repr_str = repr(bandit)
@@ -390,8 +373,8 @@ class TestThompsonSamplingBandit(unittest.TestCase):
         self.assertIn('ThompsonSamplingBandit', repr_str)
         self.assertIn('n_arms=5', repr_str)
         self.assertIn('prior_mean=0.5', repr_str)
-        self.assertIn('prior_variance=2.0', repr_str)
-        self.assertIn('variance_scale=0.8', repr_str)
+        self.assertIn('prior_std=1.4142135623730951', repr_str)
+        self.assertIn('known_reward_std=0.8', repr_str)
         self.assertIn('random_seed=42', repr_str)
     
     def test_convergence_to_best_arm(self):
@@ -449,13 +432,16 @@ class TestThompsonSamplingEdgeCases(unittest.TestCase):
         
         stats = bandit.get_arm_statistics()
         
-        # All means should be 0.5
-        self.assertAlmostEqual(stats['means'][0], 0.5)
-        self.assertAlmostEqual(stats['means'][1], 0.5)
-        self.assertAlmostEqual(stats['means'][2], 0.5)
+        # All posterior means should be the same (Bayesian average of prior and data)
+        # With prior N(0,1), reward_std=1, 10 obs of 0.5: mean = (0*1 + 5*1)/(1+10*1) = 5/11 ≈ 0.4545
+        expected_mean = 5.0 / 11.0
+        self.assertAlmostEqual(stats['means'][0], expected_mean)
+        self.assertAlmostEqual(stats['means'][1], expected_mean)
+        self.assertAlmostEqual(stats['means'][2], expected_mean)
         
-        # Variances should be very small (near zero)
-        self.assertLess(stats['variances'][0], 0.01)
+        # Posterior variance should be 1/(1 + 10*1) = 1/11 ≈ 0.0909
+        expected_var = 1.0 / 11.0
+        self.assertAlmostEqual(stats['variances'][0], expected_var)
     
     def test_extreme_reward_variance(self):
         """Test handling of rewards with extreme variance."""
@@ -484,10 +470,12 @@ class TestThompsonSamplingEdgeCases(unittest.TestCase):
         
         stats = bandit.get_arm_statistics()
         
-        # Means should match observations
-        self.assertAlmostEqual(stats['means'][0], 0.3)
-        self.assertAlmostEqual(stats['means'][1], 0.5)
-        self.assertAlmostEqual(stats['means'][2], 0.7)
+        # Posterior means should be weighted average of prior and observation
+        # For each arm: (prior_mean * prior_precision + reward * likelihood_precision) / total_precision
+        # = (0 * 1 + reward * 1) / (1 + 1) = reward / 2
+        self.assertAlmostEqual(stats['means'][0], 0.3 / 2)
+        self.assertAlmostEqual(stats['means'][1], 0.5 / 2)
+        self.assertAlmostEqual(stats['means'][2], 0.7 / 2)
 
 
 if __name__ == '__main__':

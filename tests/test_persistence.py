@@ -170,8 +170,8 @@ class TestThompsonBanditSerialization:
         new_bandit = ThompsonSamplingBandit(
             n_arms=3,
             prior_mean=0.0,
-            prior_variance=1.0,
-            variance_scale=1.0,
+            prior_std=1.0,
+            known_reward_std=1.0,
             random_seed=42
         )
         new_bandit.set_state(state)
@@ -180,7 +180,6 @@ class TestThompsonBanditSerialization:
         assert new_bandit.n_arms == thompson_bandit.n_arms
         assert new_bandit.counts == thompson_bandit.counts
         assert new_bandit.sums == thompson_bandit.sums
-        assert new_bandit.sum_squares == thompson_bandit.sum_squares
     
     def test_trained_state_round_trip(self, thompson_bandit):
         """Test serialization after training."""
@@ -197,8 +196,8 @@ class TestThompsonBanditSerialization:
         new_bandit = ThompsonSamplingBandit(
             n_arms=3,
             prior_mean=0.0,
-            prior_variance=1.0,
-            variance_scale=1.0,
+            prior_std=1.0,
+            known_reward_std=1.0,
             random_seed=42  # Same seed for deterministic behavior
         )
         new_bandit.set_state(state)
@@ -206,7 +205,6 @@ class TestThompsonBanditSerialization:
         # Verify statistics match
         assert new_bandit.counts == thompson_bandit.counts
         assert new_bandit.sums == thompson_bandit.sums
-        assert new_bandit.sum_squares == thompson_bandit.sum_squares
         
         # Verify posterior statistics match
         orig_stats = thompson_bandit.get_arm_statistics()

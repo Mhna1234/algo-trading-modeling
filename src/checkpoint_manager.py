@@ -475,10 +475,9 @@ class CheckpointManager:
             return {
                 "counts": bandit.counts,
                 "sums": bandit.sums,
-                "sum_squares": bandit.sum_squares,
                 "prior_mean": bandit.prior_mean,
-                "prior_variance": bandit.prior_variance,
-                "variance_scale": bandit.variance_scale,
+                "prior_std": bandit.prior_std,
+                "known_reward_std": bandit.known_reward_std,
                 "random_seed": bandit._random_seed
             }
         elif bandit_type == "EXP3Bandit":
@@ -503,10 +502,9 @@ class CheckpointManager:
             import random
             bandit.counts = state["counts"]
             bandit.sums = state["sums"]
-            bandit.sum_squares = state["sum_squares"]
             bandit.prior_mean = state["prior_mean"]
-            bandit.prior_variance = state["prior_variance"]
-            bandit.variance_scale = state["variance_scale"]
+            bandit.prior_std = state["prior_std"]
+            bandit.known_reward_std = state["known_reward_std"]
             bandit._random_seed = state["random_seed"]
             bandit.random_state = random.Random(state["random_seed"])
         elif bandit_type == "EXP3Bandit":
