@@ -1,6 +1,8 @@
 """Module for retrieving historical OHLCV data from S3."""
 
+import re
 import sys
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 from typing import List, Tuple
@@ -8,6 +10,7 @@ from typing import List, Tuple
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError
+from dateutil.relativedelta import relativedelta
 
 
 def load_month(year: int, month: int) -> pd.DataFrame:
@@ -172,3 +175,175 @@ def load_latest_month() -> pd.DataFrame:
     year, month = get_latest_available_month()
     print(f"Loading latest available data: {year:04d}-{month:02d}", file=sys.stderr)
     return load_month(year, month)
+
+
+def parse_date_range_from_filename(filename: str) -> Tuple[int, int, int, int]:
+    """Parse year-month range from a filename like 'data_2015-11_2025-11.csv'.
+    
+    Args:
+        filename: Filename containing date range
+        
+    Returns:
+        Tuple of (start_year, start_month, end_year, end_month)
+        
+    Raises:
+        ValueError: If filename doesn't contain valid date range
+    """
+    # Match pattern like: data_2015-11_2025-11.csv or full_data_2015-11_2025-11.csv
+    pattern = r'_(\d{4})-(\d{2})_(\d{4})-(\d{2})\.csv$'
+    match = re.search(pattern, filename)
+    
+    if not match:
+        raise ValueError(f"Could not parse date range from filename: {filename}")
+    
+    start_year, start_month, end_year, end_month = map(int, match.groups())
+    
+    # Validate months
+    for month in [start_month, end_month]:
+        if not 1 <= month <= 12:
+            raise ValueError(f"Invalid month {month} in filename: {filename}")
+    
+    return start_year, start_month, end_year, end_month
+
+
+def get_local_data_date_range(data_dir: Path = Path("data/processed")) -> Tuple[int, int, int, int]:
+    """Get the date range of locally stored data by parsing filenames.
+    
+    Args:
+        data_dir: Directory containing processed data files
+        
+    Returns:
+        Tuple of (start_year, start_month, end_year, end_month) representing
+        the complete date range available locally
+        
+    Raises:
+        FileNotFoundError: If no valid data files found
+    """
+    if not data_dir.exists():
+        raise FileNotFoundError(f"Data directory not found: {data_dir}")
+    
+    # Find all CSV files with date ranges
+    csv_files = list(data_dir.glob("*.csv"))
+    if not csv_files:
+        raise FileNotFoundError(f"No CSV files found in {data_dir}")
+    
+    date_ranges = []
+    for file_path in csv_files:
+        try:
+            start_year, start_month, end_year, end_month = parse_date_range_from_filename(file_path.name)
+            date_ranges.append((start_year, start_month, end_year, end_month))
+        except ValueError:
+            continue  # Skip files that don't match the pattern
+    
+    if not date_ranges:
+        raise FileNotFoundError(f"No files with valid date ranges found in {data_dir}")
+    
+    # Find the overall date range (earliest start to latest end)
+    min_start = min(date_ranges, key=lambda x: (x[0], x[1]))
+    max_end = max(date_ranges, key=lambda x: (x[2], x[3]))
+    
+    return min_start[0], min_start[1], max_end[2], max_end[3]
+
+
+def get_missing_date_range(data_dir: Path = Path("data/processed")) -> List[Tuple[int, int]]:
+    """Calculate the date range missing from local data up to current month.
+    
+    Args:
+        data_dir: Directory containing processed data files
+        
+    Returns:
+        List of (year, month) tuples for months that need to be fetched
+        
+    Raises:
+        FileNotFoundError: If local data date range cannot be determined
+    """
+    try:
+        local_start_year, local_start_month, local_end_year, local_end_month = get_local_data_date_range(data_dir)
+    except FileNotFoundError:
+        # If no local data, we'll need to determine what to fetch (this might be handled differently)
+        raise FileNotFoundError("Cannot determine missing date range: no local data found")
+    
+    # Get current date
+    today = date.today()
+    current_year = today.year
+    current_month = today.month
+    
+    # Convert local end date to date object and add one month
+    local_end_date = date(local_end_year, local_end_month, 1)
+    next_month = local_end_date + relativedelta(months=1)
+    
+    missing_months = []
+    current_date = next_month
+    
+    # Generate all months from local_end + 1 month to current month
+    while current_date <= date(current_year, current_month, 1):
+        missing_months.append((current_date.year, current_date.month))
+        current_date += relativedelta(months=1)
+    
+    return missing_months
+
+
+def load_missing_data(data_dir: Path = Path("data/processed")) -> pd.DataFrame:
+    """Load all missing data from last local update to current month.
+    
+    Args:
+        data_dir: Directory containing processed data files
+        
+    Returns:
+        DataFrame with all missing months concatenated
+        
+    Raises:
+        FileNotFoundError: If no missing data to fetch
+    """
+    missing_months = get_missing_date_range(data_dir)
+    
+    if not missing_months:
+        raise FileNotFoundError("No missing data to fetch - local data is up to date")
+    
+    print(f"Found {len(missing_months)} missing months to fetch", file=sys.stderr)
+    return load_multiple_months(missing_months)
+
+
+def update_processed_data(data_dir: Path = Path("data")) -> None:
+    """Update processed datasets with any missing data from S3.
+    
+    This function:
+    1. Determines what data is missing locally
+    2. Fetches missing data from S3
+    3. Appends it to existing processed datasets
+    
+    Args:
+        data_dir: Base data directory (should contain processed/ subdirectory)
+    """
+    from src.data_loader import DataLoader
+    
+    print("Checking for missing data...", file=sys.stderr)
+    
+    try:
+        missing_months = get_missing_date_range(data_dir / "processed")
+    except FileNotFoundError as e:
+        print(f"No processed data found: {e}", file=sys.stderr)
+        return
+    
+    if not missing_months:
+        print("Local data is up to date - no missing months found", file=sys.stderr)
+        return
+    
+    print(f"Fetching {len(missing_months)} missing months from S3...", file=sys.stderr)
+    
+    # Fetch missing data
+    try:
+        new_data = load_multiple_months(missing_months)
+        print(f"Fetched {len(new_data)} rows of new data", file=sys.stderr)
+    except Exception as e:
+        print(f"Error fetching data from S3: {e}", file=sys.stderr)
+        return
+    
+    # Append to processed data
+    try:
+        loader = DataLoader(str(data_dir))
+        loader.append_s3_data_to_processed(new_data)
+        print("Successfully updated processed datasets", file=sys.stderr)
+    except Exception as e:
+        print(f"Error updating processed data: {e}", file=sys.stderr)
+        raise

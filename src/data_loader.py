@@ -20,6 +20,8 @@ from typing import List, Optional, Tuple, Dict
 import warnings
 from pathlib import Path
 import logging
+from pandas.tseries.holiday import USFederalHolidayCalendar
+from pandas.tseries.offsets import CustomBusinessDay
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -279,6 +281,259 @@ class DataLoader:
         }
         
         return summary
+
+    def convert_s3_to_multiindex(self, s3_data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Convert S3 data format to MultiIndex format used by processed data.
+        
+        S3 data format: symbol, date, open, high, low, close, volume (long format)
+        Processed format: MultiIndex columns (ticker, OHLCV) with date index
+        
+        Args:
+            s3_data: DataFrame from S3 with columns [symbol, date, open, high, low, close, volume]
+            
+        Returns:
+            DataFrame with MultiIndex columns in processed format
+        """
+        logger.info("Converting S3 data to MultiIndex format")
+        
+        # Ensure date is datetime
+        s3_data['date'] = pd.to_datetime(s3_data['date'])
+        s3_data = s3_data.set_index('date')
+        
+        # Get unique symbols
+        symbols = s3_data['symbol'].unique()
+        
+        # Create MultiIndex DataFrame
+        multiindex_data = []
+        columns = []
+        
+        for symbol in symbols:
+            symbol_data = s3_data[s3_data['symbol'] == symbol].drop('symbol', axis=1)
+            
+            # Rename columns to match yfinance format (Close, Open, etc.)
+            symbol_data = symbol_data.rename(columns={
+                'open': 'Open',
+                'high': 'High', 
+                'low': 'Low',
+                'close': 'Close',
+                'volume': 'Volume'
+            })
+            
+            multiindex_data.append(symbol_data)
+            columns.append(symbol)
+        
+        # Create MultiIndex DataFrame
+        result = pd.concat(multiindex_data, keys=columns, axis=1)
+        
+        logger.info(f"Converted data for {len(symbols)} symbols")
+        return result
+
+    def append_s3_data_to_processed(self, s3_data: pd.DataFrame) -> None:
+        """
+        Append new S3 data to existing processed datasets.
+        
+        This method:
+        1. Loads existing processed data
+        2. Converts S3 data to compatible format
+        3. Preprocesses the new data
+        4. Appends to existing data
+        5. Saves updated processed files
+        
+        Args:
+            s3_data: New data from S3 in raw format
+        """
+        logger.info("Appending S3 data to processed datasets")
+        
+        # Load existing processed data
+        try:
+            existing_full, existing_price = load_preprocessed_data(str(self.data_dir))
+            logger.info(f"Loaded existing processed data with {len(existing_price)} rows")
+        except FileNotFoundError:
+            logger.warning("No existing processed data found. This should not happen in incremental mode.")
+            raise
+        
+        # Convert S3 data to MultiIndex format
+        new_multiindex = self.convert_s3_to_multiindex(s3_data)
+        
+        # Clean and preprocess new data
+        new_clean = self.clean_data(new_multiindex)
+        new_full = self.add_risk_free_rate(new_clean)
+        new_price = self.get_adjusted_closes(new_full)
+        
+        # Validate new data integrity
+        if not self.validate_data_integrity(new_full):
+            logger.warning("Data integrity issues detected in new S3 data, but proceeding with append")
+        
+        # Append to existing data
+        # Use combine_first to handle overlapping dates (existing data takes precedence)
+        updated_full = new_full.combine_first(existing_full)
+        updated_price = new_price.combine_first(existing_price)
+        
+        # Sort by date
+        updated_full = updated_full.sort_index()
+        updated_price = updated_price.sort_index()
+        
+        # Get date range for filename
+        start_date = updated_full.index.min().strftime('%Y-%m')
+        end_date = updated_full.index.max().strftime('%Y-%m')
+        
+        # Save updated data
+        full_file = self.processed_dir / f"full_data_{start_date}_{end_date}.csv"
+        price_file = self.processed_dir / f"price_data_{start_date}_{end_date}.csv"
+        
+        updated_full.to_csv(full_file)
+        updated_price.to_csv(price_file)
+        
+        logger.info(f"Updated processed data saved:")
+        logger.info(f"  Full data: {full_file} ({len(updated_full)} rows)")
+        logger.info(f"  Price data: {price_file} ({len(updated_price)} rows)")
+        
+        # Remove old files if they exist
+        old_full_files = list(self.processed_dir.glob("full_data_*.csv"))
+        old_price_files = list(self.processed_dir.glob("price_data_*.csv"))
+        
+        for old_file in old_full_files + old_price_files:
+            if old_file != full_file and old_file != price_file:
+                old_file.unlink()
+                logger.info(f"Removed old file: {old_file}")
+
+    def detect_data_gaps(self, data: pd.DataFrame, log_gaps: bool = True) -> Dict:
+        """
+        Detect gaps in trading data and categorize them as expected or unexpected.
+        
+        Expected gaps: Weekends and US federal holidays
+        Unexpected gaps: Missing data on business days (potential data issues)
+        
+        Args:
+            data: DataFrame with datetime index
+            log_gaps: Whether to log gap information
+            
+        Returns:
+            Dictionary with gap statistics and details
+        """
+        logger = logging.getLogger(__name__)
+        
+        if data.empty:
+            return {'total_gaps': 0, 'expected_gaps': 0, 'unexpected_gaps': 0, 'gap_dates': []}
+        
+        # Get date range
+        start_date = data.index.min()
+        end_date = data.index.max()
+        date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+        
+        # Create business day calendar (excluding weekends and US holidays)
+        bday = CustomBusinessDay(calendar=USFederalHolidayCalendar())
+        business_days = pd.date_range(start=start_date, end=end_date, freq=bday)
+        
+        # Find all missing dates
+        existing_dates = set(data.index.date)
+        all_dates = set(date_range.date)
+        missing_dates = all_dates - existing_dates
+        
+        # Categorize gaps
+        expected_gaps = []
+        unexpected_gaps = []
+        
+        for missing_date in missing_dates:
+            missing_datetime = pd.Timestamp(missing_date)
+            
+            # Check if it's a business day
+            is_business_day = missing_datetime in business_days
+            
+            if is_business_day:
+                unexpected_gaps.append(missing_date)
+                if log_gaps:
+                    logger.warning(f"Unexpected data gap on business day: {missing_date}")
+            else:
+                expected_gaps.append(missing_date)
+                if log_gaps:
+                    logger.info(f"Expected data gap (weekend/holiday): {missing_date}")
+        
+        gap_stats = {
+            'total_gaps': len(missing_dates),
+            'expected_gaps': len(expected_gaps),
+            'unexpected_gaps': len(unexpected_gaps),
+            'expected_gap_dates': expected_gaps,
+            'unexpected_gap_dates': unexpected_gaps,
+            'data_completeness': len(existing_dates) / len(date_range) if date_range.size > 0 else 0
+        }
+        
+        if log_gaps:
+            logger.info(f"Data gap analysis: {gap_stats['total_gaps']} total gaps "
+                       f"({gap_stats['expected_gaps']} expected, {gap_stats['unexpected_gaps']} unexpected), "
+                       f"completeness: {gap_stats['data_completeness']:.1%}")
+        
+        return gap_stats
+
+    def validate_data_integrity(self, data: pd.DataFrame) -> bool:
+        """
+        Validate data integrity and log any issues.
+        
+        Checks for:
+        - Data gaps (expected vs unexpected)
+        - Price continuity (no extreme jumps)
+        - Volume reasonableness
+        
+        Args:
+            data: DataFrame to validate
+            
+        Returns:
+            True if data passes all checks, False otherwise
+        """
+        logger = logging.getLogger(__name__)
+        is_valid = True
+        
+        # Check for data gaps
+        gap_stats = self.detect_data_gaps(data)
+        
+        # Check for price continuity (basic outlier detection)
+        if data.columns.nlevels > 1:
+            # MultiIndex columns - check Close prices
+            for symbol in data.columns.get_level_values(0).unique():
+                if symbol == 'RF':  # Skip risk-free rate
+                    continue
+                close_prices = data[(symbol, 'Close')] if ('Close') in data[symbol].columns else data[symbol]
+                if hasattr(close_prices, 'pct_change'):
+                    returns = close_prices.pct_change()
+                    extreme_returns = returns.abs() > 0.5  # 50% daily change threshold
+                    if extreme_returns.any():
+                        extreme_dates = returns[extreme_returns].index.strftime('%Y-%m-%d').tolist()
+                        logger.warning(f"Extreme price movements detected for {symbol} on: {extreme_dates}")
+                        is_valid = False
+        else:
+            # Single level columns
+            for col in data.columns:
+                if col == 'RF':
+                    continue
+                if hasattr(data[col], 'pct_change'):
+                    returns = data[col].pct_change()
+                    extreme_returns = returns.abs() > 0.5
+                    if extreme_returns.any():
+                        extreme_dates = returns[extreme_returns].index.strftime('%Y-%m-%d').tolist()
+                        logger.warning(f"Extreme price movements detected for {col} on: {extreme_dates}")
+                        is_valid = False
+        
+        # Check for zero/negative prices
+        if data.columns.nlevels > 1:
+            for symbol in data.columns.get_level_values(0).unique():
+                if symbol == 'RF':
+                    continue
+                close_col = (symbol, 'Close') if (symbol, 'Close') in data.columns else None
+                if close_col and (data[close_col] <= 0).any():
+                    bad_dates = data[data[close_col] <= 0].index.strftime('%Y-%m-%d').tolist()
+                    logger.error(f"Invalid prices (≤0) detected for {symbol} on: {bad_dates}")
+                    is_valid = False
+        else:
+            for col in data.columns:
+                if col == 'RF':
+                    continue
+                if (data[col] <= 0).any():
+                    bad_dates = data[data[col] <= 0].index.strftime('%Y-%m-%d').tolist()
+                    logger.error(f"Invalid prices (≤0) detected for {col} on: {bad_dates}")
+                    is_valid = False
+        
+        return is_valid
 
 
 def load_data(tickers: List[str], 
