@@ -108,7 +108,7 @@ S3 Historical + Daily Updates → Persistent State → Incremental Processing �
 **Goal**: Implement checkpointing using existing PortfolioResult structure
 
 #### 2.1 Checkpoint Manager (`src/checkpoint_manager.py`)
-- **Task 2.1.1**: Create checkpoint system based on existing `PortfolioResult` dataclass
+- ✅ **Task 2.1.1**: Create checkpoint system based on existing `PortfolioResult` dataclass (COMPLETED: Created `CheckpointManager` class with JSON serialization, metadata tracking, and auto-cleanup)
 - **Task 2.1.2**: Implement JSON serialization for portfolio state and metrics
 - **Task 2.1.3**: Add Parquet storage for time series data (equity curve, weights history)
 - **Task 2.1.4**: Implement 7-day automatic cleanup of old checkpoints
@@ -124,6 +124,9 @@ S3 Historical + Daily Updates → Persistent State → Incremental Processing �
 - **Task 2.3.2**: Add daily metrics append to existing time series
 - **Task 2.3.3**: Optimize memory usage for large historical datasets
 - **Task 2.3.4**: Implement metrics validation and gap filling
+
+#### 2.4 User Experience Enhancements
+- **Task 2.4.1**: Add tqdm progress bars to PortfolioEngine.run_backtest() for backtesting visibility
 
 ### Phase 3: Streaming Decision Engine (Week 5-6)
 **Goal**: Create daily execution engine using existing PortfolioEngine
@@ -295,7 +298,7 @@ This plan is designed to **build upon your existing robust implementation** rath
 | Automation | 2 weeks | FastAPI service, GitHub Actions | Planned |
 
 **Total Timeline**: 10 weeks (January - March 2026)
-**Total Tasks**: 58 specific, actionable tasks
+**Total Tasks**: 59 specific, actionable tasks
 **Risk Level**: Low (incremental, well-tested approach)
 
 ## Dependencies & Prerequisites
@@ -339,7 +342,7 @@ This plan is designed to **build upon your existing robust implementation** rath
 
 ## Conclusion
 
-This refined implementation plan provides a **practical, incremental approach** to transform your algorithmic trading system into a robust real-time platform. With 58 specific tasks across 5 phases, the plan **leverages your existing 10,000+ lines of well-architected code** rather than requiring a complete rewrite.
+This refined implementation plan provides a **practical, incremental approach** to transform your algorithmic trading system into a robust real-time platform. With 59 specific tasks across 5 phases, the plan **leverages your existing 10,000+ lines of well-architected code** rather than requiring a complete rewrite.
 
 **Key Strengths of This Approach**:
 1. **Builds on Existing Code**: Extends your current `PortfolioEngine`, MAB implementations, and data pipeline
