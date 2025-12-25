@@ -107,3 +107,68 @@ def save_to_csv(df: pd.DataFrame, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
     print(f"Saved {len(df)} rows to {output_path}")
+
+
+def get_latest_available_month() -> Tuple[int, int]:
+    """Get the latest available month of data in S3.
+    
+    Returns:
+        Tuple of (year, month) for the most recent available data
+        
+    Raises:
+        RuntimeError: If AWS credentials are missing or no data files found
+        FileNotFoundError: If no history-data files exist in the bucket
+    """
+    s3 = boto3.client("s3")
+    
+    try:
+        # List objects in the history-data prefix
+        response = s3.list_objects_v2(Bucket="data-retrieval-output", Prefix="history-data/")
+        
+        if 'Contents' not in response:
+            raise FileNotFoundError("No history-data files found in S3 bucket")
+        
+        # Extract dates from keys like "history-data/2020-01.parquet"
+        available_dates = []
+        for obj in response['Contents']:
+            key = obj['Key']
+            if key.endswith('.parquet'):
+                try:
+                    date_str = key.split('/')[-1].replace('.parquet', '')  # "2020-01"
+                    year, month = map(int, date_str.split('-'))
+                    if 1 <= month <= 12:  # Validate month range
+                        available_dates.append((year, month))
+                except (ValueError, IndexError):
+                    continue  # Skip malformed keys
+        
+        if not available_dates:
+            raise FileNotFoundError("No valid history-data files found in S3 bucket")
+        
+        # Return the latest date
+        return max(available_dates)
+        
+    except NoCredentialsError as exc:
+        raise RuntimeError(
+            "AWS credentials not found. Configure credentials (e.g., AWS CLI, env vars, or IAM role)."
+        ) from exc
+    except PartialCredentialsError as exc:
+        raise RuntimeError("Incomplete AWS credentials. Check your AWS configuration.") from exc
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+        if error_code == "AccessDenied":
+            raise PermissionError("Access denied when listing S3 objects. Confirm IAM permissions.") from exc
+        raise
+
+
+def load_latest_month() -> pd.DataFrame:
+    """Load the most recent month of OHLCV data available in S3.
+    
+    Returns:
+        DataFrame with the latest available month's data
+        
+    Raises:
+        Same exceptions as load_month() and get_latest_available_month()
+    """
+    year, month = get_latest_available_month()
+    print(f"Loading latest available data: {year:04d}-{month:02d}", file=sys.stderr)
+    return load_month(year, month)
