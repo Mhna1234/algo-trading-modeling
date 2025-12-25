@@ -558,7 +558,8 @@ def load_data(tickers: List[str],
 
 def load_preprocessed_data(data_dir: str = "data",
                            start: Optional[str] = None,
-                           end: Optional[str] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+                           end: Optional[str] = None,
+                           update_if_available: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Load pre-processed data from disk (prepared by scripts/prepare_data.py).
     
@@ -569,6 +570,7 @@ def load_preprocessed_data(data_dir: str = "data",
         data_dir: Directory containing processed data
         start: Optional start date to filter data (format: 'YYYY-MM-DD')
         end: Optional end date to filter data (format: 'YYYY-MM-DD')
+        update_if_available: If True, check for and append new data from S3
         
     Returns:
         Tuple of (full_data, price_data)
@@ -578,6 +580,9 @@ def load_preprocessed_data(data_dir: str = "data",
     Example:
         >>> # Load all pre-processed data
         >>> full_data, price_data = load_preprocessed_data()
+        >>> 
+        >>> # Load with automatic updates
+        >>> full_data, price_data = load_preprocessed_data(update_if_available=True)
         >>> 
         >>> # Load specific date range
         >>> full_data, price_data = load_preprocessed_data(
@@ -610,6 +615,22 @@ def load_preprocessed_data(data_dir: str = "data",
     
     # Load price data
     price_data = pd.read_csv(price_data_file, index_col=0, parse_dates=True)
+    
+    # Check for and append new data if requested
+    if update_if_available:
+        logger.info("Checking for new data to append...")
+        try:
+            from .data_retrieval import update_processed_data
+            updated_full, updated_price = update_processed_data(data_dir)
+            if updated_full is not None and updated_price is not None:
+                logger.info("New data found and appended to processed datasets")
+                full_data = updated_full
+                price_data = updated_price
+            else:
+                logger.info("No new data available")
+        except Exception as e:
+            logger.warning(f"Failed to check for updates: {e}")
+            logger.info("Continuing with existing data")
     
     # Filter by date range if specified
     if start is not None:
