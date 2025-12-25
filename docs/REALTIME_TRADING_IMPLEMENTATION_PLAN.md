@@ -109,9 +109,9 @@ S3 Historical + Daily Updates → Persistent State → Incremental Processing �
 
 #### 2.1 Checkpoint Manager (`src/checkpoint_manager.py`)
 - ✅ **Task 2.1.1**: Create checkpoint system based on existing `PortfolioResult` dataclass (COMPLETED: Created `CheckpointManager` class with JSON serialization, metadata tracking, and auto-cleanup)
-- **Task 2.1.2**: Implement JSON serialization for portfolio state and metrics
-- **Task 2.1.3**: Add Parquet storage for time series data (equity curve, weights history)
-- **Task 2.1.4**: Implement 7-day automatic cleanup of old checkpoints
+- ✅ **Task 2.1.2**: Implement JSON serialization for portfolio state and metrics (COMPLETED: JSON serialization implemented in CheckpointManager with pandas object handling)
+- ✅ **Task 2.1.3**: Add Parquet storage for time series data (equity curve, weights history) (COMPLETED: Implemented Parquet storage with Snappy compression, efficient DataFrame combining/splitting, and backward compatibility)
+- ✅ **Task 2.1.4**: Implement 7-day automatic cleanup of old checkpoints (COMPLETED: Auto-cleanup implemented in CheckpointManager)
 
 #### 2.2 State Schema Design
 - **Task 2.2.1**: Define checkpoint structure using existing PortfolioResult fields
