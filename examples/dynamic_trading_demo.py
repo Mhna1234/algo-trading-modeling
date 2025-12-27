@@ -69,6 +69,7 @@ from src.bandits.thompson import ThompsonSamplingBandit
 from src.bandits.exp3 import EXP3Bandit
 from src.checkpoint_manager import CheckpointManager
 from src.daily_trading_engine import DailyTradingEngine
+from src.config_loader import load_trading_config, TradingConfig
 
 # Configure logging
 logging.basicConfig(
@@ -89,44 +90,19 @@ plt.rcParams['figure.figsize'] = (14, 8)
 # CONFIGURATION
 # ============================================================================
 
-class TradingConfig:
-    """Configuration for the dynamic trading demo."""
-
-    def __init__(self, mode: str = 'backtest'):
-        self.mode = mode  # 'backtest', 'simulation', 'live'
-
-        # Core settings
-        self.initial_capital = 100000
-        self.transaction_cost_bps = 10.0  # 0.1%
-        self.rebalance_frequency = 'M'  # Monthly
-
-        # Data settings
-        self.start_date = '2015-01-01'
-        self.end_date = '2024-12-31'
-
-        # Strategy settings
-        self.use_bandit_wrapper = True
-        self.bandit_type = 'ucb'  # 'ucb', 'thompson', 'exp3'
-        self.burn_in_periods = 12  # Months before bandit starts
-
-        # Checkpoint settings
-        self.checkpoint_dir = Path('checkpoints')
-        self.results_dir = Path('results')
-
-        # Mode-specific settings
-        if self.mode == 'simulation':
-            self.simulation_speed = 1.0  # 1.0 = real-time, 0.0 = instant
-        elif self.mode == 'live':
-            self.data_update_interval = 3600  # 1 hour in seconds
-
-    def get_bandit_class(self):
-        """Get the bandit class based on configuration."""
-        bandit_classes = {
-            'ucb': UCBBandit,
-            'thompson': ThompsonSamplingBandit,
-            'exp3': EXP3Bandit
-        }
-        return bandit_classes.get(self.bandit_type, UCBBandit)
+def load_config(mode: str = 'simulation') -> TradingConfig:
+    """
+    Load configuration from YAML file.
+    
+    Args:
+        mode: Override the mode from config file
+        
+    Returns:
+        TradingConfig: Configuration object
+    """
+    config = load_trading_config()
+    config.mode = mode  # Allow command line override
+    return config
 
 # ============================================================================
 # UNIFIED TRADING DEMO CLASS
@@ -202,7 +178,13 @@ class DynamicTradingDemo:
 
         # Setup bandit wrapper if enabled
         if self.config.use_bandit_wrapper:
-            bandit_class = self.config.get_bandit_class()
+            # Get bandit class based on type
+            bandit_classes = {
+                'ucb': UCBBandit,
+                'thompson': ThompsonSamplingBandit,
+                'exp3': EXP3Bandit
+            }
+            bandit_class = bandit_classes.get(self.config.bandit_type, UCBBandit)
             self.bandit = bandit_class(n_arms=len(self.strategies))
 
             # Create bandit strategy wrapper
@@ -387,18 +369,33 @@ def main():
     """Main entry point with command line argument parsing."""
     parser = argparse.ArgumentParser(description='Dynamic Trading Demo')
     parser.add_argument('--mode', choices=['backtest', 'simulation', 'live'],
-                       default='backtest', help='Execution mode')
+                       help='Execution mode (overrides config file)')
     parser.add_argument('--bandit', choices=['ucb', 'thompson', 'exp3'],
-                       default='ucb', help='Bandit algorithm type')
+                       help='Bandit algorithm type (overrides config file)')
     parser.add_argument('--no-bandit', action='store_true',
                        help='Disable bandit wrapper (use equal weight)')
+    parser.add_argument('--config', default='config/trading_config.yaml',
+                       help='Path to configuration file')
 
     args = parser.parse_args()
 
-    # Create configuration
-    config = TradingConfig(mode=args.mode)
-    config.bandit_type = args.bandit
-    config.use_bandit_wrapper = not args.no_bandit
+    # Load configuration from YAML
+    try:
+        config = load_trading_config(args.config)
+        logger.info(f"Loaded configuration from {args.config}")
+    except Exception as e:
+        logger.error(f"Failed to load configuration: {e}")
+        return
+
+    # Apply command line overrides
+    if args.mode:
+        config.mode = args.mode
+    if args.bandit:
+        config.bandit_type = args.bandit
+    if args.no_bandit:
+        config.use_bandit_wrapper = False
+
+    logger.info(f"Running in {config.mode} mode with {config.bandit_type} bandit")
 
     # Initialize and run demo
     demo = DynamicTradingDemo(config)

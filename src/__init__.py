@@ -93,6 +93,9 @@ from .backtesting_methods import BacktestingMethods, BacktestMethodResult
 # Risk-free asset (NEW v2.2)
 from .risk_free_asset import RiskFreeAsset, RiskFreeStrategyWrapper
 
+# Configuration management (NEW v2.3)
+from .config_loader import ConfigLoader, TradingConfig as TradingConfigYAML, load_trading_config
+
 # Legacy compatibility (UPDATED)
 from .backtester import Backtester, BacktestResults
 from .evaluator import Evaluator, PerformanceEvaluator, evaluate_performance
@@ -169,4 +172,9 @@ __all__ = [
     # Utilities
     'TradingConfig',
     'setup_logging',
+    
+    # Configuration management (NEW v2.3)
+    'ConfigLoader',
+    'TradingConfigYAML',
+    'load_trading_config',
 ]

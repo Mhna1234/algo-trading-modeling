@@ -41,6 +41,10 @@ algo-trading-modeling/
 │       ├── thompson.py          # Thompson Sampling algorithm
 │       └── exp3.py              # EXP3 algorithm (adversarial bandit)
 │
+├── config/                      # Configuration files
+│   ├── trading_config.yaml      # Main system configuration (gitignored)
+│   └── trading_config.yaml.example  # Configuration template
+│
 ├── data/                         # Data storage
 │   ├── processed/                # Processed data (CSV)
 │   └── raw/                      # Raw market data (CSV)
@@ -122,6 +126,46 @@ pip install -r requirements.txt
 3. (Optional) Configure AWS S3 for market data:
    - See `docs/S3_DATA_RETRIEVAL.md` for setup instructions
    - See `QUICKSTART_S3.md` for quick reference
+
+### Configuration
+
+The system uses YAML-based configuration for flexible setup. The main configuration file is `config/trading_config.yaml`:
+
+```yaml
+# Execution mode: backtest, simulation, or live
+execution:
+  mode: "simulation"
+
+# Trading parameters
+trading:
+  initial_capital: 100000
+  transaction_cost_bps: 10.0
+  rebalance_frequency: "M"
+
+# Multi-armed bandit settings
+bandit:
+  type: "ucb"  # ucb, thompson, exp3
+  burn_in_periods: 12
+  reward_type: "sharpe"
+
+# Risk-free asset integration
+risk_free:
+  rate_source: "fred"  # fred, config, fallback
+  maturity: "3M"
+```
+
+**Setup Configuration:**
+1. Copy the example config: `cp config/trading_config.yaml.example config/trading_config.yaml`
+2. Edit `config/trading_config.yaml` with your settings
+3. The actual config file is gitignored for security
+
+**Environment Variables:**
+- `FRED_API_KEY`: For Federal Reserve Economic Data API access
+- `AWS_ACCESS_KEY_ID` & `AWS_SECRET_ACCESS_KEY`: For S3 data access
+
+Set these in your shell environment or use your system's environment variable management. The system does not use .env files for security reasons.
+
+**Security Note:** Never commit API keys or sensitive configuration to version control. Use environment variables or keep config files local.
 
 ### Basic Usage
 

@@ -28,12 +28,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 import numpy as np
-from dotenv import load_dotenv
 from src.data_retrieval import load_date_range, save_to_csv
 from src.data_loader import DataLoader
-
-# Load environment variables from .env file
-load_dotenv()
 
 
 def print_section(title: str):
