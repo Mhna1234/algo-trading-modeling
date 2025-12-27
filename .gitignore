@@ -42,9 +42,12 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# Visualization outputs - keep in git for documentation
-# visualizations/*.png  # Uncomment to exclude from version control
-# !visualizations/README.md
+# Visualization outputs - generated files, exclude from version control
+visualizations/
+examples/visualizations/
+
+# Results outputs - generated files, exclude from version control
+results/
 
 # Logs
 *.log
