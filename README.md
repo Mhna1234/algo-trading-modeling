@@ -6,12 +6,14 @@ A comprehensive Python-based algorithmic trading framework featuring advanced po
 
 This project provides a production-ready algorithmic trading system with:
 - **12 validated benchmark strategies** (momentum, mean reversion, optimization-based, etc.)
-- **Multi-Armed Bandit (MAB) strategy allocation** with UCB and Thompson Sampling algorithms
+- **Multi-Armed Bandit (MAB) strategy allocation** with UCB, Thompson Sampling, and EXP3 algorithms
 - **5 advanced backtesting methods** (walk-forward, combinatorial, Monte Carlo, etc.)
-- **Portfolio optimization engine** with risk management
+- **Real-time trading capabilities** with state persistence and daily updates
+- **Portfolio optimization engine** with risk management and soft rebalancing
 - **Real-time performance metrics** and comprehensive evaluation
 - **AWS S3 data integration** for scalable market data retrieval
 - **Interactive dashboard** for strategy visualization and analysis
+- **Complete state persistence** with checkpoint management and rollback capabilities
 
 ## 📁 Project Structure
 
@@ -21,6 +23,8 @@ algo-trading-modeling/
 │   ├── MODULE_ORGANIZATION.md   # 📖 Module organization guide (READ THIS!)
 │   ├── backtester.py            # Legacy backtesting wrapper
 │   ├── backtesting_methods.py   # Advanced validation methods
+│   ├── checkpoint_manager.py    # State persistence for real-time trading
+│   ├── daily_trading_engine.py  # Real-time trading orchestration
 │   ├── data_loader.py           # Data loading and preprocessing
 │   ├── data_retrieval.py        # Market data fetching (S3/yfinance)
 │   ├── evaluator.py             # Performance metrics calculation
@@ -29,7 +33,11 @@ algo-trading-modeling/
 │   ├── optimizer.py             # Portfolio optimization algorithms
 │   ├── portfolio_engine.py      # Core portfolio management system
 │   ├── rewards.py               # Reward calculation for bandits
+│   ├── risk_free_asset.py       # Risk-free rate integration (FRED API)
+│   ├── transaction_cost_model.py # Realistic trading cost modeling
+│   ├── rebalancing_scheduler.py # Rebalancing logic and scheduling
 │   ├── utils.py                 # Helper functions
+│   ├── config_loader.py         # YAML configuration management
 │   ├── strategies/              # 25 trading strategies (organized)
 │   │   ├── base_strategy_wrapper.py    # Abstract base class
 │   │   ├── benchmark_strategies.py     # 12 validated strategies
@@ -45,6 +53,8 @@ algo-trading-modeling/
 │   ├── trading_config.yaml      # Main system configuration (gitignored)
 │   └── trading_config.yaml.example  # Configuration template
 │
+├── checkpoints/                 # State persistence for real-time trading
+│
 ├── data/                         # Data storage
 │   ├── processed/                # Processed data (CSV)
 │   └── raw/                      # Raw market data (CSV)
@@ -52,6 +62,7 @@ algo-trading-modeling/
 ├── examples/                     # Example scripts and demos
 │   ├── DATA_LOADING_GUIDE.md     # Data loading documentation
 │   ├── simple_example.py         # Basic usage example
+│   ├── dynamic_trading_demo.py   # Unified real-time trading platform
 │   ├── demo_12_strategies_fast.py  # Fast 6-month comparison
 │   ├── demo_12_strategies_full.py  # Full 10-year comparison
 │   ├── demo_backtesting_methods.py # Validation methods demo
@@ -79,10 +90,12 @@ algo-trading-modeling/
 │   ├── STRATEGIES.md            # Strategy descriptions
 │   ├── BACKTESTING_METHODS.md   # Validation methods with results
 │   ├── BACKTESTING_STRATEGIES.md # Backtesting methodology guide
+│   ├── REALTIME_TRADING_IMPLEMENTATION_PLAN.md # Real-time trading implementation
 │   ├── S3_DATA_RETRIEVAL.md     # AWS S3 setup guide
 │   ├── TRADING_FUNDAMENTALS.md  # Trading concepts
 │   ├── MAB_IMPLEMENTATION_PLAN.md # MAB implementation (completed)
 │   ├── MULTI_ARMED_BANDITS.md   # MAB theory and algorithms
+│   ├── RISK_FREE_ASSET_INTEGRATION.md # Risk-free rate integration
 │   └── TASK_TRACKER.md          # Development roadmap
 │   ├── TASKS.md                 # Development roadmap
 │   ├── TASK_TRACKER.md          # Task tracking
@@ -202,6 +215,11 @@ print(f"Max Drawdown: {result['max_drawdown']:.2%}")
 # Simple example
 python examples/simple_example.py
 
+# Unified real-time trading platform (BACKTEST/SIMULATION/LIVE modes)
+python examples/dynamic_trading_demo.py --mode backtest
+python examples/dynamic_trading_demo.py --mode simulation
+python examples/dynamic_trading_demo.py --mode live
+
 # Benchmark 12 strategies (fast mode - 6 months, weekly rebalancing)
 python examples/demo_12_strategies_fast.py
 
@@ -280,9 +298,16 @@ See `docs/BACKTESTING_METHODS.md` for mathematical formulations.
 
 ## 📈 Features
 
+### Real-Time Trading System
+- **State Persistence**: Checkpoint-based system with 7-day rollback capability
+- **Daily Updates**: Incremental data loading from S3 with gap detection
+- **Live Execution**: Real-time trading decisions with MAB allocation
+- **System Reset**: Complete state reset for testing and strategy changes
+- **Configuration Management**: YAML-based config with environment variable support
+
 ### Portfolio Engine
-- Strategy-agnostic architecture
-- Real-time metric calculation
+- Strategy-agnostic architecture with clean separation of concerns
+- Real-time metric calculation during backtests
 - Realistic transaction cost modeling (slippage + fees)
 - Configurable rebalancing frequencies (daily, weekly, monthly, quarterly)
 - **Soft rebalancing logic** (trade only when weight drift exceeds threshold)
@@ -441,14 +466,20 @@ For questions or feedback, please open an issue on GitHub.
 
 ---
 
-**Version**: 3.0.0 | **Last Updated**: December 23, 2025
+**Version**: 3.0.0 | **Last Updated**: December 27, 2025
 
 ## 🎉 Recent Updates
 
 ### Version 3.0.0 (December 2025)
 - ✅ Validated and documented 12 benchmark strategies
-- ✅ Implemented Multi-Armed Bandit (UCB & Thompson Sampling) for strategy allocation
-- ✅ Added comprehensive reward calculation system (returns, Sharpe, Sortino)
+- ✅ Implemented Multi-Armed Bandit (UCB, Thompson Sampling, EXP3) for strategy allocation
+- ✅ Added comprehensive reward calculation system (returns, Sharpe, Sortino, drawdown-penalized)
+- ✅ **Real-time trading system with state persistence and daily updates**
+- ✅ **Checkpoint management with 7-day rollback capability**
+- ✅ **Daily trading engine for incremental portfolio updates**
+- ✅ **Dynamic trading demo supporting BACKTEST/SIMULATION/LIVE modes**
+- ✅ **FRED API integration for dynamic risk-free rate updates**
+- ✅ **Enhanced configuration system with YAML validation**
 - ✅ Optimized rebalancing frequencies (monthly, quarterly, with soft rebalancing)
 - ✅ **Soft rebalancing and drift threshold logic implemented in portfolio engine**
 - ✅ Enhanced visualization and reporting capabilities

@@ -12,11 +12,16 @@ The Portfolio Engine is a strategy-agnostic portfolio management system designed
 7. **Performance Evaluation** (`evaluator.py` - Evaluator class)
 8. **Data Management** (`data_loader.py` - DataLoader class)
 
-**Current Version:** v3.0.0 (December 23, 2025)
+**Current Version:** v3.0.0 (December 27, 2025)
 - **12 validated benchmark strategies** in `src/strategies/benchmark_strategies.py`
-- **Multi-Armed Bandit system** (UCB & Thompson Sampling) in `src/bandit_strategy_wrapper.py`
-- **Multiple reward functions** (returns, Sharpe, Sortino) in `src/rewards.py`
+- **Multi-Armed Bandit system** (UCB, Thompson Sampling, EXP3) in `src/bandit_strategy_wrapper.py`
+- **Real-time trading capabilities** with state persistence and daily updates
+- **Checkpoint management** with 7-day rollback in `src/checkpoint_manager.py`
+- **Daily trading engine** for incremental updates in `src/daily_trading_engine.py`
+- **Dynamic trading demo** supporting multiple execution modes
+- **Multiple reward functions** (returns, Sharpe, Sortino, drawdown-penalized) in `src/rewards.py`
 - **5 advanced backtesting methods** in `src/backtesting_methods.py`
+- **FRED API integration** for dynamic risk-free rates in `src/risk_free_asset.py`
 - **Realistic transaction cost modeling** (slippage + fees, monthly rebalancing)
 - **Real-time metric calculation** during backtests
 - **Complete test coverage** for all components
@@ -108,34 +113,48 @@ The Portfolio Engine is a strategy-agnostic portfolio management system designed
 algo-trading-modeling/
 ├── src/
 │   ├── __init__.py
-│   ├── data_loader.py              # Data fetching & preprocessing
-│   ├── data_retrieval.py           # Market data retrieval (S3/yfinance)
-│   ├── signal_generator.py         # Signal generation (Strategy class)
-│   ├── feature_engineering.py      # Technical indicators & features
-│   ├── optimizer.py                # Risk optimization (PortfolioOptimizer)
-│   ├── portfolio_engine.py         # Backtest execution (PortfolioEngine)
-│   ├── strategies/              # 25 trading strategies (organized)
+│   ├── checkpoint_manager.py        # State persistence for real-time trading
+│   ├── config_loader.py             # YAML configuration management
+│   ├── daily_trading_engine.py      # Real-time trading orchestration
+│   ├── data_loader.py               # Data fetching & preprocessing
+│   ├── data_retrieval.py            # Market data retrieval (S3/yfinance)
+│   ├── evaluator.py                 # Performance evaluation
+│   ├── feature_engineering.py       # Technical indicators & features
+│   ├── optimizer.py                 # Risk optimization (PortfolioOptimizer)
+│   ├── portfolio_engine.py          # Backtest execution (PortfolioEngine)
+│   ├── rebalancing_scheduler.py     # Rebalancing logic and scheduling
+│   ├── rewards.py                   # Reward calculation for MAB
+│   ├── risk_free_asset.py           # Risk-free rate integration (FRED API)
+│   ├── signal_generator.py          # Signal generation (Strategy class)
+│   ├── transaction_cost_model.py    # Realistic trading cost modeling
+│   ├── utils.py                     # Helper functions
+│   ├── backtesting_methods.py       # 5 validation methods
+│   ├── backtester.py                # Legacy API wrapper
+│   ├── strategies/                  # 25 trading strategies (organized)
 │   │   ├── base_strategy_wrapper.py    # Abstract base class
 │   │   ├── benchmark_strategies.py     # 12 validated strategies
 │   │   ├── advanced_strategies.py      # 13 experimental strategies
 │   │   └── bandit_strategy_wrapper.py  # MAB meta-strategy
-│   ├── rewards.py                  # Reward calculation for MAB
-│   ├── backtesting_methods.py      # 5 validation methods
-│   ├── evaluator.py                # Performance evaluation
-│   ├── backtester.py               # Legacy API wrapper
-│   ├── utils.py                    # Helper functions
-│   └── bandits/                    # Multi-Armed Bandit implementations
-│       ├── ucb_bandit.py          # Upper Confidence Bound
-│       └── thompson_bandit.py     # Thompson Sampling
+│   └── bandits/                     # Multi-Armed Bandit implementations
+│       ├── base.py                  # Abstract bandit interface
+│       ├── ucb.py                   # Upper Confidence Bound
+│       ├── thompson.py              # Thompson Sampling
+│       └── exp3.py                  # EXP3 algorithm (adversarial bandit)
 ├── examples/
 │   ├── simple_example.py           # Basic usage example
+│   ├── dynamic_trading_demo.py     # Unified real-time trading platform
 │   ├── demo_12_strategies_fast.py  # Fast 6-month comparison
 │   ├── demo_12_strategies_full.py  # Full 10-year comparison
 │   ├── demo_bandit_strategy_wrapper.py  # MAB allocation demo
 │   ├── demo_bandit_comparison.py   # UCB vs Thompson comparison
 │   ├── demo_ucb_bandit.py          # UCB algorithm demo
+│   ├── demo_exp3_bandit.py         # EXP3 algorithm demo
 │   ├── demo_rewards.py             # Reward calculation demo
-│   └── demo_backtesting_methods.py # Validation methods demo
+│   ├── demo_soft_rebalancing.py    # Soft rebalancing demo
+│   ├── demo_soft_rebalancing_bandits.py  # Soft rebalancing with bandits
+│   ├── demo_soft_rebalancing_walkforward.py  # Walk-forward soft rebalancing
+│   ├── demo_svm_regime_strategy.py # SVM regime classification demo
+│   └── visualizations/             # Output visualization examples
 ├── scripts/
 │   ├── prepare_data.py             # Data preparation pipeline
 │   ├── load_s3_data.py             # AWS S3 data loading
@@ -147,8 +166,10 @@ algo-trading-modeling/
 │   ├── ARCHITECTURE.md             # This file
 │   ├── STRATEGIES.md               # Strategy documentation
 │   ├── BACKTESTING_METHODS.md      # Validation methods
+│   ├── REALTIME_TRADING_IMPLEMENTATION_PLAN.md # Real-time trading implementation
 │   ├── MAB_IMPLEMENTATION_PLAN.md  # MAB implementation (completed)
 │   ├── MULTI_ARMED_BANDITS.md      # MAB theory
+│   ├── RISK_FREE_ASSET_INTEGRATION.md # Risk-free rate integration
 │   ├── S3_DATA_RETRIEVAL.md        # AWS S3 setup guide
 │   └── TRADING_FUNDAMENTALS.md     # Trading concepts
 ├── tests/                          # Unit tests

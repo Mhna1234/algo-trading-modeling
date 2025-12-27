@@ -190,7 +190,66 @@ S3 Historical + Daily Updates → Persistent State → Incremental Processing �
 - **Task 5.3.3**: Implement log aggregation from existing demo output
 - **Task 5.3.4**: Add performance monitoring and basic health checks
 
-## Implementation Approach
+### Phase 6: Core Backtesting Algorithm Implementation (Week 11-12)
+**Goal**: Implement the complete backtesting algorithm with soft rebalancing, transaction costs, and performance metrics
+
+#### 6.1 Policy Loop Structure
+- ✅ **Task 6.1.1**: Implement main policy loop for 12 benchmark strategies (COMPLETED: PortfolioEngine.run_backtest() supports strategy wrapper interface)
+- ✅ **Task 6.1.2**: Initialize portfolio state ($100K capital, empty positions/weights) (COMPLETED: PortfolioEngine._reset_state() initializes all state variables)
+- ✅ **Task 6.1.3**: Track per-policy performance metrics and results (COMPLETED: PortfolioResult dataclass stores all metrics per strategy)
+
+#### 6.2 Quarter Loop Implementation
+- ✅ **Task 6.2.1**: Implement quarterly rebalancing schedule (40 quarters over 10 years) (COMPLETED: RebalancingScheduler supports 'Q' frequency)
+- ✅ **Task 6.2.2**: Track quarter boundaries and rebalance dates (COMPLETED: SimpleRebalancingScheduler.get_global_rebalance_dates())
+- ✅ **Task 6.2.3**: Handle quarter transitions and state updates (COMPLETED: PortfolioEngine.run_backtest() processes each rebalance date)
+
+#### 6.3 Signal Generation & Weight Conversion
+- ✅ **Task 6.3.1**: Retrieve risk-adjusted returns for each policy on rebalance date (COMPLETED: Strategy wrappers implement get_weights() method)
+- ✅ **Task 6.3.2**: Convert returns to portfolio weights (filter positive, normalize, apply limits) (COMPLETED: BaseStrategyWrapper handles weight conversion)
+- ✅ **Task 6.3.3**: Apply position limits (min 1%, max 20% per asset) (COMPLETED: Strategy wrappers enforce position constraints)
+
+#### 6.4 Soft Rebalancing Logic
+- ✅ **Task 6.4.1**: Calculate weight drift for each asset (|current - target|) (COMPLETED: PortfolioEngine._execute_soft_rebalance() calculates drift)
+- ✅ **Task 6.4.2**: Apply 5% drift threshold for trade decisions (COMPLETED: drift_threshold parameter in _execute_soft_rebalance())
+- ✅ **Task 6.4.3**: Execute trades only when drift > threshold (COMPLETED: conditional rebalancing logic implemented)
+- ✅ **Task 6.4.4**: Skip rebalancing when all positions within tolerance (COMPLETED: early return when no trades needed)
+
+#### 6.5 Transaction Cost Application
+- ✅ **Task 6.5.1**: Calculate total cost = |trade_value| × (0.001 + 0.0005) (COMPLETED: TransactionCostModel + slippage in PortfolioEngine)
+- ✅ **Task 6.5.2**: Apply costs proportionally across portfolio (COMPLETED: costs deducted from total portfolio value)
+- ✅ **Task 6.5.3**: Update portfolio value after cost deduction (COMPLETED: equity updated after cost calculation)
+- ✅ **Task 6.5.4**: Prevent negative cash positions (COMPLETED: cash floor at 0 with proportional position scaling)
+
+#### 6.6 Trade Execution
+- ✅ **Task 6.6.1**: Update positions to new target levels (COMPLETED: _current_shares updated in _execute_rebalance())
+- ✅ **Task 6.6.2**: Calculate trade amounts and directions (COMPLETED: trades_shares = target_shares - current_shares)
+- ✅ **Task 6.6.3**: Execute buy/sell orders with price impact (COMPLETED: slippage costs applied)
+- ✅ **Task 6.6.4**: Update cash and position values (COMPLETED: _current_cash and _current_equity updated)
+
+#### 6.7 Holding Period Simulation
+- ✅ **Task 6.7.1**: Simulate daily returns during 3-month holding periods (COMPLETED: _update_daily() processes each trading day)
+- ✅ **Task 6.7.2**: Track daily portfolio value changes (COMPLETED: equity curve updated daily)
+- ✅ **Task 6.7.3**: Accumulate returns over holding period (COMPLETED: returns_history tracks daily performance)
+- ✅ **Task 6.7.4**: Handle weekends/holidays (skip non-trading days) (COMPLETED: only processes dates in price data)
+
+#### 6.8 State Updates
+- ✅ **Task 6.8.1**: Calculate new portfolio_value after holding period (COMPLETED: equity updated daily)
+- ✅ **Task 6.8.2**: Update current_weights based on natural price movements (COMPLETED: weights recalculated from positions)
+- ✅ **Task 6.8.3**: Track position drift between rebalances (COMPLETED: weight drift calculation in soft rebalancing)
+- ✅ **Task 6.8.4**: Maintain historical state for analysis (COMPLETED: all time series stored in PortfolioResult)
+
+#### 6.9 Performance Metrics Calculation
+- ✅ **Task 6.9.1**: Calculate Sharpe Ratio = mean(returns) / std(returns) × sqrt(252) (COMPLETED: _calculate_summary_metrics())
+- ✅ **Task 6.9.2**: Calculate Max Drawdown = max(peak - trough) / peak (COMPLETED: drawdown analysis implemented)
+- ✅ **Task 6.9.3**: Calculate Win Rate = count(positive days) / total days (COMPLETED: win_rate metric)
+- ✅ **Task 6.9.4**: Calculate Profit Factor = sum(gains) / sum(losses) (COMPLETED: profit_factor metric)
+- ✅ **Task 6.9.5**: Calculate Turnover Rate = average(quarterly turnover) (COMPLETED: avg_turnover metric)
+
+#### 6.10 Policy Ranking & Leaderboard
+- ✅ **Task 6.10.1**: Sort policies by Sharpe Ratio (primary metric) (COMPLETED: Evaluator.compare_strategies() ranks strategies)
+- ✅ **Task 6.10.2**: Generate comprehensive leaderboard (COMPLETED: comparison tables with all metrics)
+- ✅ **Task 6.10.3**: Export results for analysis and visualization (COMPLETED: JSON/CSV export capabilities)
+- ✅ **Task 6.10.4**: Support secondary ranking criteria (COMPLETED: multiple metric sorting options)
 
 ### Leveraging Existing Codebase
 This plan is designed to **build upon your existing robust implementation** rather than replace it:
@@ -287,26 +346,26 @@ This plan is designed to **build upon your existing robust implementation** rath
 - ✅ < 5 minute manual intervention time
 - ✅ Full system recovery within 1 hour
 
-## Latest Status Update (December 2025)
-- **Phase 1: Data Pipeline Enhancement**: ✅ COMPLETED (All core functionality implemented, some validation tasks pending)
-- **Phase 2: State Persistence System**: ✅ COMPLETED (CheckpointManager fully implemented)
-- **Phase 3: Streaming Decision Engine**: ✅ COMPLETED (DailyTradingEngine implemented, some logging tasks pending)
-- **Phase 4: Unified Demo System**: 🔄 PARTIALLY COMPLETED (dynamic_trading_demo.py exists with simulation mode, YAML config system implemented with comprehensive validation, live mode placeholder)
-  - **Task 4.2.3**: Implement config validation and defaults ✅ COMPLETED (Enhanced _validate_config() method with comprehensive validation for all parameters, date formats, ranges, and error messages)
-- **Phase 5: Automation & Scheduling**: ❌ NOT STARTED (No run_daily.py, FastAPI, or GitHub Actions)
+## Latest Status Update (December 27, 2025)
+- **Phase 1: Data Pipeline Enhancement**: ✅ COMPLETED (All core functionality implemented with incremental loading, gap detection, and FRED API integration)
+- **Phase 2: State Persistence System**: ✅ COMPLETED (CheckpointManager fully implemented with JSON/Parquet storage, 7-day cleanup, and bandit state persistence)
+- **Phase 3: Streaming Decision Engine**: ✅ COMPLETED (DailyTradingEngine implemented with incremental updates, MAB integration, and comprehensive error handling)
+- **Phase 4: Unified Demo System**: ✅ COMPLETED (dynamic_trading_demo.py supports BACKTEST/SIMULATION/LIVE modes with YAML config validation)
+- **Phase 5: Automation & Scheduling**: ❌ NOT STARTED (No FastAPI service, GitHub Actions, or run_daily.py script)
 
 ## Timeline & Milestones
 
 | Phase | Duration | Deliverables | Status |
 |-------|----------|--------------|--------|
-| Data Pipeline | 2 weeks | Daily updater, enhanced DataLoader | ✅ Completed |
-| State Persistence | 2 weeks | Checkpoint manager, incremental metrics | ✅ Completed |
-| Streaming Engine | 2 weeks | Daily trading engine, decision logger | ✅ Completed |
-| Unified Demo | 2 weeks | Dynamic demo with multiple modes | 🔄 Partially Completed |
-| Automation | 2 weeks | FastAPI service, GitHub Actions | ❌ Planned |
+| Data Pipeline | 2 weeks | Daily updater, enhanced DataLoader, FRED integration | ✅ Completed |
+| State Persistence | 2 weeks | Checkpoint manager, incremental metrics, bandit state | ✅ Completed |
+| Streaming Engine | 2 weeks | Daily trading engine, decision logger, error handling | ✅ Completed |
+| Unified Demo | 2 weeks | Dynamic demo with BACKTEST/SIMULATION/LIVE modes | ✅ Completed |
+| Automation | 2 weeks | FastAPI service, GitHub Actions, run_daily.py | ❌ Planned |
+| Core Algorithm | 2 weeks | Complete backtesting logic with soft rebalancing | ✅ Completed |
 
-**Total Timeline**: 10 weeks (January - March 2026)
-**Total Tasks**: 59 specific, actionable tasks
+**Total Timeline**: 12 weeks (January - March 2026)
+**Total Tasks**: 79 specific, actionable tasks
 **Risk Level**: Low (incremental, well-tested approach)
 
 ## Dependencies & Prerequisites
@@ -335,12 +394,17 @@ This plan is designed to **build upon your existing robust implementation** rath
 - ✅ State persistence with 7-day rollback capability
 - ✅ MAB decisions with daily reward calculations
 - ✅ System reset capability for testing/strategy changes
+- ✅ BACKTEST/SIMULATION/LIVE execution modes
+- ✅ YAML configuration with comprehensive validation
+- ✅ FRED API integration for dynamic risk-free rates
 
 ### Performance Metrics
 - ✅ Memory usage < 2GB for 10-year history
 - ✅ CPU usage < 50% during daily updates
 - ✅ Storage growth < 100MB/month (Parquet compression)
 - ✅ Async I/O operations for improved performance
+- ✅ Efficient checkpoint loading/saving
+- ✅ Incremental data processing without full reloads
 
 ### Operational Metrics
 - ✅ 99% successful automated runs
@@ -350,23 +414,22 @@ This plan is designed to **build upon your existing robust implementation** rath
 
 ## Conclusion
 
-This refined implementation plan provides a **practical, incremental approach** to transform your algorithmic trading system into a robust real-time platform. With 59 specific tasks across 5 phases, the plan **leverages your existing 10,000+ lines of well-architected code** rather than requiring a complete rewrite.
+This refined implementation plan provides a **practical, incremental approach** to transform your algorithmic trading system into a robust real-time platform. With 79 specific tasks across 6 phases, the plan **leverages your existing 10,000+ lines of well-architected code** rather than requiring a complete rewrite.
 
 **Key Strengths of This Approach**:
 1. **Builds on Existing Code**: Extends your current `PortfolioEngine`, MAB implementations, and data pipeline
-2. **Minimal New Code**: ~1,000 lines total, integrated with existing architecture
+2. **Minimal New Code**: ~1,400 lines total, integrated with existing architecture
 3. **Easy to Implement**: Each task is focused and builds incrementally
 4. **Risk Mitigation**: Backward compatible, with error handling and rollback capabilities
 5. **Performance Optimized**: Uses your existing efficient metrics calculations and storage patterns
 
 **Implementation Feasibility**:
 - **Phase 1**: Extend existing data loading (~200 lines) ✅ COMPLETED
-- **Phase 2**: Add checkpoint persistence (~300 lines) ✅ COMPLETED  
+- **Phase 2**: Add checkpoint persistence (~300 lines) ✅ COMPLETED
 - **Phase 3**: Create daily orchestration (~250 lines) ✅ COMPLETED
-- **Phase 4**: Extend demo structure (~150 lines) 🔄 PARTIALLY COMPLETED
+- **Phase 4**: Extend demo structure (~150 lines) ✅ COMPLETED
 - **Phase 5**: Add automation scripts (~100 lines) ❌ NOT STARTED
+- **Phase 6**: Implement core backtesting algorithm (~400 lines) ✅ COMPLETED
 
-**Total: ~1,000 lines of new code** that transforms your batch system into a real-time platform while maintaining all existing functionality.
-
-The plan is now **updated to reflect current implementation status** with clear, actionable tasks that align perfectly with your current codebase architecture.</content>
+**Total: ~1,400 lines of new code** that transforms your batch system into a real-time platform while maintaining all existing functionality.
 <parameter name="filePath">c:\Users\mhna2\projects\algo_trading_project\algo-trading-modeling\docs\REALTIME_TRADING_IMPLEMENTATION_PLAN.md
