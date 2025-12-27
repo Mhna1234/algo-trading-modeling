@@ -189,7 +189,12 @@ class ComprehensiveBenchmark:
                 bandit_wrapper = BanditStrategyWrapper(
                     child_strategies=[s for _, s in self.individual_strategies],
                     bandit_allocator=bandit,
-                    burn_in_periods=self.config.burn_in_periods
+                    strategy_names=[name for name, _ in self.individual_strategies],
+                    burn_in_periods=self.config.burn_in_periods,
+                    enable_soft_allocation=self.config.enable_soft_allocation,
+                    reward_type=self.config.reward_type,
+                    exploration_constant=self.config.exploration_constant,
+                    min_allocation=self.config.min_allocation
                 )
 
                 # Initialize portfolio engine
@@ -424,7 +429,11 @@ class ComprehensiveBenchmark:
             else:
                 continue
 
-            if 'sharpe' in result.rolling_metrics.columns:
+            # Check if rolling_metrics exists and has sharpe column
+            if (hasattr(result, 'rolling_metrics') and 
+                result.rolling_metrics is not None and 
+                not result.rolling_metrics.empty and 
+                'sharpe' in result.rolling_metrics.columns):
                 sharpe_curve = result.rolling_metrics['sharpe']
                 ax.plot(sharpe_curve.index, sharpe_curve.values,
                        label=strategy_name, color=strategy_colors[strategy_name], linewidth=1.5)
@@ -451,8 +460,12 @@ class ComprehensiveBenchmark:
             else:
                 continue
 
-            ax.fill_between(result.drawdown_series.index, result.drawdown_series.values, 0,
-                          alpha=0.7, color=strategy_colors[strategy_name], label=strategy_name)
+            # Check if drawdown_series exists and is not empty
+            if (hasattr(result, 'drawdown_series') and 
+                result.drawdown_series is not None and 
+                not result.drawdown_series.empty):
+                ax.fill_between(result.drawdown_series.index, result.drawdown_series.values, 0,
+                              alpha=0.7, color=strategy_colors[strategy_name], label=strategy_name)
 
         ax.set_title('Drawdown Curves - All Strategies', fontsize=16)
         ax.set_xlabel('Date')
@@ -507,7 +520,9 @@ class ComprehensiveBenchmark:
         if mab_strategies and self.mab_wrappers:
             fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
-            strategy_names = [s.name for s in self.mab_wrappers['UCB Bandit'].child_strategies]
+            # Get strategy names from the first MAB wrapper
+            first_mab_name = mab_strategies[0]['strategy']
+            strategy_names = self.mab_wrappers[first_mab_name].strategy_names
 
             for i, item in enumerate(mab_strategies):
                 mab_name = item['strategy']

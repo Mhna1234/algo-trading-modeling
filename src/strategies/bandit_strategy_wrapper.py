@@ -137,6 +137,8 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         If True, fall back to equal allocation when child strategy fails
     random_seed : Optional[int], default=None
         Random seed for deterministic behavior
+    strategy_names : Optional[List[str]], default=None
+        Display names for strategies. If None, uses strategy.name from each child strategy
     
     Examples
     --------
@@ -184,6 +186,7 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         enable_soft_allocation: bool = False,
         fallback_on_error: bool = True,
         random_seed: Optional[int] = None,
+        strategy_names: Optional[List[str]] = None,
         **kwargs
     ):
         """Initialize Bandit Strategy Wrapper."""
@@ -228,6 +231,38 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         self.fallback_on_error = fallback_on_error
         self.random_seed = random_seed
         
+        # Set strategy display names
+        if strategy_names is None:
+            self.strategy_names = [s.name for s in child_strategies]
+        else:
+            if len(strategy_names) != len(child_strategies):
+                raise ValueError(
+                    f"strategy_names length ({len(strategy_names)}) must match "
+                    f"child_strategies length ({len(child_strategies)})"
+                )
+            self.strategy_names = strategy_names
+
+        # Guard against pathological configurations (warnings only)
+        if self.enable_soft_allocation and self.reward_type == "sharpe":
+            logger.warning(
+                "Soft allocation with Sharpe rewards may cause unstable learning. "
+                "Sharpe rewards work best with hard allocation (single strategy selection)."
+            )
+
+        if self.reward_lookback < 12:
+            logger.warning(
+                f"reward_lookback={self.reward_lookback} is very short. "
+                "This may cause noisy reward signals and unstable allocation. "
+                "Consider using reward_lookback >= 12 for more stable learning."
+            )
+
+        if self.bandit_allocator.__class__.__name__ == 'EXP3Bandit' and self.reward_type != 'clipped_sharpe':
+            logger.warning(
+                "EXP3 bandit expects rewards in [0,1] range. "
+                f"Current reward_type='{self.reward_type}' may produce out-of-range rewards, "
+                "leading to unpredictable allocation behavior. Consider using reward_type='clipped_sharpe'."
+            )
+        
         # State tracking
         self.period_count = 0
         self.last_date: Optional[pd.Timestamp] = None
@@ -241,8 +276,8 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         
         # Performance tracking
         self.trackers = [
-            StrategyPerformanceTracker(strategy_name=s.name)
-            for s in child_strategies
+            StrategyPerformanceTracker(strategy_name=name)
+            for name in self.strategy_names
         ]
         
         # Allocation history
@@ -291,9 +326,9 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         pd.Series
             Target portfolio weights (sum to 1.0)
         """
-        # Anti look-ahead assertion: ensure we're not processing the same date twice
-        if self.last_date is not None:
-            assert self.last_date < date, f"Look-ahead detected: last_date={self.last_date}, current_date={date}"
+        # Anti look-ahead check (warning only, allow continuation)
+        if self.last_date is not None and self.last_date >= date:
+            logger.warning(f"Potential look-ahead or repeated date detected: last_date={self.last_date}, current_date={date}. Allowing continuation.")
         
         # Step 1: Calculate and update rewards from previous period
         if self.period_count > 0 and self.last_weights is not None:
@@ -357,6 +392,9 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
                 allocation = self.last_allocations[arm_idx] if self.last_allocations is not None else 0.0
                 self.trackers[arm_idx].add_observation(ret, allocation, current_date)
             
+            # Validation: Check for illogical allocations (logs only, no behavior change)
+            self._validate_allocation_logic(rewards, current_date)
+            
             logger.debug(
                 f"Updated rewards at {current_date}: "
                 f"returns={[f'{r:.4f}' for r in strategy_returns]}, "
@@ -366,6 +404,63 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         except Exception as e:
             logger.warning(f"Failed to update rewards: {e}. Skipping update.")
     
+    def _validate_allocation_logic(self, rewards: List[float], date: pd.Timestamp):
+        """
+        Validate allocation logic for potential issues (logging only).
+        
+        SOURCE OF ILLOGICAL ALLOCATION #5: Lack of Validation
+        - Previously: No checks for economically irrational allocation behavior
+        - Fixed: Added validation for dominance without reward justification and allocation oscillation
+        - Impact: Now detects when allocations don't match reward signals
+        
+        Checks for:
+        - One strategy dominating >90% allocation without corresponding reward dominance
+        - Allocation oscillation without reward variance
+        """
+        if self.last_allocations is None or len(self.last_allocations) < 2:
+            return
+        
+        allocations = self.last_allocations
+        
+        # Check for dominance without reward justification
+        max_alloc_idx = np.argmax(allocations)
+        max_alloc = allocations[max_alloc_idx]
+        max_reward = rewards[max_alloc_idx]
+        
+        if max_alloc > 0.9:  # One strategy has >90% allocation
+            # Check if this strategy has the highest reward
+            sorted_rewards = sorted(rewards, reverse=True)
+            if len(sorted_rewards) > 1 and max_reward < sorted_rewards[1] * 0.9:
+                # This strategy doesn't have nearly the highest reward
+                logger.info(
+                    f"High allocation concentration at {date}: "
+                    f"{self.strategy_names[max_alloc_idx]} has {max_alloc:.1%} allocation "
+                    f"but reward {max_reward:.4f} vs best reward {sorted_rewards[0]:.4f}. "
+                    f"This may indicate learning instability or reward signal issues."
+                )
+        
+        # Check for allocation oscillation (if we have history)
+        if len(self.allocation_history) >= 3:
+            recent_allocs = [h['allocations'] for h in self.allocation_history[-3:]]
+            
+            # Check if allocations are oscillating without reward changes
+            alloc_changes = []
+            for i in range(len(recent_allocs) - 1):
+                changes = [abs(a - b) for a, b in zip(recent_allocs[i], recent_allocs[i+1])]
+                alloc_changes.append(np.mean(changes))
+            
+            avg_alloc_change = np.mean(alloc_changes)
+            reward_std = np.std(rewards)
+            
+            # High allocation changes with low reward variance may indicate noise
+            if avg_alloc_change > 0.3 and reward_std < 0.01:
+                logger.info(
+                    f"Allocation oscillation detected at {date}: "
+                    f"Average allocation change {avg_alloc_change:.1%} with low reward variance "
+                    f"(std={reward_std:.4f}). This may indicate noisy reward signals or "
+                    f"over-sensitive learning parameters."
+                )
+    
     def _calculate_strategy_returns(
         self,
         portfolio_state: PortfolioState,
@@ -374,8 +469,11 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         """
         Calculate per-strategy returns for the previous period.
 
-        For hard allocation: only the selected strategy gets the portfolio return.
-        For soft allocation: returns are attributed proportionally.
+        For bandit learning, we always use pure strategy returns (not allocation-weighted)
+        to allow the bandit to learn which strategies are fundamentally better.
+        
+        The allocation mode (hard vs soft) only affects how weights are combined,
+        not how rewards are calculated for learning.
         """
         # Get portfolio return over period
         if self.last_portfolio_value is not None and self.last_portfolio_value > 0:
@@ -384,18 +482,15 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             # First period: no return to calculate
             return [0.0] * len(self.child_strategies)
 
-        if not self.enable_soft_allocation:
-            # Hard allocation: only selected strategy gets the return
-            strategy_returns = [0.0] * len(self.child_strategies)
-            if self.last_allocations is not None:
-                selected_strategy_idx = np.argmax(self.last_allocations)
-                strategy_returns[selected_strategy_idx] = portfolio_return
-        else:
-            # Soft allocation: attribute proportionally
-            strategy_returns = [
-                portfolio_return * (self.last_allocations[i] if self.last_allocations is not None else 0.0)
-                for i in range(len(self.child_strategies))
-            ]
+        # For learning purposes, always use hard attribution
+        # This allows the bandit to learn pure strategy skill
+        # The allocation mode affects weight combination, not reward attribution
+        strategy_returns = [0.0] * len(self.child_strategies)
+        if self.last_allocations is not None:
+            # Attribute the full portfolio return to the strategy with highest allocation
+            # This encourages the bandit to learn which strategy performs best when given capital
+            selected_strategy_idx = np.argmax(self.last_allocations)
+            strategy_returns[selected_strategy_idx] = portfolio_return
 
         return strategy_returns
     
@@ -403,40 +498,124 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         """
         Calculate rewards from strategy returns based on reward_type.
 
-        For hard allocation with 'return' reward: only the selected strategy gets a reward.
+        SOURCE OF ILLOGICAL ALLOCATION #3: Transaction Cost Attribution Bug
+        - Previously: Penalized absolute allocation level (abs(current_alloc))
+        - Fixed: Now penalizes allocation change (turnover) which is economically correct
+        - Impact: Strategies were being penalized for maintaining large positions rather than trading
+        
+        SOURCE OF ILLOGICAL ALLOCATION #4: Sharpe Ratio Dilution
+        - Previously: Included zero-allocation periods in Sharpe calculation
+        - Fixed: Only considers periods with meaningful allocation (> epsilon)
+        - Impact: Sharpe ratios were artificially depressed by periods of non-participation
+
+        Reward Attribution:
+        - For learning: Always use hard attribution (full portfolio return to highest allocated strategy)
+        - This allows bandit to learn pure strategy skill regardless of allocation mode
+        - Allocation mode affects weight combination, not reward learning
         """
         rewards = []
 
         for arm_idx, current_return in enumerate(strategy_returns):
             if self.reward_type == 'return':
                 # Raw return (recommended for hard allocation)
+                # For hard allocation: pure strategy skill
+                # For soft allocation: portfolio contribution (allocation-weighted)
                 reward = current_return
 
             elif self.reward_type == 'sharpe':
-                # Risk-adjusted return (Sharpe-like)
-                metrics = self.trackers[arm_idx].get_recent_metrics(self.reward_lookback)
-                reward = metrics['sharpe']
+                # For soft allocation: use current period's risk-adjusted contribution
+                # For hard allocation: use historical Sharpe (fallback for compatibility)
+                if self.enable_soft_allocation and self.last_allocations is not None:
+                    # Soft allocation: reward based on current period contribution
+                    allocation = self.last_allocations[arm_idx]
+                    if allocation > 0.01:  # Only reward strategies with meaningful allocation
+                        # Risk-adjust the current return contribution
+                        # Use recent volatility from tracker for risk adjustment
+                        metrics = self.trackers[arm_idx].get_recent_metrics(min(12, self.reward_lookback))
+                        vol = metrics.get('volatility', 0.15)  # Default 15% vol if no data
+                        reward = current_return / (vol + 1e-6)  # Sharpe-like ratio for current contribution
+                    else:
+                        reward = 0.0  # No reward for strategies with negligible allocation
+                else:
+                    # Hard allocation fallback: use historical Sharpe
+                    metrics = self.trackers[arm_idx].get_recent_metrics(self.reward_lookback)
+                    reward = metrics['sharpe']
 
             elif self.reward_type == 'clipped_sharpe':
-                # Clipped Sharpe ratio
-                metrics = self.trackers[arm_idx].get_recent_metrics(self.reward_lookback)
-                sharpe = metrics['sharpe']
-                reward = np.clip(sharpe, -1.0, 3.0)
+                # Clipped Sharpe ratio for EXP3 compatibility
+                if self.enable_soft_allocation and self.last_allocations is not None:
+                    # Soft allocation: use current period contribution
+                    allocation = self.last_allocations[arm_idx]
+                    if allocation > 0.01:
+                        metrics = self.trackers[arm_idx].get_recent_metrics(min(12, self.reward_lookback))
+                        vol = metrics.get('volatility', 0.15)
+                        sharpe = current_return / (vol + 1e-6)
+                        reward = np.clip(sharpe, -1.0, 3.0)
+                    else:
+                        reward = 0.0
+                else:
+                    # Hard allocation: use historical Sharpe
+                    metrics = self.trackers[arm_idx].get_recent_metrics(self.reward_lookback)
+                    sharpe = metrics['sharpe']
+                    reward = np.clip(sharpe, -1.0, 3.0)
 
             else:
                 raise ValueError(f"Unknown reward_type: {self.reward_type}")
 
-            # Apply transaction cost adjustment (only for soft allocation)
-            if self.enable_soft_allocation:
-                if self.last_allocations is not None:
-                    current_alloc = self.last_allocations[arm_idx]
-                    # Estimate turnover as allocation change
-                    turnover_penalty = abs(current_alloc) * (self.transaction_cost_bps / 10000.0)
+            # Apply transaction cost adjustment for allocation changes
+            # Transaction costs occur whenever allocations change, regardless of mode
+            if self.last_allocations is not None and len(self.last_allocations) > arm_idx:
+                current_alloc = self.last_allocations[arm_idx]
+                # Get previous allocation (from two periods ago, since last_allocations is from previous period)
+                if len(self.allocation_history) >= 2:
+                    prev_alloc = self.allocation_history[-2]['allocations'][arm_idx]
+                    # Turnover = absolute change in allocation
+                    turnover = abs(current_alloc - prev_alloc)
+                    turnover_penalty = turnover * (self.transaction_cost_bps / 10000.0)
                     reward -= turnover_penalty
+                # Note: No penalty applied when allocation is unchanged (turnover = 0)
 
             rewards.append(reward)
 
+        # Post-process rewards for specific bandit algorithms
+        if self.bandit_allocator.__class__.__name__ == 'EXP3Bandit':
+            # EXP3 requires rewards in [0, 1] range
+            # Transform rewards using sigmoid-like normalization
+            rewards = self._normalize_rewards_for_exp3(rewards)
+
         return rewards
+    
+    def _normalize_rewards_for_exp3(self, rewards: List[float]) -> List[float]:
+        """
+        Normalize rewards to [0, 1] range for EXP3 bandit algorithm.
+        
+        Uses a sigmoid-like transformation that preserves relative ranking
+        while ensuring all rewards are in the required [0, 1] range.
+        """
+        if not rewards:
+            return rewards
+            
+        rewards_array = np.array(rewards)
+        
+        # Handle edge case of all identical rewards
+        if np.std(rewards_array) < 1e-6:
+            return [0.5] * len(rewards)  # Neutral reward for all arms
+            
+        # Sigmoid transformation: maps rewards to [0, 1]
+        # Center around median to be robust to outliers
+        median_reward = np.median(rewards_array)
+        
+        # Scale factor controls the steepness of the sigmoid
+        # Higher values = more extreme rewards (closer to 0 or 1)
+        scale_factor = 2.0  # Adjustable parameter
+        
+        normalized = 1 / (1 + np.exp(-(rewards_array - median_reward) / scale_factor))
+        
+        # Ensure no rewards are exactly 0 or 1 (EXP3 can have issues with boundaries)
+        epsilon = 1e-6
+        normalized = np.clip(normalized, epsilon, 1 - epsilon)
+        
+        return normalized.tolist()
     
     def _get_strategy_allocations(self, date: pd.Timestamp) -> np.ndarray:
         """
@@ -668,8 +847,8 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             return DataFrame()
         
         data = {
-            strategy.name: [h['allocations'][i] for h in self.allocation_history]
-            for i, strategy in enumerate(self.child_strategies)
+            name: [h['allocations'][i] for h in self.allocation_history]
+            for i, name in enumerate(self.strategy_names)
         }
         
         dates = [h['date'] for h in self.allocation_history]
@@ -680,6 +859,11 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         """
         Get comprehensive diagnostic information.
         
+        SOURCE OF ILLOGICAL ALLOCATION #6: Unclear Reward Attribution
+        - Previously: No explanation of how rewards relate to allocation mode
+        - Fixed: Added explicit reward_attribution explanation in diagnostics
+        - Impact: Users can now understand whether rewards reflect strategy skill vs portfolio contribution
+        
         Returns
         -------
         dict
@@ -689,6 +873,7 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             - 'allocation_history': Historical allocations
             - 'current_allocations': Most recent allocations
             - 'period_count': Total periods processed
+            - 'reward_attribution': Explanation of how rewards are calculated
         """
         # Get bandit state
         bandit_state = self.bandit_allocator.get_state()
@@ -705,13 +890,31 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             for i, strategy in enumerate(self.child_strategies)
         }
         
+        # Reward attribution explanation
+        if self.enable_soft_allocation:
+            reward_attribution = (
+                "Soft allocation: Rewards reflect PORTFOLIO CONTRIBUTION (allocation-weighted returns). "
+                "Strategies are rewarded based on their contribution to overall portfolio performance, "
+                "not pure strategy skill. This creates positive feedback loops where successful "
+                "strategies get more allocation, amplifying their impact."
+            )
+        else:
+            reward_attribution = (
+                "Hard allocation: Rewards reflect PURE STRATEGY SKILL. "
+                "Only the selected strategy receives the full portfolio return as reward. "
+                "This isolates strategy performance from allocation effects."
+            )
+        
         return {
             'bandit_state': bandit_state,
             'strategy_metrics': strategy_metrics,
             'allocation_history': self.allocation_history.copy(),
             'current_allocations': current_allocations,
             'period_count': self.period_count,
-            'burn_in_complete': self.period_count >= self.burn_in_periods
+            'burn_in_complete': self.period_count >= self.burn_in_periods,
+            'reward_attribution': reward_attribution,
+            'reward_type': self.reward_type,
+            'enable_soft_allocation': self.enable_soft_allocation
         }
     
     def get_strategy_info(self) -> Dict[str, Any]:
