@@ -334,7 +334,7 @@ class PortfolioEngine:
                     train_window_months=24,
                     test_window_months=6,
                     step_months=3,
-                    rebalance_freq=self.rebalance_freq,
+                    rebalance_freq=rebalance_freq if rebalance_freq is not None else self.rebalance_freq,
                     anchored=False
                 )
                 # Return the first (most recent) result for compatibility
@@ -346,7 +346,7 @@ class PortfolioEngine:
                     end_date=end_date,
                     n_splits=5,
                     test_size_months=6,
-                    rebalance_freq=self.rebalance_freq
+                    rebalance_freq=rebalance_freq if rebalance_freq is not None else self.rebalance_freq
                 )
                 # Return aggregate result (could be improved)
                 return result.individual_results[0] if result.individual_results else None
@@ -357,7 +357,7 @@ class PortfolioEngine:
                     end_date=end_date,
                     n_simulations=100,
                     method='bootstrap',
-                    rebalance_freq=self.rebalance_freq
+                    rebalance_freq=rebalance_freq if rebalance_freq is not None else self.rebalance_freq
                 )
                 # Return aggregate result
                 return result.individual_results[0] if result.individual_results else None
@@ -368,7 +368,7 @@ class PortfolioEngine:
                     end_date=end_date,
                     n_trials=50,
                     randomization_type='start_date',
-                    rebalance_freq=self.rebalance_freq
+                    rebalance_freq=rebalance_freq if rebalance_freq is not None else self.rebalance_freq
                 )
                 # Return aggregate result
                 return result.individual_results[0] if result.individual_results else None

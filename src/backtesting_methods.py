@@ -200,7 +200,8 @@ class BacktestingMethods:
                     self.prices,
                     initial_capital=self.initial_capital,
                     transaction_cost_bps=self.transaction_cost_bps,
-                    slippage_bps=self.slippage_bps
+                    slippage_bps=self.slippage_bps,
+                    rebalance_freq=rebalance_freq
                 )
                 # Note: Strategy should be re-initialized with train period for optimization
                 result = portfolio.run_backtest(
@@ -295,7 +296,8 @@ class BacktestingMethods:
                     self.prices,
                     initial_capital=self.initial_capital,
                     transaction_cost_bps=self.transaction_cost_bps,
-                    slippage_bps=self.slippage_bps
+                    slippage_bps=self.slippage_bps,
+                    rebalance_freq=rebalance_freq
                 )
                 
                 result = portfolio.run_backtest(
@@ -397,7 +399,8 @@ class BacktestingMethods:
                     synthetic_prices,
                     initial_capital=self.initial_capital,
                     transaction_cost_bps=self.transaction_cost_bps,
-                    slippage_bps=self.slippage_bps
+                    slippage_bps=self.slippage_bps,
+                    rebalance_freq=rebalance_freq
                 )
                 
                 result = portfolio.run_backtest(
@@ -485,7 +488,8 @@ class BacktestingMethods:
                         self.prices,
                         initial_capital=self.initial_capital,
                         transaction_cost_bps=self.transaction_cost_bps,
-                        slippage_bps=self.slippage_bps
+                        slippage_bps=self.slippage_bps,
+                        rebalance_freq=rebalance_freq
                     )
                     
                     result = portfolio.run_backtest(
@@ -522,7 +526,8 @@ class BacktestingMethods:
                         permuted_prices,
                         initial_capital=self.initial_capital,
                         transaction_cost_bps=self.transaction_cost_bps,
-                        slippage_bps=self.slippage_bps
+                        slippage_bps=self.slippage_bps,
+                        rebalance_freq=rebalance_freq
                     )
                     
                     result = portfolio.run_backtest(
@@ -555,7 +560,8 @@ class BacktestingMethods:
                         self.prices,
                         initial_capital=self.initial_capital,
                         transaction_cost_bps=self.transaction_cost_bps,
-                        slippage_bps=self.slippage_bps
+                        slippage_bps=self.slippage_bps,
+                        rebalance_freq=rebalance_freq
                     )
                     
                     result = portfolio.run_backtest(

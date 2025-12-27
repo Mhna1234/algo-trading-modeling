@@ -117,10 +117,10 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         Signal generator (unused, kept for interface consistency)
     optimizer : Optional
         Optimizer (unused for bandit wrapper)
-    reward_type : str, default='sharpe'
+    reward_type : str, default='return'
         Type of reward calculation:
+        - 'return': Raw returns (recommended for hard allocation)
         - 'sharpe': Risk-adjusted return (mean/std)
-        - 'return': Raw returns (not recommended)
         - 'clipped_sharpe': Bounded Sharpe ratio [-1, 3]
     reward_lookback : int, default=12
         Number of periods to use for reward calculation
@@ -130,7 +130,7 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         Minimum allocation per strategy (prevents total exclusion)
     transaction_cost_bps : float, default=5.0
         Transaction cost in basis points for reward adjustment
-    enable_soft_allocation : bool, default=True
+    enable_soft_allocation : bool, default=False
         If True, use soft allocation (weighted average of all strategies)
         If False, use hard allocation (select single best strategy)
     fallback_on_error : bool, default=True
@@ -176,12 +176,12 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         bandit_allocator: BanditAllocator,
         strategy=None,
         optimizer=None,
-        reward_type: str = 'sharpe',
+        reward_type: str = 'return',
         reward_lookback: int = 12,
         burn_in_periods: int = 12,
         min_allocation: float = 0.05,
         transaction_cost_bps: float = 5.0,
-        enable_soft_allocation: bool = True,
+        enable_soft_allocation: bool = False,
         fallback_on_error: bool = True,
         random_seed: Optional[int] = None,
         **kwargs
@@ -340,12 +340,9 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
     ) -> List[float]:
         """
         Calculate per-strategy returns for the previous period.
-        
-        This uses a simplified approach: calculate portfolio return and attribute
-        it proportionally to each strategy based on its allocation.
-        
-        Note: This is an approximation. True attribution would require tracking
-        separate sub-portfolios per strategy, which adds significant complexity.
+
+        For hard allocation: only the selected strategy gets the portfolio return.
+        For soft allocation: returns are attributed proportionally.
         """
         # Get portfolio return over period
         if self.last_portfolio_value is not None and self.last_portfolio_value > 0:
@@ -353,56 +350,59 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         else:
             # First period: no return to calculate
             return [0.0] * len(self.child_strategies)
-        
-        # Attribute return to strategies proportional to their allocation
-        # This is a simplification but maintains no-lookahead property
-        strategy_returns = [
-            portfolio_return * (self.last_allocations[i] if self.last_allocations is not None else 0.0)
-            for i in range(len(self.child_strategies))
-        ]
-        
+
+        if not self.enable_soft_allocation:
+            # Hard allocation: only selected strategy gets the return
+            strategy_returns = [0.0] * len(self.child_strategies)
+            if self.last_allocations is not None:
+                selected_strategy_idx = np.argmax(self.last_allocations)
+                strategy_returns[selected_strategy_idx] = portfolio_return
+        else:
+            # Soft allocation: attribute proportionally
+            strategy_returns = [
+                portfolio_return * (self.last_allocations[i] if self.last_allocations is not None else 0.0)
+                for i in range(len(self.child_strategies))
+            ]
+
         return strategy_returns
     
     def _calculate_rewards(self, strategy_returns: List[float]) -> List[float]:
         """
         Calculate rewards from strategy returns based on reward_type.
-        
-        Applies risk adjustment and transaction cost penalty.
+
+        For hard allocation with 'return' reward: only the selected strategy gets a reward.
         """
         rewards = []
-        
+
         for arm_idx, current_return in enumerate(strategy_returns):
-            tracker = self.trackers[arm_idx]
-            
             if self.reward_type == 'return':
-                # Raw return (not recommended)
+                # Raw return (recommended for hard allocation)
                 reward = current_return
-                
+
             elif self.reward_type == 'sharpe':
                 # Risk-adjusted return (Sharpe-like)
-                metrics = tracker.get_recent_metrics(self.reward_lookback)
+                metrics = self.trackers[arm_idx].get_recent_metrics(self.reward_lookback)
                 reward = metrics['sharpe']
-                
+
             elif self.reward_type == 'clipped_sharpe':
                 # Clipped Sharpe ratio
-                metrics = tracker.get_recent_metrics(self.reward_lookback)
+                metrics = self.trackers[arm_idx].get_recent_metrics(self.reward_lookback)
                 sharpe = metrics['sharpe']
                 reward = np.clip(sharpe, -1.0, 3.0)
-                
+
             else:
                 raise ValueError(f"Unknown reward_type: {self.reward_type}")
-            
-            # Apply transaction cost adjustment
-            # Cost is proportional to turnover (allocation change)
-            if self.last_allocations is not None:
-                current_alloc = self.last_allocations[arm_idx]
-                # Estimate turnover as allocation change
-                # (This is simplified; true cost requires weight change tracking)
-                turnover_penalty = abs(current_alloc) * (self.transaction_cost_bps / 10000.0)
-                reward -= turnover_penalty
-            
+
+            # Apply transaction cost adjustment (only for soft allocation)
+            if self.enable_soft_allocation:
+                if self.last_allocations is not None:
+                    current_alloc = self.last_allocations[arm_idx]
+                    # Estimate turnover as allocation change
+                    turnover_penalty = abs(current_alloc) * (self.transaction_cost_bps / 10000.0)
+                    reward -= turnover_penalty
+
             rewards.append(reward)
-        
+
         return rewards
     
     def _get_strategy_allocations(self, date: pd.Timestamp) -> np.ndarray:
@@ -430,8 +430,8 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             allocations = np.zeros(n_strategies)
             allocations[selected_arm] = 1.0
         
-        # Apply minimum allocation constraint
-        if self.min_allocation > 0:
+        # Apply minimum allocation constraint (only for soft allocation)
+        if self.enable_soft_allocation and self.min_allocation > 0:
             allocations = self._apply_min_allocation(allocations)
         
         return allocations
@@ -441,24 +441,42 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         Compute soft allocations using bandit statistics.
         
         Uses empirical mean estimates to create a softmax-like allocation.
+        Handles different bandit types that may not have 'counts'.
         """
         n_strategies = len(self.child_strategies)
         
         # Get bandit state
         state = self.bandit_allocator.get_state()
-        counts = state['counts']
+        
+        # Handle different bandit types
+        if 'counts' in state:
+            counts = state['counts']
+        else:
+            # For bandits without counts (like EXP3), use uniform weights
+            # or derive from available statistics
+            if 'weights' in state:
+                # EXP3 case: use weights as proxy for experience
+                weights = np.array(state['weights'])
+                # Normalize weights to get relative experience
+                counts = weights / np.sum(weights) * 10  # Scale to reasonable count values
+            else:
+                # Fallback: assume equal experience
+                counts = np.ones(n_strategies)
         
         # Get mean values (UCB stores 'values', Thompson needs computation)
         if 'values' in state:
             # UCB case: use stored average rewards
             values = state['values']
-        else:
+        elif 'sums' in state and 'counts' in state:
             # Thompson case: compute means from sufficient statistics
             sums = state.get('sums', [0.0] * n_strategies)
             values = [
                 sums[i] / counts[i] if counts[i] > 0 else 0.0
                 for i in range(n_strategies)
             ]
+        else:
+            # No value information available
+            values = [0.0] * n_strategies
         
         # Avoid division by zero
         if all(c == 0 for c in counts):

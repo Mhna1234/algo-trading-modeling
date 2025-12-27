@@ -108,8 +108,8 @@ class BaseStrategyWrapper(ABC):
         }
     
     def get_rebalancing_frequency(self) -> str:
-        """Return rebalancing frequency hint (default 'M'). PortfolioEngine uses this."""
-        return self.params.get('rebalancing_frequency', 'M')
+        """Return rebalancing frequency hint (default 'Q'). PortfolioEngine uses this."""
+        return self.params.get('rebalancing_frequency', 'Q')
     
     def evaluate_reward(self, returns: pd.Series, risk_free_rate: float = 0.0) -> float:
         """Compute reward for bandit (default Sharpe-like)."""
