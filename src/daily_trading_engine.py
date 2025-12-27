@@ -132,7 +132,7 @@ class DailyTradingEngine:
         """
         try:
             # Get latest checkpoint name
-            checkpoint_files = list(self.checkpoint_manager.checkpoint_dir.glob("checkpoint_*.json"))
+            checkpoint_files = list(self.checkpoint_manager.checkpoint_dir.glob("*.json"))
             if not checkpoint_files:
                 return None, None
 

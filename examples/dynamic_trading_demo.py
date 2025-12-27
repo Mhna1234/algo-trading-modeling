@@ -121,7 +121,7 @@ class DynamicTradingDemo:
     def __init__(self, config: TradingConfig):
         self.config = config
         self.checkpoint_manager = CheckpointManager(self.config.checkpoint_dir)
-        self.results_dir = self.config.results_dir
+        self.results_dir = Path(self.config.results_dir)
         self.results_dir.mkdir(exist_ok=True)
 
         # Initialize components
@@ -190,7 +190,7 @@ class DynamicTradingDemo:
             # Create bandit strategy wrapper
             self.bandit_strategy = BanditStrategyWrapper(
                 child_strategies=self.strategies,
-                bandit=self.bandit,
+                bandit_allocator=self.bandit,
                 burn_in_periods=self.config.burn_in_periods
             )
             logger.info(f"Enabled {self.config.bandit_type.upper()} bandit wrapper")
@@ -229,7 +229,10 @@ class DynamicTradingDemo:
         logger.info("Running simulation mode...")
 
         # Reset any existing checkpoints for clean simulation
-        self.checkpoint_manager.reset_system()
+        import shutil
+        if self.checkpoint_manager.checkpoint_dir.exists():
+            shutil.rmtree(self.checkpoint_manager.checkpoint_dir)
+        self.checkpoint_manager.checkpoint_dir.mkdir(exist_ok=True)
 
         # Initialize daily trading engine
         engine = DailyTradingEngine(
@@ -277,17 +280,50 @@ class DynamicTradingDemo:
                 continue
 
         # Load final result from checkpoint
-        final_result = self.checkpoint_manager.load_checkpoint()
-        if final_result is None:
+        checkpoint_files = list(self.checkpoint_manager.checkpoint_dir.glob("checkpoint_*.json"))
+        if checkpoint_files:
+            latest_checkpoint = max(checkpoint_files, key=lambda x: x.stat().st_mtime)
+            checkpoint_name = latest_checkpoint.stem
+            final_result, _ = self.checkpoint_manager.load_checkpoint_with_bandit(checkpoint_name)
+        else:
             final_result = backtest_result
 
         logger.info("Simulation completed successfully")
         return final_result
 
     def run_live_mode(self, data: pd.DataFrame) -> PortfolioResult:
-        """Run real-time trading mode (placeholder for future implementation)."""
-        logger.warning("Live mode not yet implemented - falling back to simulation")
-        return self.run_simulation_mode(data)
+        """Run real-time trading mode using DailyTradingEngine."""
+        logger.info("Running live trading mode...")
+
+        # Initialize daily trading engine
+        engine = DailyTradingEngine(
+            data_dir='data',
+            checkpoint_dir=str(self.config.checkpoint_dir),
+            strategy_config={
+                'bandit_type': self.config.bandit_type,
+                'burn_in_periods': self.config.burn_in_periods
+            }
+        )
+
+        # Attempt to run daily update
+        result = engine.run_daily_update(self.bandit)
+
+        if result is None:
+            logger.warning("No live update performed - check for new data or initialize from backtest/simulation first")
+            # Fall back to loading latest checkpoint
+            checkpoint_files = list(self.checkpoint_manager.checkpoint_dir.glob("checkpoint_*.json"))
+            if checkpoint_files:
+                latest_checkpoint = max(checkpoint_files, key=lambda x: x.stat().st_mtime)
+                checkpoint_name = latest_checkpoint.stem
+                checkpoint_result, _ = self.checkpoint_manager.load_checkpoint_with_bandit(checkpoint_name)
+                logger.info("Loaded latest checkpoint as fallback")
+                return checkpoint_result
+            else:
+                logger.error("No checkpoint available - run backtest or simulation first")
+                raise ValueError("Live mode requires existing checkpoint from backtest or simulation")
+
+        logger.info("Live trading update completed")
+        return result
 
     def run(self) -> PortfolioResult:
         """Main execution method."""
