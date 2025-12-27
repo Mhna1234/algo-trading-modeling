@@ -15,7 +15,7 @@ trading platform while maintaining all existing functionality.
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 from datetime import datetime, timedelta
 import logging
 
