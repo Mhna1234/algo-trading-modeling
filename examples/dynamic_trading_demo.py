@@ -218,7 +218,8 @@ class DynamicTradingDemo:
             strategy_wrapper=strategy,
             start_date=self.config.start_date,
             end_date=self.config.end_date,
-            rebalance_freq=self.config.rebalance_frequency
+            rebalance_freq=self.config.rebalance_frequency,
+            backtest_method='vanilla'
         )
 
         logger.info("Backtest completed successfully")
@@ -354,15 +355,15 @@ class DynamicTradingDemo:
         return result
 
     def generate_reports(self, result: PortfolioResult):
-        """Generate comprehensive reports and visualizations."""
+        """Generate comprehensive reports and visualizations with checkpoint metadata."""
         logger.info("Generating reports...")
 
-        # Save results to CSV
+        # Save results to CSV (existing functionality)
         result.equity_curve.to_csv(self.results_dir / 'dynamic_trading_equity_curve.csv')
         if hasattr(result, 'weights_history') and not result.weights_history.empty:
             result.weights_history.to_csv(self.results_dir / 'dynamic_trading_weights.csv')
 
-        # Generate performance summary from result
+        # Generate performance summary from result (existing functionality)
         summary_data = {
             'total_return': result.summary_metrics.get('total_return', 0),
             'sharpe_ratio': result.summary_metrics.get('sharpe_ratio', 0),
@@ -373,10 +374,128 @@ class DynamicTradingDemo:
         summary = pd.DataFrame([summary_data])
         summary.to_csv(self.results_dir / 'dynamic_trading_summary.csv')
 
-        # Create visualizations
+        # NEW: Save checkpoint metadata alongside results for API-ready format
+        self._save_checkpoint_metadata(result)
+
+        # Create visualizations (existing functionality)
         self.create_plots(result)
 
         logger.info(f"Reports saved to {self.results_dir}")
+
+    def _save_checkpoint_metadata(self, result: PortfolioResult):
+        """Save checkpoint metadata in API-ready JSON format."""
+        logger.info("Saving checkpoint metadata for API access...")
+
+        # Get latest checkpoint if available
+        checkpoint_metadata = None
+        latest_checkpoint_file = None
+
+        if self.config.checkpoint_enabled and self.checkpoint_manager.checkpoint_dir.exists():
+            checkpoint_files = list(self.checkpoint_manager.checkpoint_dir.glob("*.json"))
+            if checkpoint_files:
+                # Get the most recent checkpoint
+                latest_checkpoint_file = max(checkpoint_files, key=lambda x: x.stat().st_mtime)
+
+                try:
+                    with open(latest_checkpoint_file, 'r') as f:
+                        checkpoint_data = json.load(f)
+                        
+                    # Check if it has the new metadata format or old format
+                    if "_metadata" in checkpoint_data:
+                        checkpoint_metadata = checkpoint_data["_metadata"]
+                    else:
+                        # Create metadata from available checkpoint data
+                        checkpoint_metadata = {
+                            "checkpoint_name": latest_checkpoint_file.stem,
+                            "created_at": datetime.now().isoformat(),  # We don't have creation time for old format
+                            "version": "1.0",
+                            "storage_format": "json",
+                            "bandit_state_available": False  # Old format doesn't have bandit state
+                        }
+                        
+                except Exception as e:
+                    logger.warning(f"Could not load checkpoint metadata: {e}")
+
+        # Create API-ready data structure
+        api_data = {
+            "metadata": {
+                "execution_mode": self.config.mode,
+                "timestamp": datetime.now().isoformat(),
+                "config_summary": {
+                    "initial_capital": self.config.initial_capital,
+                    "bandit_type": self.config.bandit_type,
+                    "rebalance_frequency": self.config.rebalance_frequency,
+                    "transaction_cost_bps": self.config.transaction_cost_bps,
+                    "start_date": self.config.start_date,
+                    "end_date": self.config.end_date
+                }
+            },
+            "performance_summary": {
+                "total_return": result.summary_metrics.get('total_return', 0),
+                "sharpe_ratio": result.summary_metrics.get('sharpe_ratio', 0),
+                "max_drawdown": result.summary_metrics.get('max_drawdown', 0),
+                "volatility": result.summary_metrics.get('volatility', 0),
+                "final_portfolio_value": result.equity_curve.iloc[-1],
+                "total_periods": len(result.equity_curve)
+            },
+            "equity_curve": {
+                "dates": result.equity_curve.index.strftime('%Y-%m-%d').tolist(),
+                "values": result.equity_curve.values.tolist()
+            }
+        }
+
+        # Add checkpoint metadata (always include structure for API compatibility)
+        api_data["checkpoint_info"] = {
+            "checkpoint_available": checkpoint_metadata is not None,
+            "checkpoint_name": checkpoint_metadata.get("checkpoint_name") if checkpoint_metadata else None,
+            "created_at": checkpoint_metadata.get("created_at") if checkpoint_metadata else None,
+            "version": checkpoint_metadata.get("version", "1.0") if checkpoint_metadata else "1.0",
+            "bandit_state_available": checkpoint_metadata.get("bandit_state_available", False) if checkpoint_metadata else False,
+            "checkpoint_file": str(latest_checkpoint_file) if latest_checkpoint_file else None
+        }
+
+        # Add bandit state summary if available
+        if checkpoint_metadata and checkpoint_metadata.get("bandit_state_available") and "_metadata" in locals() and "_metadata" in checkpoint_data:
+            bandit_state = checkpoint_data["_metadata"].get("bandit_state", {})
+            api_data["checkpoint_info"]["bandit_summary"] = {
+                "algorithm": bandit_state.get("algorithm"),
+                "num_strategies": len(bandit_state.get("strategy_names", [])),
+                "total_pulls": sum(bandit_state.get("pull_counts", [])),
+                "last_rewards": bandit_state.get("last_rewards", [])[-5:] if bandit_state.get("last_rewards") else []
+            }
+
+        # Add weights history if available
+        if hasattr(result, 'weights_history') and not result.weights_history.empty:
+            api_data["weights_history"] = {
+                "dates": result.weights_history.index.strftime('%Y-%m-%d').tolist(),
+                "weights": result.weights_history.to_dict('records')
+            }
+
+        # Save API-ready JSON
+        api_file = self.results_dir / 'dynamic_trading_api_data.json'
+        with open(api_file, 'w') as f:
+            json.dump(api_data, f, indent=2, default=str)
+
+        logger.info(f"API-ready data saved to {api_file}")
+
+        # Also save a summary JSON for quick API access
+        summary_api_file = self.results_dir / 'trading_summary.json'
+        summary_data = {
+            "status": "completed",
+            "execution_mode": self.config.mode,
+            "final_value": result.equity_curve.iloc[-1],
+            "total_return": result.summary_metrics.get('total_return', 0),
+            "sharpe_ratio": result.summary_metrics.get('sharpe_ratio', 0),
+            "max_drawdown": result.summary_metrics.get('max_drawdown', 0),
+            "last_updated": datetime.now().isoformat(),
+            "data_points": len(result.equity_curve),
+            "checkpoint_available": checkpoint_metadata is not None
+        }
+
+        with open(summary_api_file, 'w') as f:
+            json.dump(summary_data, f, indent=2, default=str)
+
+        logger.info(f"Trading summary saved to {summary_api_file}")
 
     def create_plots(self, result: PortfolioResult):
         """Create performance visualization plots."""

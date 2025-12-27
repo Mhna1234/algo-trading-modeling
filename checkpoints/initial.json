@@ -1,110 +1,110 @@
 {
   "summary_metrics": {
-    "total_return": 0.06085170550412866,
-    "annual_return": 0.12333075446632047,
-    "annual_volatility": 0.16298034362262467,
-    "sharpe_ratio": 0.7567216495253474,
-    "sortino_ratio": 0.5305101027623228,
-    "max_drawdown": -0.10076506711522903,
-    "max_drawdown_duration_days": 80,
-    "calmar_ratio": 1.2239435550148212,
-    "win_rate": 0.5234375,
-    "profit_factor": 1.2229154056686133,
-    "var_95": -0.009094592174447464,
-    "cvar_95": -0.027804665277180254,
-    "total_trades": 7,
-    "avg_turnover": 0.1812728941908383,
-    "total_transaction_costs": 12687.324470579386,
-    "total_slippage": 63.436622352896926,
-    "total_costs": 12750.761092932284,
-    "final_equity": 106085.17055041286,
-    "n_trading_days": 128
+    "total_return": 2.792371635178696,
+    "annual_return": 0.1582146241802953,
+    "annual_volatility": 0.1934354590706842,
+    "sharpe_ratio": 0.8179194494142944,
+    "sortino_ratio": 0.8615918948898741,
+    "max_drawdown": -0.31619691531167704,
+    "max_drawdown_duration_days": 522,
+    "calmar_ratio": 0.5003673866468377,
+    "win_rate": 0.559685177087888,
+    "profit_factor": 1.1880500017856812,
+    "var_95": -0.017446734922320704,
+    "cvar_95": -0.03004989973129127,
+    "total_trades": 37,
+    "avg_turnover": 0.23610314240344965,
+    "total_transaction_costs": 181549.27160106957,
+    "total_slippage": 907.7463580053479,
+    "total_costs": 182457.01795907493,
+    "final_equity": 379237.1635178696,
+    "n_trading_days": 2287
   },
   "benchmark_comparison": null,
   "strategy_name": "Bandit Strategy Allocator",
   "_metadata": {
     "checkpoint_name": "initial",
-    "created_at": "2025-12-27T12:31:32.144213",
+    "created_at": "2025-12-27T13:23:32.384297",
     "portfolio_result_type": "PortfolioResult",
     "version": "1.0",
     "storage_format": "parquet",
     "bandit_state": {
       "counts": [
-        194,
-        194,
-        194,
-        194,
-        194,
-        194,
-        194,
-        194,
-        194,
-        194,
-        194,
-        194
+        36,
+        36,
+        36,
+        36,
+        36,
+        36,
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
       ],
       "values": [
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341,
-        15.555571670634341
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454,
+        45.403210452630454
       ],
-      "total_selections": 2328,
+      "total_selections": 432,
       "exploration_constant": 1.0
     },
     "bandit_type": "UCBBandit",
     "parquet_file": "initial.parquet"
   },
   "equity_curve_summary": {
-    "length": 128,
+    "length": 2287,
     "date_range": null
   },
   "weights_history_summary": {
-    "length": 128,
+    "length": 2287,
     "date_range": null
   },
   "returns_series_summary": {
-    "length": 128,
+    "length": 2287,
     "date_range": null
   },
   "rolling_metrics_summary": {
-    "length": 108,
+    "length": 2267,
     "date_range": null
   },
   "position_pnl_summary": {
-    "length": 127,
+    "length": 2286,
     "date_range": null
   },
   "drawdown_series_summary": {
-    "length": 128,
+    "length": 2287,
     "date_range": null
   },
   "turnover_history_summary": {
-    "length": 7,
+    "length": 37,
     "date_range": null
   },
   "transaction_costs_summary": {
-    "length": 7,
+    "length": 37,
     "date_range": null
   },
   "slippage_costs_summary": {
-    "length": 7,
+    "length": 37,
     "date_range": null
   },
   "cash_history_summary": {
-    "length": 128,
+    "length": 2287,
     "date_range": null
   },
   "trades_history_summary": {
-    "length": 7,
+    "length": 37,
     "date_range": null
   }
 }
