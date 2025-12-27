@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Union
 from dataclasses import dataclass, field
 import logging
+import pandas as pd
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,9 @@ class ConfigLoader:
         Args:
             config_path: Path to YAML configuration file
         """
+        # Load environment variables from .env file
+        load_dotenv()
+        
         self.config_path = Path(config_path)
         self.raw_config = {}
 
@@ -189,47 +194,130 @@ class ConfigLoader:
 
     def _validate_config(self) -> None:
         """
-        Validate configuration values.
-
-        Raises:
-            ValueError: If configuration contains invalid values
+        Comprehensive validation of configuration parameters.
+        Raises ValueError for invalid configurations.
         """
         config = self.raw_config
-
+        
         # Validate execution mode
         valid_modes = ['backtest', 'simulation', 'live']
-        if config.get('execution', {}).get('mode') not in valid_modes:
-            raise ValueError(f"Invalid execution mode. Must be one of: {valid_modes}")
-
-        # Validate bandit type
-        valid_bandits = ['ucb', 'thompson', 'exp3']
-        if config.get('bandit', {}).get('type') not in valid_bandits:
-            raise ValueError(f"Invalid bandit type. Must be one of: {valid_bandits}")
-
-        # Validate reward type
-        valid_rewards = ['sharpe', 'return', 'clipped_sharpe']
-        if config.get('bandit', {}).get('reward_type') not in valid_rewards:
-            raise ValueError(f"Invalid reward type. Must be one of: {valid_rewards}")
-
-        # Validate risk-free source
+        mode = config.get('execution', {}).get('mode', 'simulation')
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid execution mode '{mode}'. Must be one of: {valid_modes}")
+        
+        # Validate bandit configuration
+        bandit = config.get('bandit', {})
+        valid_bandit_types = ['ucb', 'thompson', 'exp3']
+        if bandit.get('type', 'ucb') not in valid_bandit_types:
+            raise ValueError(f"Invalid bandit type '{bandit.get('type')}'. Must be one of: {valid_bandit_types}")
+        
+        valid_reward_types = ['sharpe', 'return', 'clipped_sharpe']
+        if bandit.get('reward_type', 'sharpe') not in valid_reward_types:
+            raise ValueError(f"Invalid reward type '{bandit.get('reward_type')}'. Must be one of: {valid_reward_types}")
+        
+        # Validate date formats
+        data = config.get('data', {})
+        start_date = data.get('start_date', '2015-01-01')
+        end_date = data.get('end_date', '2024-12-31')
+        
+        try:
+            pd.to_datetime(start_date)
+            pd.to_datetime(end_date)
+        except ValueError as e:
+            raise ValueError(f"Invalid date format. Start date: '{start_date}', End date: '{end_date}'. Error: {e}")
+        
+        if pd.to_datetime(start_date) >= pd.to_datetime(end_date):
+            raise ValueError(f"Start date '{start_date}' must be before end date '{end_date}'")
+        
+        # Validate trading parameters
+        trading = config.get('trading', {})
+        if trading.get('initial_capital', 100000.0) <= 0:
+            raise ValueError("Initial capital must be positive")
+        
+        transaction_cost = trading.get('transaction_cost_bps', 10.0)
+        if not (0 <= transaction_cost <= 1000):  # Max 10% transaction cost
+            raise ValueError(f"Transaction cost BPS must be between 0 and 1000, got {transaction_cost}")
+        
+        slippage = trading.get('slippage_bps', 1.0)
+        if not (0 <= slippage <= 500):  # Max 5% slippage
+            raise ValueError(f"Slippage BPS must be between 0 and 500, got {slippage}")
+        
+        # Validate rebalance frequency
+        valid_frequencies = ['D', 'W', 'M', 'Q', 'Y']
+        rebalance_freq = trading.get('rebalance_frequency', 'M')
+        if rebalance_freq not in valid_frequencies:
+            raise ValueError(f"Invalid rebalance frequency '{rebalance_freq}'. Must be one of: {valid_frequencies}")
+        
+        # Validate bandit parameters
+        exploration_const = bandit.get('exploration_constant', 2.0)
+        if exploration_const <= 0:
+            raise ValueError("Exploration constant must be positive")
+        
+        gamma = bandit.get('gamma', 0.07)
+        if not (0 < gamma < 1):
+            raise ValueError(f"Gamma must be between 0 and 1, got {gamma}")
+        
+        burn_in = bandit.get('burn_in_periods', 12)
+        if burn_in < 0:
+            raise ValueError("Burn-in periods must be non-negative")
+        
+        reward_lookback = bandit.get('reward_lookback', 12)
+        if reward_lookback <= 0:
+            raise ValueError("Reward lookback must be positive")
+        
+        min_allocation = bandit.get('min_allocation', 0.05)
+        if not (0 <= min_allocation <= 1):
+            raise ValueError(f"Minimum allocation must be between 0 and 1, got {min_allocation}")
+        
+        # Validate risk-free parameters
+        risk_free = config.get('risk_free', {})
         valid_sources = ['fred', 'config', 'fallback']
-        if config.get('risk_free', {}).get('rate_source') not in valid_sources:
-            raise ValueError(f"Invalid risk-free rate source. Must be one of: {valid_sources}")
-
-        # Validate positive values
-        positive_fields = [
-            ('trading', 'initial_capital'),
-            ('trading', 'transaction_cost_bps'),
-            ('checkpoint', 'max_checkpoints'),
-            ('bandit', 'burn_in_periods'),
-            ('bandit', 'reward_lookback')
-        ]
-
-        for section, field in positive_fields:
-            value = self._get_nested_value(config, section, field)
-            if value is not None and value <= 0:
-                raise ValueError(f"{section}.{field} must be positive, got {value}")
-
+        if risk_free.get('rate_source', 'fred') not in valid_sources:
+            raise ValueError(f"Invalid risk-free rate source '{risk_free.get('rate_source')}'. Must be one of: {valid_sources}")
+        
+        valid_maturities = ['1M', '3M', '6M', '1Y', '2Y', '5Y', '10Y', '30Y']
+        maturity = risk_free.get('maturity', '3M')
+        if maturity not in valid_maturities:
+            raise ValueError(f"Invalid maturity '{maturity}'. Must be one of: {valid_maturities}")
+        
+        initial_rate = risk_free.get('initial_rate', 0.04)
+        if not (0 <= initial_rate <= 0.5):  # Max 50% rate
+            raise ValueError(f"Initial risk-free rate must be between 0 and 0.5, got {initial_rate}")
+        
+        # Validate checkpoint parameters
+        checkpoint = config.get('checkpoint', {})
+        max_checkpoints = checkpoint.get('max_checkpoints', 7)
+        if max_checkpoints < 1:
+            raise ValueError("Max checkpoints must be at least 1")
+        
+        # Validate live trading parameters
+        live = config.get('live', {})
+        update_interval = live.get('data_update_interval', 3600)
+        if update_interval < 60:  # Min 1 minute
+            raise ValueError("Data update interval must be at least 60 seconds")
+        
+        max_retries = live.get('max_retry_attempts', 3)
+        if max_retries < 0:
+            raise ValueError("Max retry attempts must be non-negative")
+        
+        retry_delay = live.get('retry_delay', 60)
+        if retry_delay < 1:
+            raise ValueError("Retry delay must be at least 1 second")
+        
+        health_interval = live.get('health_check_interval', 300)
+        if health_interval < 30:  # Min 30 seconds
+            raise ValueError("Health check interval must be at least 30 seconds")
+        
+        # Validate monitoring parameters
+        monitoring = config.get('monitoring', {})
+        memory_threshold = monitoring.get('memory_threshold_mb', 2048)
+        if memory_threshold <= 0:
+            raise ValueError("Memory threshold must be positive")
+        
+        cpu_threshold = monitoring.get('cpu_threshold_percent', 50)
+        if not (0 <= cpu_threshold <= 100):
+            raise ValueError(f"CPU threshold must be between 0 and 100, got {cpu_threshold}")
+        
         logger.info("Configuration validation passed")
 
     def _get_nested_value(self, config: Dict, *keys: str) -> Any:
