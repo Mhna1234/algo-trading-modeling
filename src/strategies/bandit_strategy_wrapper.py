@@ -112,7 +112,7 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
     child_strategies : List[BaseStrategyWrapper]
         List of child strategies to allocate across (each is an "arm")
     bandit_allocator : BanditAllocator
-        Bandit algorithm instance (e.g., UCBBandit, ThompsonSamplingBandit)
+        Bandit algorithm instance (e.g., UCBBandit, ThompsonSamplingBandit, EXP3Bandit)
     strategy : Optional
         Signal generator (unused, kept for interface consistency)
     optimizer : Optional
@@ -148,7 +148,7 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
     >>> mean_rev = MeanReversionStrategy(strategy, optimizer, top_k=10)
     >>> 
     >>> # Create bandit allocator
-    >>> bandit = UCBBandit(n_arms=2, exploration_factor=2.0)
+    >>> bandit = UCBBandit(n_arms=2, exploration_constant=2.0)
     >>> 
     >>> # Create bandit wrapper
     >>> bandit_wrapper = BanditStrategyWrapper(
@@ -194,6 +194,13 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             **kwargs
         )
         
+        # Log warning for unknown kwargs (defensive check)
+        if kwargs:
+            logger.warning(
+                f"Unknown keyword arguments passed to BanditStrategyWrapper: {list(kwargs.keys())}. "
+                "These were passed to the base class."
+            )
+        
         # Validate inputs
         if not child_strategies:
             raise ValueError("Must provide at least one child strategy")
@@ -227,6 +234,10 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         self.last_weights: Optional[Series] = None
         self.last_allocations: Optional[np.ndarray] = None
         self.last_portfolio_value: Optional[float] = None
+        
+        # Learning state visibility
+        self.bandit_active = False
+        self.bandit_has_learned = False
         
         # Performance tracking
         self.trackers = [
@@ -263,6 +274,11 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         5. Aggregate using weighted combination
         6. Track state for next period's reward calculation
         
+        Reward Timing Contract (Anti Look-Ahead):
+        - Rewards updated at time t reflect performance from t-1 → t
+        - Allocations selected at time t apply to t → t+1
+        - Reward update MUST occur before allocation selection
+        
         Parameters
         ----------
         date : pd.Timestamp
@@ -275,6 +291,10 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         pd.Series
             Target portfolio weights (sum to 1.0)
         """
+        # Anti look-ahead assertion: ensure we're not processing the same date twice
+        if self.last_date is not None:
+            assert self.last_date < date, f"Look-ahead detected: last_date={self.last_date}, current_date={date}"
+        
         # Step 1: Calculate and update rewards from previous period
         if self.period_count > 0 and self.last_weights is not None:
             self._update_rewards_from_previous_period(date, portfolio_state)
@@ -317,7 +337,20 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             
             # Update bandit with rewards for each arm
             for arm_idx, reward in enumerate(rewards):
+                # Reward sanity checks (observability only, no modification)
+                if np.isnan(reward) or np.isinf(reward):
+                    logger.warning(f"Invalid reward for arm {arm_idx}: {reward} (NaN or infinite)")
+                elif abs(reward) > 5.0:
+                    logger.warning(f"Extreme reward for arm {arm_idx}: {reward} (magnitude > 5)")
+                if self.bandit_allocator.__class__.__name__ == 'EXP3Bandit':
+                    # EXP3 expects rewards in [0, 1] after scaling
+                    if not (0 <= reward <= 1):
+                        logger.warning(f"EXP3 reward out of [0,1] range for arm {arm_idx}: {reward}")
+                
                 self.bandit_allocator.update(arm_idx, reward)
+            
+            # Mark that bandit has learned at least once
+            self.bandit_has_learned = True
             
             # Track performance
             for arm_idx, (ret, reward) in enumerate(zip(strategy_returns, rewards)):
@@ -411,22 +444,32 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         
         During burn-in period, uses equal allocation.
         After burn-in, queries bandit for allocation.
+        
+        Canonical Bandit Time Index:
+        - Uses self.period_count as single source of truth for bandit time
+        - Always passes bandit_time = self.period_count to select_arm()
         """
         n_strategies = len(self.child_strategies)
         
-        # Burn-in period: equal allocation
+        # Burn-in period: equal allocation, bandit does NOT learn
         if self.period_count < self.burn_in_periods:
             allocations = np.ones(n_strategies) / n_strategies
             logger.debug(f"Burn-in period ({self.period_count}/{self.burn_in_periods}): equal allocation")
             return allocations
         
-        # Query bandit for selection
+        # Burn-in just ended: activate bandit learning
+        if not self.bandit_active:
+            self.bandit_active = True
+            logger.info(f"Bandit learning activated at period {self.period_count}")
+        
+        # Query bandit for selection using canonical time index
+        bandit_time = self.period_count
         if self.enable_soft_allocation:
             # Soft allocation: use empirical frequencies or Thompson sampling
             allocations = self._compute_soft_allocations()
         else:
             # Hard allocation: select single best arm
-            selected_arm = self.bandit_allocator.select_arm(self.period_count)
+            selected_arm = self.bandit_allocator.select_arm(bandit_time)
             allocations = np.zeros(n_strategies)
             allocations[selected_arm] = 1.0
         
@@ -736,6 +779,19 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             'last_allocations': self.last_allocations.tolist() if self.last_allocations is not None else None,
             'last_portfolio_value': self.last_portfolio_value,
             'allocation_history': serialized_history,
+            'reward_config': {
+                'reward_type': self.reward_type,
+                'reward_lookback': self.reward_lookback,
+                'burn_in_periods': self.burn_in_periods,
+                'min_allocation': self.min_allocation,
+                'transaction_cost_bps': self.transaction_cost_bps,
+                'enable_soft_allocation': self.enable_soft_allocation,
+                'fallback_on_error': self.fallback_on_error,
+            },
+            'learning_state': {
+                'bandit_active': self.bandit_active,
+                'bandit_has_learned': self.bandit_has_learned,
+            },
         }
     
     def set_state(self, state: Dict[str, Any]) -> None:
@@ -779,6 +835,25 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             if key not in state:
                 raise ValueError(f"Missing required key in state: {key}")
         
+        # Check reward configuration consistency (warning only)
+        if 'reward_config' in state:
+            stored_config = state['reward_config']
+            current_config = {
+                'reward_type': self.reward_type,
+                'reward_lookback': self.reward_lookback,
+                'burn_in_periods': self.burn_in_periods,
+                'min_allocation': self.min_allocation,
+                'transaction_cost_bps': self.transaction_cost_bps,
+                'enable_soft_allocation': self.enable_soft_allocation,
+                'fallback_on_error': self.fallback_on_error,
+            }
+            if stored_config != current_config:
+                logger.warning(
+                    "Reward configuration mismatch during state restoration. "
+                    f"Stored: {stored_config}, Current: {current_config}. "
+                    "Results may not be reproducible."
+                )
+        
         # Validate number of strategies matches
         if len(state['trackers']) != len(self.child_strategies):
             raise ValueError(
@@ -820,7 +895,71 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             for h in state['allocation_history']
         ]
         
+        # Restore learning state
+        if 'learning_state' in state:
+            self.bandit_active = state['learning_state'].get('bandit_active', False)
+            self.bandit_has_learned = state['learning_state'].get('bandit_has_learned', False)
+        else:
+            # Backward compatibility: infer from period_count
+            self.bandit_active = self.period_count >= self.burn_in_periods
+            self.bandit_has_learned = self.period_count > self.burn_in_periods
+        
         logger.info(
             f"Restored BanditStrategyWrapper state: period_count={self.period_count}, "
-            f"n_history={len(self.allocation_history)}"
+            f"n_history={len(self.allocation_history)}, "
+            f"bandit_active={self.bandit_active}, bandit_has_learned={self.bandit_has_learned}"
         )
+    
+    def get_bandit_diagnostics(self) -> Dict[str, Any]:
+        """
+        Get lightweight diagnostics for bandit learning state.
+        
+        Returns
+        -------
+        dict
+            Diagnostic information including:
+            - arm_counts: Number of times each arm was selected
+            - mean_rewards: Average reward per arm (if available)
+            - last_allocations: Most recent strategy allocations
+            - allocation_entropy: Diversity of allocations (0=concentrated, higher=diverse)
+            - bandit_active: Whether bandit learning is active
+            - bandit_has_learned: Whether bandit has received at least one update
+        """
+        bandit_state = self.bandit_allocator.get_state()
+        
+        # Extract arm counts
+        if 'counts' in bandit_state:
+            arm_counts = bandit_state['counts']
+        else:
+            arm_counts = [0] * len(self.child_strategies)
+        
+        # Extract mean rewards
+        if 'values' in bandit_state:
+            mean_rewards = bandit_state['values']
+        elif 'sums' in bandit_state and 'counts' in bandit_state:
+            sums = bandit_state.get('sums', [0.0] * len(self.child_strategies))
+            counts = bandit_state['counts']
+            mean_rewards = [s / c if c > 0 else 0.0 for s, c in zip(sums, counts)]
+        else:
+            mean_rewards = [0.0] * len(self.child_strategies)
+        
+        # Calculate allocation entropy
+        if self.last_allocations is not None:
+            # Normalize to probabilities
+            probs = np.array(self.last_allocations)
+            probs = probs / np.sum(probs) if np.sum(probs) > 0 else np.ones(len(probs)) / len(probs)
+            # Calculate entropy
+            allocation_entropy = -np.sum(probs * np.log(probs + 1e-10))
+        else:
+            allocation_entropy = 0.0
+        
+        return {
+            'arm_counts': arm_counts,
+            'mean_rewards': mean_rewards,
+            'last_allocations': self.last_allocations.tolist() if self.last_allocations is not None else None,
+            'allocation_entropy': allocation_entropy,
+            'bandit_active': self.bandit_active,
+            'bandit_has_learned': self.bandit_has_learned,
+            'period_count': self.period_count,
+            'burn_in_periods': self.burn_in_periods,
+        }

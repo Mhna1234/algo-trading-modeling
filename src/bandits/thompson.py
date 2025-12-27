@@ -352,6 +352,9 @@ class ThompsonSamplingBandit(BanditAllocator):
         )
     
 """
+# NOTE: The following implementation is experimental / optional.
+# It is disabled because bayesianbandits is not a project dependency.
+# The active and supported implementation is ThompsonSamplingBandit above.
 from bayesianbandits import Arm, NormalBandit
 from typing import Dict, Any
 from src.bandits.base import BanditAllocator

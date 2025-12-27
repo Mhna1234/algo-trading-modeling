@@ -226,7 +226,7 @@ class BanditAllocator:
 - `n_arms`: Number of strategies
 - `algorithm`: Algorithm identifier
 - `min_allocation`: Minimum weight per arm (e.g., 0.05 for 5%)
-- `exploration_factor`: Algorithm-specific tuning (e.g., UCB confidence level)
+- `exploration_constant`: Algorithm-specific tuning (e.g., UCB confidence level)
 - `decay_factor`: Discount factor for non-stationary environments (optional)
 
 ---
@@ -764,7 +764,7 @@ class BanditStrategyWrapper:
 bandit_config:
   algorithm: 'ucb'
   min_allocation: 0.08  # 8% minimum per strategy
-  exploration_factor: 1.5  # UCB confidence multiplier
+  exploration_constant: 1.5  # UCB confidence multiplier
   burn_in_periods: 12  # Equal allocation for first 12 weeks
   
 reward_config:
