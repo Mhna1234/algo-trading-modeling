@@ -68,6 +68,8 @@ algo-trading-modeling/
 │   ├── demo_backtesting_methods.py # Validation methods demo
 │   ├── demo_bandit_strategy_wrapper.py  # MAB strategy allocation demo
 │   ├── demo_bandit_comparison.py     # UCB vs Thompson Sampling comparison
+│   ├── mab_comparison_demo.py        # MAB vanilla backtesting comparison
+│   ├── mab_walk_forward_demo.py      # MAB walk-forward evaluation (NEW)
 │   ├── demo_ucb_bandit.py            # UCB algorithm demo
 │   ├── demo_exp3_bandit.py           # EXP3 algorithm demo
 │   ├── demo_rewards.py               # Reward calculation demo
@@ -231,6 +233,9 @@ python examples/demo_bandit_strategy_wrapper.py
 
 # Compare UCB vs Thompson Sampling
 python examples/demo_bandit_comparison.py
+
+# Multi-Armed Bandit walk-forward evaluation (NEW)
+python examples/mab_walk_forward_demo.py
 
 # Advanced backtesting methods
 python examples/demo_backtesting_methods.py
@@ -466,9 +471,15 @@ For questions or feedback, please open an issue on GitHub.
 
 ---
 
-**Version**: 3.0.0 | **Last Updated**: December 27, 2025
+**Version**: 3.0.1 | **Last Updated**: December 28, 2025
 
 ## 🎉 Recent Updates
+
+### Version 3.0.1 (December 2025)
+- ✅ **Fixed walk-forward backtesting bug** - Resolved KeyError issues preventing out-of-sample evaluation
+- ✅ **Added MAB walk-forward demo** - New `mab_walk_forward_demo.py` for proper out-of-sample MAB validation
+- ✅ **Cleaned up logging in demos** - Fixed placeholder logging statements with proper f-string formatting
+- ✅ **Updated documentation** - Corrected docstrings and added new demo to project structure
 
 ### Version 3.0.0 (December 2025)
 - ✅ Validated and documented 12 benchmark strategies

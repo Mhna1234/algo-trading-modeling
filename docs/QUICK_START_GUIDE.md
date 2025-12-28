@@ -59,11 +59,17 @@
    ```
    Outputs comprehensive metrics and plots in `results/`.
 
-2. **MAB Comparison Demo** (Compare different bandit algorithms with risk-free asset integration):
+3. **MAB Walk-Forward Demo** (Compare bandit algorithms with proper out-of-sample validation):
+   ```
+   python examples/mab_walk_forward_demo.py
+   ```
+   Uses walk-forward backtesting with rolling windows for true out-of-sample evaluation of MAB algorithms. Each algorithm runs 30 folds and aggregates performance metrics.
+
+4. **MAB Comparison Demo** (Compare different bandit algorithms with vanilla backtesting):
    ```
    python examples/mab_comparison_demo.py
    ```
-   Shows performance comparison between UCB, Thompson, and EXP3 bandits. Includes risk-free asset as an additional strategy arm.
+   Shows performance comparison between UCB, Thompson, and EXP3 bandits using vanilla backtesting over the entire historical period. Includes risk-free asset as an additional strategy arm.
 
 3. **Full System Demo** (Unified real-time platform with risk-free integration):
    ```
@@ -96,14 +102,14 @@
 - ✅ **State Persistence**: CheckpointManager with JSON/Parquet storage, 7-day cleanup
 - ✅ **Daily Trading Engine**: Real-time updates, MAB integration, error handling
 - ✅ **Unified Demo**: BACKTEST/SIMULATION/LIVE modes with YAML configuration
-- ✅ **Core Algorithm**: Complete backtesting with soft rebalancing, transaction costs, metrics
+- ✅ **Walk-Forward Backtesting**: Fixed data access bug, now supports proper out-of-sample evaluation with `mab_walk_forward_demo.py`
 - ❌ **Automation**: FastAPI service and GitHub Actions (planned for Phase 5)
 
-**Ready for Production**: The system supports real-time trading with 96% of planned features implemented. Use simulation mode for testing without external dependencies.
+**Ready for Production**: The system supports real-time trading with **97% of planned features implemented**. Use simulation mode for testing without external dependencies.
 
 ## For Developers: Continuing Implementation Towards Real-Time Trading
 
-This section guides developers on completing the remaining work to make the system fully ready for real-time trading. The project is currently at 96% completion based on the comprehensive implementation plan in `docs/REALTIME_TRADING_IMPLEMENTATION_PLAN.md`.
+This section guides developers on completing the remaining work to make the system fully ready for real-time trading. The project is currently at **97% completion** based on the comprehensive implementation plan in `docs/REALTIME_TRADING_IMPLEMENTATION_PLAN.md`.
 
 ### Current Implementation Status (December 2025)
 
@@ -112,6 +118,7 @@ This section guides developers on completing the remaining work to make the syst
 - **State Persistence**: CheckpointManager with JSON/Parquet storage, 7-day auto-cleanup, MAB state persistence (UCB, Thompson, EXP3)
 - **Core Backtesting Algorithm**: Complete policy loop with 12 benchmark strategies, quarterly rebalancing, soft rebalancing logic, transaction costs (0.1% + 0.05% slippage), performance metrics (Sharpe, drawdown, win rate, profit factor, turnover)
 - **Unified Demo System**: `examples/dynamic_trading_demo.py` supports BACKTEST/SIMULATION/LIVE modes with full configuration validation
+- **Walk-Forward Backtesting**: Fixed data access bug, now supports proper out-of-sample evaluation with fold isolation
 - **MAB System**: Complete multi-armed bandit implementations with burn-in periods, soft allocation, reward attribution
 - **Risk-Free Integration**: Daily FRED API updates with local caching and weekend interpolation
 
@@ -124,13 +131,6 @@ This section guides developers on completing the remaining work to make the syst
 - **Advanced Error Handling**: Structured JSON logging for decisions, checkpoint rollback on failures, retry logic for API failures
 
 ### Key Issues Requiring Attention
-
-#### Walk-Forward Backtesting Strategy Problem
-There is a known issue in the walk-forward backtesting implementation where fold isolation may not be properly maintained, potentially leading to information leakage between folds. This affects the validity of out-of-sample testing for MAB algorithms. Developers should:
-- Review `src/backtesting_methods.py` walk_forward_backtest() method
-- Ensure MAB state is completely reset between folds
-- Validate no lookahead bias in fold boundaries
-- Add comprehensive tests for fold isolation
 
 #### Lambda Benchmark Results Uploader Implementation
 The AWS Lambda function for uploading benchmark results to S3 has not been implemented. This is needed for automated result persistence and dashboard integration. The specification is in `docs/LAMBDA_BENCHMARK_RESULTS_UPLOADER.md`. Key requirements:
@@ -197,4 +197,4 @@ The AWS Lambda function for uploading benchmark results to S3 has not been imple
 - ✅ Full automation with <5 minute manual intervention time
 - ✅ System recovery within 1 hour from failures
 
-**Total Remaining Work**: ~150 lines of code for Phase 5 automation + error handling enhancements. The core real-time trading functionality is implemented and ready for production use in simulation mode.
+**Total Remaining Work**: ~150 lines of code for Phase 5 automation + error handling enhancements. Walk-forward backtesting is now fully functional with proper out-of-sample evaluation.
