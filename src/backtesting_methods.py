@@ -20,7 +20,7 @@ Mathematical Foundations:
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Callable, Union
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from datetime import datetime, timedelta
 import warnings
@@ -51,6 +51,44 @@ class BacktestMethodResult:
             'num_runs': len(self.individual_results),
             'metrics': self.aggregate_metrics,
             'confidence_intervals': self.confidence_intervals,
+            'metadata': self.metadata
+        }
+@dataclass
+class WalkForwardFold:
+    """Represents a single fold in walk-forward backtesting."""
+    
+    fold_number: int
+    train_start: datetime
+    train_end: datetime
+    test_start: datetime
+    test_end: datetime
+    strategy_states: Dict[str, any] = field(default_factory=dict)
+    metadata: Dict[str, any] = field(default_factory=dict)
+    
+    def validate_fold_boundaries(self) -> bool:
+        """
+        Validate that fold boundaries prevent information leakage.
+        Returns True if boundaries are valid (no overlap, proper temporal order).
+        """
+        # Ensure temporal ordering
+        if not (self.train_start < self.train_end < self.test_start < self.test_end):
+            return False
+        
+        # Ensure no overlap between train and test periods
+        if self.train_end >= self.test_start:
+            return False
+            
+        return True
+    
+    def get_fold_info(self) -> Dict[str, any]:
+        """Return fold information for logging and debugging."""
+        return {
+            'fold_number': self.fold_number,
+            'train_period': f"{self.train_start.date()} to {self.train_end.date()}",
+            'test_period': f"{self.test_start.date()} to {self.test_end.date()}",
+            'train_days': (self.train_end - self.train_start).days,
+            'test_days': (self.test_end - self.test_start).days,
+            'gap_days': (self.test_start - self.train_end).days,
             'metadata': self.metadata
         }
 
@@ -170,7 +208,7 @@ class BacktestingMethods:
         end = pd.to_datetime(end_date) if end_date else self.prices.index[-1]
         
         results = []
-        walk_metadata = []
+        folds = []
         
         current_train_start = start
         
@@ -191,8 +229,29 @@ class BacktestingMethods:
             if test_end > end:
                 break
             
-            logger.info(f"Walk {len(results) + 1}: Train [{train_start.date()} to {train_end.date()}], "
-                       f"Test [{test_start.date()} to {test_end.date()}]")
+            # Create fold object
+            fold = WalkForwardFold(
+                fold_number=len(folds) + 1,
+                train_start=train_start,
+                train_end=train_end,
+                test_start=test_start,
+                test_end=test_end,
+                metadata={
+                    'window_type': 'anchored' if anchored else 'rolling',
+                    'train_window_months': train_window_months,
+                    'test_window_months': test_window_months
+                }
+            )
+            
+            # Validate fold boundaries
+            if not fold.validate_fold_boundaries():
+                logger.warning(f"Invalid fold boundaries for fold {fold.fold_number}: {fold.get_fold_info()}")
+                # Skip invalid fold
+                current_train_start += pd.DateOffset(months=step_months)
+                continue
+            
+            logger.info(f"Fold {fold.fold_number}: {fold.get_fold_info()}")
+            folds.append(fold)
             
             # Reset strategy state for fold isolation (e.g., MAB reset)
             if hasattr(strategy, 'reset'):
@@ -218,16 +277,16 @@ class BacktestingMethods:
                 )
                 
                 results.append(result)
-                walk_metadata.append({
-                    'walk_number': len(results),
-                    'train_start': train_start.strftime('%Y-%m-%d'),
-                    'train_end': train_end.strftime('%Y-%m-%d'),
-                    'test_start': test_start.strftime('%Y-%m-%d'),
-                    'test_end': test_end.strftime('%Y-%m-%d')
-                })
+                
+                # Store fold information in result metadata
+                if hasattr(result, 'metadata'):
+                    result.metadata.update({
+                        'fold_info': fold.get_fold_info(),
+                        'fold_number': fold.fold_number
+                    })
                 
             except Exception as e:
-                logger.warning(f"Walk-forward iteration failed: {e}")
+                logger.warning(f"Fold {fold.fold_number} backtest failed: {e}")
             
             # Roll forward
             current_train_start += pd.DateOffset(months=step_months)
@@ -247,7 +306,8 @@ class BacktestingMethods:
                 'test_window_months': test_window_months,
                 'step_months': step_months,
                 'anchored': anchored,
-                'walks': walk_metadata
+                'num_folds': len(folds),
+                'folds': [fold.get_fold_info() for fold in folds]
             }
         )
     
