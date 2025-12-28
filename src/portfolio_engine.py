@@ -54,6 +54,8 @@ class PortfolioState:
         Full price history up to current date
     return_history : pd.DataFrame
         Full return history up to current date
+    cash_symbol : str
+        Symbol used for cash positions
     last_rebalance_date : pd.Timestamp
         Date of last rebalance
     days_since_rebalance : int
@@ -78,6 +80,7 @@ class PortfolioState:
     equity: float
     price_history: DataFrame
     return_history: DataFrame
+    cash_symbol: str
     last_rebalance_date: Optional[pd.Timestamp] = None
     days_since_rebalance: int = 0
     recent_sharpe: float = 0.0
@@ -546,6 +549,7 @@ class PortfolioEngine:
             equity=self._current_equity,
             price_history=price_history,
             return_history=return_history,
+            cash_symbol=self.cash_symbol,
             last_rebalance_date=self._last_rebalance_date,
             days_since_rebalance=days_since,
             recent_sharpe=recent_sharpe,

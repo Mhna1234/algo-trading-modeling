@@ -899,7 +899,7 @@ class BacktestingMethods:
             train_end = current_train_start + pd.DateOffset(months=train_window_months)
 
             # Define test period
-            test_start = train_end
+            test_start = train_end + pd.Timedelta(days=1)
             test_end = test_start + pd.DateOffset(months=test_window_months)
 
             # Check if we've reached the end

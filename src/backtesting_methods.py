@@ -290,7 +290,8 @@ class BacktestingMethods:
                     end_date=test_end.strftime('%Y-%m-%d'),
                     rebalance_freq=rebalance_freq,
                     soft_rebalance=self.enable_soft_rebalance,
-                    drift_threshold=self.drift_threshold
+                    drift_threshold=self.drift_threshold,
+                    backtest_method='vanilla'  # Use vanilla backtest for individual folds
                 )
                 
                 results.append(result)
@@ -484,7 +485,8 @@ class BacktestingMethods:
                     strategy,
                     start_date=test_start.strftime('%Y-%m-%d'),
                     end_date=test_end.strftime('%Y-%m-%d'),
-                    rebalance_freq=rebalance_freq
+                    rebalance_freq=rebalance_freq,
+                    backtest_method='vanilla'
                 )
                 
                 results.append(result)
@@ -587,7 +589,8 @@ class BacktestingMethods:
                     strategy,
                     start_date=start_date,
                     end_date=end_date,
-                    rebalance_freq=rebalance_freq
+                    rebalance_freq=rebalance_freq,
+                    backtest_method='vanilla'
                 )
                 
                 results.append(result)
@@ -676,7 +679,8 @@ class BacktestingMethods:
                         strategy,
                         start_date=trial_start.strftime('%Y-%m-%d'),
                         end_date=trial_end.strftime('%Y-%m-%d'),
-                        rebalance_freq=rebalance_freq
+                        rebalance_freq=rebalance_freq,
+                        backtest_method='vanilla'
                     )
                     
                 elif randomization_type == 'permutation':
@@ -714,7 +718,8 @@ class BacktestingMethods:
                         strategy,
                         start_date=start_date,
                         end_date=end_date,
-                        rebalance_freq=rebalance_freq
+                        rebalance_freq=rebalance_freq,
+                        backtest_method='vanilla'
                     )
                     
                 elif randomization_type == 'subperiod':
@@ -748,7 +753,8 @@ class BacktestingMethods:
                         strategy,
                         start_date=trial_start.strftime('%Y-%m-%d'),
                         end_date=trial_end.strftime('%Y-%m-%d'),
-                        rebalance_freq=rebalance_freq
+                        rebalance_freq=rebalance_freq,
+                        backtest_method='vanilla'
                     )
                 
                 results.append(result)

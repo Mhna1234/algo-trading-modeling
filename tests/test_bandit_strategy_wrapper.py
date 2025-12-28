@@ -89,6 +89,7 @@ def create_dummy_portfolio_state(
         equity=equity,
         price_history=DataFrame(),
         return_history=DataFrame(),
+        cash_symbol='CASH',
         last_rebalance_date=None,
         days_since_rebalance=0,
         recent_sharpe=0.5,

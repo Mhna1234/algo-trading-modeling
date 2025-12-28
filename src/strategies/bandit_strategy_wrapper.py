@@ -521,15 +521,19 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             # First period: no return to calculate
             return [0.0] * len(self.child_strategies)
 
-        # For learning purposes, always use hard attribution
-        # This allows the bandit to learn pure strategy skill
-        # The allocation mode affects weight combination, not reward attribution
+        # Use attribution based on allocation mode
         strategy_returns = [0.0] * len(self.child_strategies)
         if self.last_allocations is not None:
-            # Attribute the full portfolio return to the strategy with highest allocation
-            # This encourages the bandit to learn which strategy performs best when given capital
-            selected_strategy_idx = np.argmax(self.last_allocations)
-            strategy_returns[selected_strategy_idx] = portfolio_return
+            if self.enable_soft_allocation:
+                # Soft allocation: proportional attribution
+                # Each strategy gets return proportional to its allocation
+                for i, allocation in enumerate(self.last_allocations):
+                    strategy_returns[i] = portfolio_return * allocation
+            else:
+                # Hard allocation: attribute full return to highest allocated strategy
+                # This encourages learning which strategy performs best when given full capital
+                selected_strategy_idx = np.argmax(self.last_allocations)
+                strategy_returns[selected_strategy_idx] = portfolio_return
 
         return strategy_returns
     
@@ -849,7 +853,12 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
                 
                 if self.fallback_on_error:
                     # Fall back to equal weights
-                    assets = strategy.strategy.assets
+                    if strategy.strategy is not None and hasattr(strategy.strategy, 'assets'):
+                        assets = strategy.strategy.assets
+                    else:
+                        # For strategies without strategy.assets, get risky assets from portfolio_state
+                        risky_assets = portfolio_state.current_weights.index.drop(portfolio_state.cash_symbol, errors='ignore')
+                        assets = risky_assets.tolist()
                     fallback_weights = Series(1.0 / len(assets), index=assets)
                     child_weights.append(fallback_weights)
                     logger.warning(f"Using equal-weight fallback for {strategy.name}")

@@ -349,7 +349,8 @@ class TestWrapperSerialization:
                 current_weights=Series([0.2] * 5, index=tickers),
                 current_shares=Series([0.0] * 5, index=tickers),
                 price_history=DataFrame(index=dates[:len(dates)], columns=tickers),
-                return_history=DataFrame(index=dates[:len(dates)], columns=tickers)
+                return_history=DataFrame(index=dates[:len(dates)], columns=tickers),
+                cash_symbol='CASH'
             )
             weights = wrapper.get_weights(date, portfolio_state)
         
@@ -447,7 +448,8 @@ class TestWrapperSerialization:
                 current_weights=Series([0.2] * 5, index=tickers),
                 current_shares=Series([0.0] * 5, index=tickers),
                 price_history=DataFrame(index=dates[:len(dates)], columns=tickers),
-                return_history=DataFrame(index=dates[:len(dates)], columns=tickers)
+                return_history=DataFrame(index=dates[:len(dates)], columns=tickers),
+                cash_symbol='CASH'
             )
             wrapper.get_weights(date, portfolio_state)
         
@@ -522,7 +524,8 @@ class TestEdgeCases:
                 current_weights=Series([0.2] * 5, index=tickers),
                 current_shares=Series([0.0] * 5, index=tickers),
                 price_history=DataFrame(index=dates[:len(dates)], columns=tickers),
-                return_history=DataFrame(index=dates[:len(dates)], columns=tickers)
+                return_history=DataFrame(index=dates[:len(dates)], columns=tickers),
+                cash_symbol='CASH'
             )
             wrapper.get_weights(date, portfolio_state)
         

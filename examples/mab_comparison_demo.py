@@ -3,11 +3,12 @@ MAB Comparison Demo - Multi-Armed Bandit Algorithm Comparison
 ===============================================================
 
 This demo compares four MAB algorithms (UCB, Thompson Sampling, EXP3, Epsilon-Greedy)
-using the 12 benchmark strategies as arms. Each MAB algorithm dynamically
-allocates capital across the strategies based on learned performance.
+using the 12 benchmark strategies plus a risk-free asset as arms. Each MAB algorithm dynamically
+allocates capital across the strategies and cash based on learned performance.
 
 Key Features:
-- 12 benchmark strategies as MAB arms
+- 12 benchmark strategies + risk-free asset as MAB arms
+- Dynamic allocation between risky assets and cash
 - Proper reward scaling for each algorithm
 - Comprehensive performance tracking
 - Allocation evolution visualization
@@ -21,16 +22,16 @@ Algorithms Compared:
 4. Epsilon-Greedy: Simple exploration strategy with fixed exploration rate
 
 Backtesting Approach:
-- Full dataset backtesting (not walk-forward) to allow continuous learning
-- Quarterly rebalancing with soft thresholds
+- Walk-forward backtesting with rolling windows for out-of-sample evaluation
+- Monthly rebalancing with hard allocation (single strategy selection)
 - Transaction cost awareness
 - Risk-free asset integration
 
 Output:
 - Performance comparison across MAB algorithms
-- Allocation evolution over time
+- Allocation evolution over time (including cash allocation)
 - Learning effectiveness metrics
-- Strategy contribution analysis
+- Strategy and cash contribution analysis
 - Comprehensive visualizations
 
 Author: MAB Comparison Demo
@@ -75,6 +76,7 @@ from src.bandits.ucb import UCBBandit
 from src.bandits.thompson import ThompsonSamplingBandit
 from src.bandits.exp3 import EXP3Bandit
 from src.bandits.epsilon_greedy import EpsilonGreedy
+from src.risk_free_asset import RiskFreeAsset, RiskFreeStrategyWrapper
 from src.config_loader import load_trading_config
 
 # Configure logging
@@ -143,7 +145,16 @@ class MABComparisonDemo:
             ("CVaR Min", CVaRMinimizationStrategy(signal_gen, optimizer))
         ]
 
-        logger.info(f"Initialized {len(self.strategies)} benchmark strategies")
+        # Add risk-free asset as an additional arm
+        risk_free_asset = RiskFreeAsset(
+            initial_rate=0.02,    # 2% initial rate
+            rate_source='config', # Use config rates
+            maturity='3M'
+        )
+        risk_free_wrapper = RiskFreeStrategyWrapper(risk_free_asset)
+        self.strategies.append(("Risk-Free Asset", risk_free_wrapper))
+
+        logger.info(f"Initialized {len(self.strategies)} strategies (12 benchmark + 1 risk-free)")
 
     def run_mab_comparison(self):
         """Run comprehensive MAB algorithm comparison."""
@@ -171,7 +182,6 @@ class MABComparisonDemo:
             }),
             ("Epsilon-Greedy", EpsilonGreedy, {
                 'epsilon': 0.1,      # 10% exploration rate
-                'random_seed': 42,
                 'n_arms': len(self.strategies)
             })
         ]
@@ -188,12 +198,12 @@ class MABComparisonDemo:
                     child_strategies=[s for _, s in self.strategies],
                     bandit_allocator=bandit,
                     strategy_names=[name for name, _ in self.strategies],
-                    burn_in_periods=6,  # 6 quarters burn-in
+                    burn_in_periods=3,  # 3 months burn-in (fits within 6-month test windows)
                     reward_type='return',  # Use raw returns, let algorithms handle scaling
                     reward_lookback=12,   # 12-period lookback for Sharpe if needed
                     min_allocation=0.02,  # Minimum 2% allocation per strategy
                     transaction_cost_bps=15.0,  # 15bps total costs
-                    enable_soft_allocation=True,  # Allow soft allocation
+                    enable_soft_allocation=False,  # Use hard allocation (select single best strategy)
                     random_seed=42
                 )
 
@@ -205,15 +215,15 @@ class MABComparisonDemo:
                     slippage_bps=self.config.slippage_bps
                 )
 
-                # Run backtest (full period, not walk-forward for learning continuity)
+                # Run backtest (single backtest for demonstration)
                 result = portfolio_engine.run_backtest(
                     strategy_wrapper=bandit_wrapper,
                     start_date=self.config.start_date,
                     end_date=self.config.end_date,
-                    rebalance_freq='Q',  # Quarterly rebalancing
+                    rebalance_freq='M',  # Monthly rebalancing
                     soft_rebalance=True,
                     drift_threshold=0.05,  # 5% threshold
-                    backtest_method='vanilla'  # Full period backtest for learning
+                    backtest_method='vanilla'  # Single backtest
                 )
 
                 # Store results
@@ -545,8 +555,8 @@ class MABComparisonDemo:
                 'parameters': {
                     'initial_capital': self.config.initial_capital,
                     'transaction_costs_bps': self.config.transaction_cost_bps,
-                    'rebalance_frequency': 'quarterly',
-                    'burn_in_periods': 6
+                    'rebalance_frequency': 'monthly',
+                    'burn_in_periods': 3
                 }
             },
             'leaderboard': self.leaderboard,
@@ -588,10 +598,10 @@ class MABComparisonDemo:
 
         print(f"\nBacktest Period: {self.config.start_date} to {self.config.end_date}")
         print(f"Strategies as Arms: {len(self.strategies)} benchmark strategies")
-        print(f"Rebalancing: Quarterly with 5% soft rebalance threshold")
-        print(f"Transaction Costs: {self.config.transaction_cost_bps/100:.2f}% commission + {self.config.slippage_bps/10000:.2f}% slippage")
+        print(f"Rebalancing: Monthly with 5% soft rebalance threshold")
+        print(f"Transaction Costs: {self.config.transaction_costs_bps/100:.2f}% commission + {self.config.slippage_bps/10000:.2f}% slippage")
         print(f"Initial Capital: ${self.config.initial_capital:,.0f}")
-        print(f"Burn-in Period: 6 quarters (1.5 years)")
+        print(f"Burn-in Period: {self.config.bandit.get('burn_in_periods', 3)} months")
 
         print(f"\nAlgorithms Tested: {len(self.mab_results)} MAB algorithms")
 
@@ -631,11 +641,12 @@ class MABComparisonDemo:
             sharpe_diff = self.leaderboard[0]['sharpe_ratio'] - self.leaderboard[-1]['sharpe_ratio']
             print(f"• Sharpe Ratio Range: {sharpe_diff:.2f} (best to worst)")
 
-        print("• All algorithms use the same 12 benchmark strategies as arms")
-        print("• Performance differences reflect learning effectiveness")
+        print("• All algorithms use the same 12 benchmark strategies + risk-free asset as arms")
+        print("• Performance differences reflect learning effectiveness and cash allocation")
         print("• EXP3 may excel in volatile market conditions")
         print("• UCB provides theoretical guarantees but may be conservative")
         print("• Thompson Sampling offers Bayesian adaptability")
+        print("• Risk-free asset allows dynamic cash positioning")
 
         print(f"\nVisualization files saved to: {self.results_dir}/")
         print("- mab_nav_comparison.png: Performance comparison")

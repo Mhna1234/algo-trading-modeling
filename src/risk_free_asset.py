@@ -325,13 +325,19 @@ class RiskFreeStrategyWrapper(BaseStrategyWrapper):
         """
         Return weights for risk-free asset.
         
-        Since this is a single asset (cash), it returns weight of 1.0
-        for the cash symbol. In practice, the MAB will allocate a portion
-        of capital to this "strategy", which gets invested in cash.
+        Returns zero weights for all risky assets, meaning 100% allocation
+        to cash. When the MAB selects this strategy, the portfolio will be
+        fully invested in the risk-free asset.
         """
-        # This represents 100% allocation to risk-free asset
-        # The actual weight will be determined by MAB allocation
-        return pd.Series({portfolio_state.cash_symbol: 1.0})
+        if portfolio_state is None:
+            # For testing, assume some default assets
+            return pd.Series({'AAPL': 0.0, 'MSFT': 0.0, 'GOOGL': 0.0})
+        
+        # Get risky assets (exclude cash)
+        risky_assets = portfolio_state.current_weights.index.drop(portfolio_state.cash_symbol, errors='ignore')
+        
+        # Return zero weights for all risky assets (100% cash allocation)
+        return pd.Series(0.0, index=risky_assets)
     
     def evaluate_reward(self, portfolio_state) -> float:
         """

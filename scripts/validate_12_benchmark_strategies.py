@@ -166,7 +166,8 @@ def main():
         cash=20000.0,
         equity=100000.0,
         price_history=prices.loc[:test_date],
-        return_history=strategy.returns.loc[:test_date]
+        return_history=strategy.returns.loc[:test_date],
+        cash_symbol='CASH'
     )
     
     # Define 12 benchmark strategies
