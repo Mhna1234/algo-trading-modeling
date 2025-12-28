@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from src.strategies.bandit_strategy_wrapper import BanditStrategyWrapper
-from src.bandits import UCBBandit, ThompsonSamplingBandit, EXP3Bandit
+from src.bandits import UCBBandit, ThompsonSamplingBandit, EXP3Bandit, EpsilonGreedy
 from tests.test_bandit_strategy_wrapper import create_dummy_portfolio_state, DummyStrategyWrapper
 
 # Create dummy strategies with DIFFERENT performance
@@ -29,7 +29,8 @@ print('Testing MAB algorithms with soft allocation and DIFFERENT strategy perfor
 algorithms = [
     ('UCB', UCBBandit(n_arms=3)),
     ('Thompson', ThompsonSamplingBandit(n_arms=3)),
-    ('EXP3', EXP3Bandit(n_arms=3))
+    ('EXP3', EXP3Bandit(n_arms=3)),
+    ('EpsilonGreedy', EpsilonGreedy(n_arms=3, epsilon=0.1))
 ]
 
 for name, bandit in algorithms:

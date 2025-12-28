@@ -10,10 +10,12 @@ from src.bandits.base import BanditAllocator
 from src.bandits.ucb import UCBBandit
 from src.bandits.thompson import ThompsonSamplingBandit
 from src.bandits.exp3 import EXP3Bandit
+from src.bandits.epsilon_greedy import EpsilonGreedy
 
 __all__ = [
     'BanditAllocator',
     'UCBBandit',
     'ThompsonSamplingBandit',
     'EXP3Bandit',
+    'EpsilonGreedy',
 ]
