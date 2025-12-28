@@ -1359,3 +1359,565 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             'period_count': self.period_count,
             'burn_in_periods': self.burn_in_periods,
         }
+    
+    def get_learning_analytics(self) -> Dict[str, Any]:
+        """
+        Get comprehensive learning analytics for performance analysis and visualization.
+        
+        Returns
+        -------
+        dict
+            Analytics including:
+            - regret_metrics: Cumulative and per-period regret
+            - allocation_churn: Turnover and rebalancing frequency
+            - learning_curves: Performance evolution over time
+            - strategy_rankings: Current and historical rankings
+            - confidence_intervals: Uncertainty bounds on allocations
+        """
+        if not self.allocation_history:
+            return {
+                'regret_metrics': {'cumulative_regret': 0.0, 'average_regret': 0.0},
+                'allocation_churn': {'total_turnover': 0.0, 'avg_turnover': 0.0},
+                'learning_curves': {'periods': [], 'allocations': [], 'rewards': []},
+                'strategy_rankings': {'current': [], 'historical_avg': []},
+                'confidence_intervals': {'allocation_ci': []}
+            }
+        
+        # Calculate regret metrics
+        regret_metrics = self._calculate_regret_metrics()
+        
+        # Calculate allocation churn
+        allocation_churn = self._calculate_allocation_churn()
+        
+        # Learning curves data
+        learning_curves = self._extract_learning_curves()
+        
+        # Strategy rankings
+        strategy_rankings = self._calculate_strategy_rankings()
+        
+        # Confidence intervals
+        confidence_intervals = self._calculate_confidence_intervals()
+        
+        return {
+            'regret_metrics': regret_metrics,
+            'allocation_churn': allocation_churn,
+            'learning_curves': learning_curves,
+            'strategy_rankings': strategy_rankings,
+            'confidence_intervals': confidence_intervals
+        }
+    
+    def _calculate_regret_metrics(self) -> Dict[str, float]:
+        """
+        Calculate regret metrics for bandit performance evaluation.
+        
+        Regret measures how much worse the bandit performed compared to
+        always selecting the best strategy in hindsight.
+        """
+        if len(self.allocation_history) < 2:
+            return {'cumulative_regret': 0.0, 'average_regret': 0.0}
+        
+        # Get all strategy returns for each period
+        all_returns = []
+        for entry in self.allocation_history:
+            period_returns = []
+            for i, tracker in enumerate(self.trackers):
+                # Find return for this period
+                entry_date = entry['date']
+                # Get returns up to this date
+                date_returns = [r for r, ts in zip(tracker.returns, tracker.timestamps) if ts <= entry_date]
+                if date_returns:
+                    period_returns.append(date_returns[-1])  # Most recent return
+                else:
+                    period_returns.append(0.0)
+            all_returns.append(period_returns)
+        
+        if not all_returns:
+            return {'cumulative_regret': 0.0, 'average_regret': 0.0}
+        
+        # Calculate best strategy return for each period
+        best_returns = [max(period_returns) for period_returns in all_returns]
+        
+        # Calculate actual returns based on allocations
+        actual_returns = []
+        for entry, period_returns in zip(self.allocation_history, all_returns):
+            allocs = entry['allocations']
+            actual_return = np.dot(allocs, period_returns)
+            actual_returns.append(actual_return)
+        
+        # Calculate per-period regret
+        regrets = [best - actual for best, actual in zip(best_returns, actual_returns)]
+        
+        return {
+            'cumulative_regret': sum(regrets),
+            'average_regret': np.mean(regrets) if regrets else 0.0,
+            'max_regret': max(regrets) if regrets else 0.0,
+            'regret_std': np.std(regrets) if len(regrets) > 1 else 0.0
+        }
+    
+    def _calculate_allocation_churn(self) -> Dict[str, float]:
+        """
+        Calculate allocation churn and turnover metrics.
+        """
+        if len(self.allocation_history) < 2:
+            return {'total_turnover': 0.0, 'avg_turnover': 0.0, 'churn_events': 0}
+        
+        turnovers = []
+        churn_events = 0
+        
+        for i in range(1, len(self.allocation_history)):
+            prev_allocs = np.array(self.allocation_history[i-1]['allocations'])
+            curr_allocs = np.array(self.allocation_history[i]['allocations'])
+            
+            # Calculate total turnover (sum of absolute changes)
+            turnover = np.sum(np.abs(curr_allocs - prev_allocs))
+            turnovers.append(turnover)
+            
+            # Count significant changes (>1% total allocation change)
+            if turnover > 0.01:
+                churn_events += 1
+        
+        return {
+            'total_turnover': sum(turnovers),
+            'avg_turnover': np.mean(turnovers) if turnovers else 0.0,
+            'max_turnover': max(turnovers) if turnovers else 0.0,
+            'churn_events': churn_events,
+            'churn_rate': churn_events / len(turnovers) if turnovers else 0.0
+        }
+    
+    def _extract_learning_curves(self) -> Dict[str, Any]:
+        """
+        Extract learning curves data for visualization.
+        """
+        periods = [entry['period'] for entry in self.allocation_history]
+        dates = [entry['date'] for entry in self.allocation_history]
+        
+        # Allocation evolution for each strategy
+        allocations = {}
+        for i, strategy_name in enumerate(self.strategy_names):
+            allocations[strategy_name] = [entry['allocations'][i] for entry in self.allocation_history]
+        
+        # Reward evolution (if available)
+        rewards = []
+        for entry in self.allocation_history:
+            entry_date = entry['date']
+            # Get most recent reward for each tracker
+            period_rewards = []
+            for tracker in self.trackers:
+                date_rewards = [r for r, ts in zip(tracker.returns, tracker.timestamps) if ts <= entry_date]
+                if date_rewards:
+                    period_rewards.append(date_rewards[-1])
+                else:
+                    period_rewards.append(0.0)
+            rewards.append(period_rewards)
+        
+        return {
+            'periods': periods,
+            'dates': dates,
+            'allocations': allocations,
+            'rewards': rewards
+        }
+    
+    def _calculate_strategy_rankings(self) -> Dict[str, Any]:
+        """
+        Calculate current and historical strategy rankings.
+        """
+        if not self.trackers:
+            return {'current': [], 'historical_avg': []}
+        
+        # Current rankings based on recent metrics
+        current_metrics = [tracker.get_recent_metrics(self.reward_lookback) for tracker in self.trackers]
+        current_sharpes = [m['sharpe'] for m in current_metrics]
+        current_ranks = np.argsort(current_sharpes)[::-1]  # Descending order
+        
+        # Historical average rankings
+        historical_sharpes = []
+        for tracker in self.trackers:
+            all_sharpes = []
+            # Calculate Sharpe over rolling windows
+            window_size = min(12, len(tracker.returns))
+            if len(tracker.returns) >= window_size:
+                for i in range(window_size, len(tracker.returns) + 1):
+                    window_returns = tracker.returns[i-window_size:i]
+                    if len(window_returns) > 1:
+                        mean_ret = np.mean(window_returns)
+                        vol = np.std(window_returns)
+                        sharpe = mean_ret / (vol + 1e-6)
+                        all_sharpes.append(sharpe)
+            historical_sharpes.append(np.mean(all_sharpes) if all_sharpes else 0.0)
+        
+        historical_ranks = np.argsort(historical_sharpes)[::-1]
+        
+        return {
+            'current': current_ranks.tolist(),
+            'historical_avg': historical_ranks.tolist(),
+            'current_sharpes': current_sharpes,
+            'historical_sharpes': historical_sharpes
+        }
+    
+    def _calculate_confidence_intervals(self) -> Dict[str, Any]:
+        """
+        Calculate confidence intervals for allocation estimates.
+        """
+        if len(self.allocation_history) < 5:
+            return {'allocation_ci': []}
+        
+        # Use recent allocation history for confidence intervals
+        recent_allocs = np.array([entry['allocations'] for entry in self.allocation_history[-10:]])
+        
+        # Calculate mean and std for each strategy
+        means = np.mean(recent_allocs, axis=0)
+        stds = np.std(recent_allocs, axis=0)
+        
+        # 95% confidence intervals
+        n = len(recent_allocs)
+        t_value = 2.0  # Approximate t-value for 95% CI with n>10
+        ci_half_width = t_value * stds / np.sqrt(n)
+        
+        allocation_ci = []
+        for i, (mean, ci_hw) in enumerate(zip(means, ci_half_width)):
+            allocation_ci.append({
+                'strategy': self.strategy_names[i],
+                'mean': mean,
+                'ci_lower': max(0.0, mean - ci_hw),
+                'ci_upper': min(1.0, mean + ci_hw),
+                'confidence': 0.95
+            })
+        
+        return {'allocation_ci': allocation_ci}
+    
+    def plot_allocation_evolution(self) -> Dict[str, Any]:
+        """
+        Generate data for plotting allocation evolution over time.
+        
+        Returns
+        -------
+        dict
+            Plot data including:
+            - timeline: Dates or periods
+            - allocations: Time series of allocations per strategy
+            - burn_in_periods: Burn-in period markers
+            - transition_periods: Transition period markers
+        """
+        if not self.allocation_history:
+            return {
+                'timeline': [],
+                'allocations': {name: [] for name in self.strategy_names},
+                'burn_in_periods': self.burn_in_periods,
+                'transition_periods': min(3, self.burn_in_periods // 4)
+            }
+        
+        timeline = [entry['date'] for entry in self.allocation_history]
+        allocations = {name: [] for name in self.strategy_names}
+        
+        for entry in self.allocation_history:
+            for i, name in enumerate(self.strategy_names):
+                allocations[name].append(entry['allocations'][i])
+        
+        return {
+            'timeline': timeline,
+            'allocations': allocations,
+            'burn_in_periods': self.burn_in_periods,
+            'transition_periods': min(3, self.burn_in_periods // 4),
+            'period_count': self.period_count,
+            'bandit_active': self.bandit_active
+        }
+    
+    def plot_learning_curves(self) -> Dict[str, Any]:
+        """
+        Generate data for plotting learning curves and performance metrics.
+        
+        Returns
+        -------
+        dict
+            Plot data including:
+            - timeline: Dates or periods
+            - strategy_returns: Returns per strategy over time
+            - allocation_weights: Allocation weights over time
+            - cumulative_performance: Cumulative metrics
+            - regret_curve: Regret accumulation over time
+        """
+        if not self.allocation_history:
+            return {
+                'timeline': [],
+                'strategy_returns': {name: [] for name in self.strategy_names},
+                'allocation_weights': {name: [] for name in self.strategy_names},
+                'cumulative_returns': [],
+                'regret_curve': []
+            }
+        
+        timeline = [entry['date'] for entry in self.allocation_history]
+        
+        # Strategy returns over time
+        strategy_returns = {name: [] for name in self.strategy_names}
+        allocation_weights = {name: [] for name in self.strategy_names}
+        
+        cumulative_returns = []
+        regret_curve = []
+        
+        running_cumulative = 0.0
+        running_regret = 0.0
+        
+        for entry in self.allocation_history:
+            entry_date = entry['date']
+            
+            # Get returns for this period
+            period_returns = []
+            for tracker in self.trackers:
+                date_returns = [r for r, ts in zip(tracker.returns, tracker.timestamps) if ts <= entry_date]
+                if date_returns:
+                    period_returns.append(date_returns[-1])
+                else:
+                    period_returns.append(0.0)
+            
+            # Store strategy returns and allocations
+            for i, name in enumerate(self.strategy_names):
+                strategy_returns[name].append(period_returns[i])
+                allocation_weights[name].append(entry['allocations'][i])
+            
+            # Calculate portfolio return
+            portfolio_return = np.dot(entry['allocations'], period_returns)
+            running_cumulative += portfolio_return
+            cumulative_returns.append(running_cumulative)
+            
+            # Calculate regret
+            best_return = max(period_returns) if period_returns else 0.0
+            period_regret = best_return - portfolio_return
+            running_regret += period_regret
+            regret_curve.append(running_regret)
+        
+        return {
+            'timeline': timeline,
+            'strategy_returns': strategy_returns,
+            'allocation_weights': allocation_weights,
+            'cumulative_returns': cumulative_returns,
+            'regret_curve': regret_curve
+        }
+    
+    def plot_strategy_performance(self) -> Dict[str, Any]:
+        """
+        Generate data for plotting strategy performance comparison.
+        
+        Returns
+        -------
+        dict
+            Plot data including:
+            - strategy_names: List of strategy names
+            - sharpe_ratios: Sharpe ratios per strategy
+            - total_returns: Total returns per strategy
+            - allocation_history: Allocation percentage over time
+            - win_rate: Percentage of positive periods
+        """
+        if not self.trackers:
+            return {
+                'strategy_names': [],
+                'sharpe_ratios': [],
+                'total_returns': [],
+                'allocation_history': [],
+                'win_rate': []
+            }
+        
+        strategy_names = []
+        sharpe_ratios = []
+        total_returns = []
+        win_rates = []
+        avg_allocations = []
+        
+        for i, (tracker, name) in enumerate(zip(self.trackers, self.strategy_names)):
+            strategy_names.append(name)
+            
+            # Calculate metrics
+            metrics = tracker.get_recent_metrics(self.reward_lookback)
+            sharpe_ratios.append(metrics['sharpe'])
+            total_returns.append(sum(tracker.returns))
+            
+            # Win rate
+            if tracker.returns:
+                wins = sum(1 for r in tracker.returns if r > 0)
+                win_rates.append(wins / len(tracker.returns))
+            else:
+                win_rates.append(0.0)
+            
+            # Average allocation
+            if self.allocation_history:
+                avg_alloc = np.mean([entry['allocations'][i] for entry in self.allocation_history])
+                avg_allocations.append(avg_alloc)
+            else:
+                avg_allocations.append(0.0)
+        
+        return {
+            'strategy_names': strategy_names,
+            'sharpe_ratios': sharpe_ratios,
+            'total_returns': total_returns,
+            'win_rate': win_rates,
+            'avg_allocations': avg_allocations
+        }
+    
+    def generate_diagnostic_report(self) -> str:
+        """
+        Generate a comprehensive diagnostic report as formatted text.
+        
+        Returns
+        -------
+        str
+            Formatted diagnostic report suitable for logging or display
+        """
+        lines = []
+        lines.append("=" * 60)
+        lines.append("MAB DIAGNOSTIC REPORT")
+        lines.append("=" * 60)
+        lines.append(f"Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append("")
+        
+        # Basic info
+        lines.append("BASIC INFORMATION:")
+        lines.append(f"  Strategies: {len(self.child_strategies)}")
+        lines.append(f"  Algorithm: {self.bandit_allocator.__class__.__name__}")
+        lines.append(f"  Reward Type: {self.reward_type}")
+        lines.append(f"  Burn-in Periods: {self.burn_in_periods}")
+        lines.append(f"  Current Period: {self.period_count}")
+        lines.append(f"  Bandit Active: {self.bandit_active}")
+        lines.append(f"  Bandit Has Learned: {self.bandit_has_learned}")
+        lines.append("")
+        
+        # Learning analytics
+        analytics = self.get_learning_analytics()
+        lines.append("LEARNING ANALYTICS:")
+        regret = analytics['regret_metrics']
+        lines.append(f"  Cumulative Regret: {regret['cumulative_regret']:.4f}")
+        lines.append(f"  Average Regret: {regret['average_regret']:.4f}")
+        lines.append(f"  Max Regret: {regret['max_regret']:.4f}")
+        lines.append("")
+        
+        churn = analytics['allocation_churn']
+        lines.append("ALLOCATION CHURN:")
+        lines.append(f"  Total Turnover: {churn['total_turnover']:.4f}")
+        lines.append(f"  Average Turnover: {churn['avg_turnover']:.4f}")
+        lines.append(f"  Churn Events: {churn['churn_events']}")
+        lines.append(f"  Churn Rate: {churn['churn_rate']:.2%}")
+        lines.append("")
+        
+        # Strategy performance
+        perf_data = self.plot_strategy_performance()
+        lines.append("STRATEGY PERFORMANCE:")
+        lines.append("  Strategy          | Sharpe | Total Ret | Win Rate | Avg Alloc")
+        lines.append("  ------------------|--------|-----------|----------|----------")
+        for name, sharpe, ret, win, alloc in zip(
+            perf_data['strategy_names'],
+            perf_data['sharpe_ratios'],
+            perf_data['total_returns'],
+            perf_data['win_rate'],
+            perf_data['avg_allocations']
+        ):
+            lines.append(f"  {name[:16]:<16} | {sharpe:>6.3f} | {ret:>9.3f} | {win:>7.1%} | {alloc:>8.1%}")
+        lines.append("")
+        
+        # Current allocations
+        diag = self.get_bandit_diagnostics()
+        lines.append("CURRENT ALLOCATIONS:")
+        if diag['last_allocations']:
+            for name, alloc in zip(self.strategy_names, diag['last_allocations']):
+                lines.append(f"  {name}: {alloc:.1%}")
+        else:
+            lines.append("  No allocations recorded yet")
+        lines.append("")
+        
+        # Bandit state
+        lines.append("BANDIT STATE:")
+        lines.append(f"  Allocation Entropy: {diag['allocation_entropy']:.4f}")
+        if diag['arm_counts']:
+            lines.append("  Arm Selection Counts:")
+            for name, count in zip(self.strategy_names, diag['arm_counts']):
+                lines.append(f"    {name}: {count}")
+        lines.append("")
+        
+        lines.append("=" * 60)
+        
+        return "\n".join(lines)
+    
+    def export_diagnostic_data(self, format: str = 'json') -> str:
+        """
+        Export comprehensive diagnostic data for external analysis.
+        
+        Parameters
+        ----------
+        format : str, default='json'
+            Export format: 'json' or 'csv'
+            
+        Returns
+        -------
+        str
+            JSON string or CSV formatted data
+        """
+        # Collect all diagnostic data
+        data = {
+            'timestamp': pd.Timestamp.now().isoformat(),
+            'basic_info': {
+                'n_strategies': len(self.child_strategies),
+                'strategy_names': self.strategy_names,
+                'algorithm': self.bandit_allocator.__class__.__name__,
+                'reward_type': self.reward_type,
+                'burn_in_periods': self.burn_in_periods,
+                'period_count': self.period_count,
+                'bandit_active': self.bandit_active,
+                'bandit_has_learned': self.bandit_has_learned
+            },
+            'learning_analytics': self.get_learning_analytics(),
+            'bandit_diagnostics': self.get_bandit_diagnostics(),
+            'strategy_performance': self.plot_strategy_performance(),
+            'allocation_evolution': self.plot_allocation_evolution(),
+            'learning_curves': self.plot_learning_curves()
+        }
+        
+        if format.lower() == 'json':
+            import json
+            return json.dumps(data, indent=2, default=str)
+        elif format.lower() == 'csv':
+            # Export allocation history as CSV
+            if not self.allocation_history:
+                return "date,period," + ",".join(self.strategy_names) + "\n"
+            
+            lines = ["date,period," + ",".join(self.strategy_names)]
+            for entry in self.allocation_history:
+                row = [entry['date'].strftime('%Y-%m-%d'), str(entry['period'])]
+                row.extend([f"{alloc:.6f}" for alloc in entry['allocations']])
+                lines.append(",".join(row))
+            
+            return "\n".join(lines)
+        else:
+            raise ValueError(f"Unsupported format: {format}. Use 'json' or 'csv'.")
+    
+    def log_periodic_summary(self, logger_instance=None) -> None:
+        """
+        Log a periodic summary of MAB performance and state.
+        
+        Parameters
+        ----------
+        logger_instance : logging.Logger, optional
+            Logger to use. If None, uses the default logger.
+        """
+        if logger_instance is None:
+            logger_instance = logger
+        
+        if self.period_count == 0:
+            return  # Nothing to log yet
+        
+        # Get key metrics
+        analytics = self.get_learning_analytics()
+        diag = self.get_bandit_diagnostics()
+        
+        # Format summary
+        summary = (
+            f"MAB Summary (Period {self.period_count}): "
+            f"Regret={analytics['regret_metrics']['cumulative_regret']:.3f}, "
+            f"Turnover={analytics['allocation_churn']['total_turnover']:.3f}, "
+            f"Entropy={diag['allocation_entropy']:.3f}, "
+            f"Active={self.bandit_active}"
+        )
+        
+        # Add current allocations
+        if diag['last_allocations']:
+            alloc_str = ", ".join([f"{name}={alloc:.1%}" 
+                                 for name, alloc in zip(self.strategy_names, diag['last_allocations'])])
+            summary += f" | Allocations: {alloc_str}"
+        
+        logger_instance.info(summary)
