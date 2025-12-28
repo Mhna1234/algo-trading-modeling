@@ -326,6 +326,7 @@ def test_get_weights_min_allocation_constraint():
         bandit_allocator=bandit,
         burn_in_periods=0,
         min_allocation=min_alloc,
+        enable_soft_allocation=True,  # Enable soft allocation for min_allocation to apply
         random_seed=42
     )
     

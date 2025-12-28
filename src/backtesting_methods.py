@@ -194,6 +194,10 @@ class BacktestingMethods:
             logger.info(f"Walk {len(results) + 1}: Train [{train_start.date()} to {train_end.date()}], "
                        f"Test [{test_start.date()} to {test_end.date()}]")
             
+            # Reset strategy state for fold isolation (e.g., MAB reset)
+            if hasattr(strategy, 'reset'):
+                strategy.reset()
+            
             try:
                 # Run backtest on test period (strategy trains on train period internally)
                 portfolio = PortfolioEngine(

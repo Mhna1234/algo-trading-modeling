@@ -359,6 +359,7 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         Calculate rewards from previous period and update bandit.
         
         Reward is calculated as risk-adjusted return with transaction cost adjustment.
+        During burn-in period, bandit does NOT learn (no updates).
         """
         try:
             # Calculate strategy-specific returns
@@ -370,7 +371,16 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             # Calculate rewards with risk adjustment
             rewards = self._calculate_rewards(strategy_returns)
             
-            # Update bandit with rewards for each arm
+            # Skip bandit updates during burn-in period
+            if self.period_count <= self.burn_in_periods:
+                # Still track performance for diagnostics, but don't update bandit
+                for arm_idx, (ret, reward) in enumerate(zip(strategy_returns, rewards)):
+                    allocation = self.last_allocations[arm_idx] if self.last_allocations is not None else 0.0
+                    self.trackers[arm_idx].add_observation(ret, allocation, current_date)
+                logger.debug(f"Burn-in period ({self.period_count}/{self.burn_in_periods}): rewards calculated but bandit not updated")
+                return
+            
+            # Update bandit with rewards for each arm (only after burn-in)
             for arm_idx, reward in enumerate(rewards):
                 # Reward sanity checks (observability only, no modification)
                 if np.isnan(reward) or np.isinf(reward):
@@ -916,6 +926,39 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             'reward_type': self.reward_type,
             'enable_soft_allocation': self.enable_soft_allocation
         }
+    
+    def reset(self) -> None:
+        """
+        Reset MAB state for walk-forward fold isolation.
+        
+        This method resets the bandit allocator, performance trackers, and all
+        internal state to initial values. Used between walk-forward folds to
+        prevent lookahead bias.
+        """
+        # Reset bandit allocator
+        self.bandit_allocator.reset()
+        
+        # Reset performance trackers
+        self.trackers = [
+            StrategyPerformanceTracker(strategy_name=name)
+            for name in self.strategy_names
+        ]
+        
+        # Reset state tracking
+        self.period_count = 0
+        self.last_date = None
+        self.last_weights = None
+        self.last_allocations = None
+        self.last_portfolio_value = None
+        
+        # Reset learning state
+        self.bandit_active = False
+        self.bandit_has_learned = False
+        
+        # Reset allocation history
+        self.allocation_history = []
+        
+        logger.info("BanditStrategyWrapper state reset for walk-forward fold isolation")
     
     def get_strategy_info(self) -> Dict[str, Any]:
         """Return strategy metadata."""
