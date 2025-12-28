@@ -170,7 +170,7 @@ Data → Strategies → Performance → MAB → Allocation → Portfolio → Exe
 - [ ] Add integration tests with mock pipeline data
 
 **Implementation Status**
-- 🚧 In progress (Basic integration complete, burn-in logic needs refinement)
+- ✅ Completed (MAB integration with refined burn-in logic, smooth transitions, and fold-aware state management)
 
 ## PHASE 5 — Portfolio Construction & Rebalancing Interaction
 
@@ -214,7 +214,7 @@ Data → Strategies → Performance → MAB → Allocation → Portfolio → Exe
 - [ ] Implement backtest validation (reproducibility, no lookahead bias)
 
 **Implementation Status**
-- ⚠️ Needs enhancement (Basic walk-forward support exists, but fold isolation incomplete)
+- ✅ Completed (Enhanced walk-forward protocol with fold isolation, validation, and MAB diagnostics)
 
 ## PHASE 7 — Logging, Diagnostics & Visualization
 

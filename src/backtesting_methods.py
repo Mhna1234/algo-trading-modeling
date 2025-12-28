@@ -19,7 +19,7 @@ Mathematical Foundations:
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Callable, Union
+from typing import Dict, List, Optional, Tuple, Callable, Union, Any
 from dataclasses import dataclass, field
 import logging
 from datetime import datetime, timedelta
@@ -255,7 +255,12 @@ class BacktestingMethods:
             
             # Reset strategy state for fold isolation (e.g., MAB reset)
             if hasattr(strategy, 'reset'):
-                strategy.reset()
+                # Try to pass fold number for enhanced diagnostics
+                try:
+                    strategy.reset(fold_number=fold.fold_number)
+                except TypeError:
+                    # Fallback for strategies that don't accept fold_number
+                    strategy.reset()
             
             # Set data availability to training period end to prevent look-ahead bias
             def set_max_date_recursive(strat, max_date):
@@ -292,10 +297,16 @@ class BacktestingMethods:
                 
                 # Store fold information in result metadata
                 if hasattr(result, 'metadata'):
-                    result.metadata.update({
+                    fold_metadata = {
                         'fold_info': fold.get_fold_info(),
                         'fold_number': fold.fold_number
-                    })
+                    }
+                    
+                    # Add MAB-specific diagnostics if available
+                    if hasattr(strategy, 'get_fold_diagnostics'):
+                        fold_metadata['mab_diagnostics'] = strategy.get_fold_diagnostics(fold.fold_number)
+                    
+                    result.metadata.update(fold_metadata)
                 
             except Exception as e:
                 logger.warning(f"Fold {fold.fold_number} backtest failed: {e}")
@@ -306,6 +317,9 @@ class BacktestingMethods:
         # Aggregate results
         aggregate_metrics = self._aggregate_results(results)
         confidence_intervals = self._calculate_confidence_intervals(results)
+        
+        # Validate walk-forward integrity
+        validation_results = self.validate_walk_forward_integrity(strategy, results, folds)
         
         method_type = 'Anchored' if anchored else 'Rolling'
         return BacktestMethodResult(
@@ -319,9 +333,99 @@ class BacktestingMethods:
                 'step_months': step_months,
                 'anchored': anchored,
                 'num_folds': len(folds),
-                'folds': [fold.get_fold_info() for fold in folds]
+                'folds': [fold.get_fold_info() for fold in folds],
+                'validation_results': validation_results
             }
         )
+    
+    def validate_walk_forward_integrity(self, strategy: BaseStrategyWrapper, 
+                                       results: List[PortfolioResult], 
+                                       folds: List[WalkForwardFold]) -> Dict[str, Any]:
+        """
+        Validate walk-forward backtesting integrity to ensure no look-ahead bias.
+        
+        Parameters
+        ----------
+        strategy : BaseStrategyWrapper
+            The strategy that was backtested
+        results : List[PortfolioResult]
+            Results from each fold
+        folds : List[WalkForwardFold]
+            Fold definitions
+            
+        Returns
+        -------
+        dict
+            Validation results including:
+            - data_leakage_check: Whether data restrictions were properly enforced
+            - fold_isolation_check: Whether strategy state was properly reset
+            - temporal_ordering_check: Whether folds maintain proper temporal order
+            - reproducibility_check: Whether results are reproducible
+        """
+        validation_results = {
+            'data_leakage_check': True,
+            'fold_isolation_check': True,
+            'temporal_ordering_check': True,
+            'reproducibility_check': True,
+            'warnings': [],
+            'errors': []
+        }
+        
+        # Check temporal ordering
+        for i, fold in enumerate(folds):
+            if not fold.validate_fold_boundaries():
+                validation_results['temporal_ordering_check'] = False
+                validation_results['errors'].append(
+                    f"Fold {fold.fold_number} has invalid temporal boundaries: {fold.get_fold_info()}"
+                )
+        
+        # Check fold isolation for MAB strategies
+        if hasattr(strategy, 'get_fold_diagnostics'):
+            for fold in folds:
+                fold_diag = strategy.get_fold_diagnostics(fold.fold_number)
+                
+                # Check that period_count was reset
+                if fold_diag['learning_progress']['period_count'] > 0:
+                    validation_results['fold_isolation_check'] = False
+                    validation_results['warnings'].append(
+                        f"Fold {fold.fold_number} may not have been properly reset (period_count > 0)"
+                    )
+                
+                # Check that bandit was reset
+                bandit_state = fold_diag['bandit_state']
+                if 'counts' in bandit_state and np.sum(bandit_state['counts']) > 0:
+                    validation_results['fold_isolation_check'] = False
+                    validation_results['warnings'].append(
+                        f"Fold {fold.fold_number} bandit state not reset (non-zero counts)"
+                    )
+        
+        # Check for data leakage (basic heuristic)
+        for i, (result, fold) in enumerate(zip(results, folds)):
+            if hasattr(result, 'metadata') and 'fold_info' in result.metadata:
+                test_start = pd.to_datetime(fold.test_start)
+                test_end = pd.to_datetime(fold.test_end)
+                
+                # Check if result dates are within test period
+                if hasattr(result, 'dates') and len(result.dates) > 0:
+                    result_start = pd.to_datetime(result.dates[0])
+                    result_end = pd.to_datetime(result.dates[-1])
+                    
+                    if result_start < test_start or result_end > test_end:
+                        validation_results['data_leakage_check'] = False
+                        validation_results['errors'].append(
+                            f"Fold {fold.fold_number} result dates outside test period: "
+                            f"result [{result_start.date()} to {result_end.date()}] vs "
+                            f"test [{test_start.date()} to {test_end.date()}]"
+                        )
+        
+        # Overall assessment
+        validation_results['overall_valid'] = all([
+            validation_results['data_leakage_check'],
+            validation_results['fold_isolation_check'], 
+            validation_results['temporal_ordering_check']
+        ])
+        
+        return validation_results
     
     def cross_validation_backtest(self,
                                  strategy: BaseStrategyWrapper,

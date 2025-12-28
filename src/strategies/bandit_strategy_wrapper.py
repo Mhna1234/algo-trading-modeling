@@ -125,7 +125,10 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
     reward_lookback : int, default=12
         Number of periods to use for reward calculation
     burn_in_periods : int, default=12
-        Number of periods to use equal allocation before engaging bandit
+        Number of periods to use equal allocation before engaging bandit.
+        Followed by a transition period (up to 3 periods or 25% of burn_in_periods)
+        where allocations are blended between equal and bandit selections for
+        smooth learning activation.
     min_allocation : float, default=0.05
         Minimum allocation per strategy (prevents total exclusion)
     transaction_cost_bps : float, default=5.0
@@ -360,6 +363,7 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         
         Reward is calculated as risk-adjusted return with transaction cost adjustment.
         During burn-in period, bandit does NOT learn (no updates).
+        During transition period, bandit learns with partial weight.
         """
         try:
             # Calculate strategy-specific returns
@@ -372,27 +376,51 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             rewards = self._calculate_rewards(strategy_returns)
             
             # Skip bandit updates during burn-in period
-            if self.period_count <= self.burn_in_periods:
+            if self.period_count < self.burn_in_periods:
+                # During burn-in, use proportional attribution for tracking purposes
+                # (since we're not learning, we can attribute returns proportionally)
+                if self.last_portfolio_value is not None and self.last_portfolio_value > 0:
+                    portfolio_return = (portfolio_state.equity - self.last_portfolio_value) / self.last_portfolio_value
+                    # Proportional attribution during burn-in
+                    proportional_returns = [portfolio_return] * len(strategy_returns)
+                else:
+                    proportional_returns = [0.0] * len(strategy_returns)
+                
                 # Still track performance for diagnostics, but don't update bandit
-                for arm_idx, (ret, reward) in enumerate(zip(strategy_returns, rewards)):
+                for arm_idx, ret in enumerate(proportional_returns):
                     allocation = self.last_allocations[arm_idx] if self.last_allocations is not None else 0.0
+                    # Use a dummy reward of 0 since we're not learning
                     self.trackers[arm_idx].add_observation(ret, allocation, current_date)
-                logger.debug(f"Burn-in period ({self.period_count}/{self.burn_in_periods}): rewards calculated but bandit not updated")
+                logger.debug(f"Burn-in period ({self.period_count}/{self.burn_in_periods}): proportional attribution for tracking")
                 return
             
-            # Update bandit with rewards for each arm (only after burn-in)
+            # During transition period (first few periods after burn-in), use partial learning
+            transition_periods = min(3, self.burn_in_periods // 4)  # Up to 3 periods or 25% of burn-in
+            is_transition = (self.burn_in_periods <= self.period_count < self.burn_in_periods + transition_periods)
+            
+            if is_transition:
+                # Partial learning: update bandit but with reduced confidence
+                learning_weight = (self.period_count - self.burn_in_periods + 1) / transition_periods
+                logger.debug(f"Transition period ({self.period_count - self.burn_in_periods + 1}/{transition_periods}): partial learning with weight {learning_weight:.2f}")
+            else:
+                learning_weight = 1.0
+            
+            # Update bandit with rewards for each arm (after burn-in)
             for arm_idx, reward in enumerate(rewards):
+                # Apply learning weight during transition
+                adjusted_reward = reward * learning_weight
+                
                 # Reward sanity checks (observability only, no modification)
-                if np.isnan(reward) or np.isinf(reward):
-                    logger.warning(f"Invalid reward for arm {arm_idx}: {reward} (NaN or infinite)")
-                elif abs(reward) > 5.0:
-                    logger.warning(f"Extreme reward for arm {arm_idx}: {reward} (magnitude > 5)")
+                if np.isnan(adjusted_reward) or np.isinf(adjusted_reward):
+                    logger.warning(f"Invalid adjusted reward for arm {arm_idx}: {adjusted_reward} (NaN or infinite)")
+                elif abs(adjusted_reward) > 5.0:
+                    logger.warning(f"Extreme adjusted reward for arm {arm_idx}: {adjusted_reward} (magnitude > 5)")
                 if self.bandit_allocator.__class__.__name__ == 'EXP3Bandit':
                     # EXP3 expects rewards in [0, 1] after scaling
-                    if not (0 <= reward <= 1):
-                        logger.warning(f"EXP3 reward out of [0,1] range for arm {arm_idx}: {reward}")
+                    if not (0 <= adjusted_reward <= 1):
+                        logger.warning(f"EXP3 adjusted reward out of [0,1] range for arm {arm_idx}: {adjusted_reward}")
                 
-                self.bandit_allocator.update(arm_idx, reward)
+                self.bandit_allocator.update(arm_idx, adjusted_reward)
             
             # Mark that bandit has learned at least once
             self.bandit_has_learned = True
@@ -408,7 +436,8 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             logger.debug(
                 f"Updated rewards at {current_date}: "
                 f"returns={[f'{r:.4f}' for r in strategy_returns]}, "
-                f"rewards={[f'{r:.4f}' for r in rewards]}"
+                f"rewards={[f'{r:.4f}' for r in rewards]}, "
+                f"learning_weight={learning_weight:.2f}"
             )
             
         except Exception as e:
@@ -632,7 +661,8 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         Get strategy allocations from bandit algorithm.
         
         During burn-in period, uses equal allocation.
-        After burn-in, queries bandit for allocation.
+        During transition period, blends equal and bandit allocations.
+        After transition, uses full bandit allocation.
         
         Canonical Bandit Time Index:
         - Uses self.period_count as single source of truth for bandit time
@@ -646,10 +676,45 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             logger.debug(f"Burn-in period ({self.period_count}/{self.burn_in_periods}): equal allocation")
             return allocations
         
+        # Transition period: blend equal and bandit allocations for smooth transition
+        transition_periods = min(3, self.burn_in_periods // 4)  # Up to 3 periods or 25% of burn-in
+        is_transition = (self.burn_in_periods <= self.period_count < self.burn_in_periods + transition_periods)
+        
+        if is_transition:
+            # Blend equal allocation with bandit allocation
+            transition_progress = (self.period_count - self.burn_in_periods + 1) / transition_periods
+            equal_weight = 1.0 - transition_progress
+            bandit_weight = transition_progress
+            
+            # Get equal allocation
+            equal_allocations = np.ones(n_strategies) / n_strategies
+            
+            # Get bandit allocation
+            bandit_allocations = self._get_bandit_allocations()
+            
+            # Blend allocations
+            allocations = equal_weight * equal_allocations + bandit_weight * bandit_allocations
+            
+            logger.debug(
+                f"Transition period ({self.period_count - self.burn_in_periods + 1}/{transition_periods}): "
+                f"blending equal ({equal_weight:.2f}) and bandit ({bandit_weight:.2f}) allocations"
+            )
+            return allocations
+        
         # Burn-in just ended: activate bandit learning
         if not self.bandit_active:
             self.bandit_active = True
             logger.info(f"Bandit learning activated at period {self.period_count}")
+        
+        # Full bandit allocation after transition
+        allocations = self._get_bandit_allocations()
+        return allocations
+    
+    def _get_bandit_allocations(self) -> np.ndarray:
+        """
+        Get allocations directly from bandit algorithm (helper method).
+        """
+        n_strategies = len(self.child_strategies)
         
         # Query bandit for selection using canonical time index
         bandit_time = self.period_count
@@ -841,7 +906,8 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         self.allocation_history.append({
             'date': date,
             'allocations': allocations.copy(),
-            'period': self.period_count
+            'period': self.period_count,
+            'fold_number': getattr(self, 'current_fold', None)
         })
     
     def get_strategy_allocations(self) -> DataFrame:
@@ -927,14 +993,22 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
             'enable_soft_allocation': self.enable_soft_allocation
         }
     
-    def reset(self) -> None:
+    def reset(self, fold_number: Optional[int] = None) -> None:
         """
         Reset MAB state for walk-forward fold isolation.
         
         This method resets the bandit allocator, performance trackers, and all
         internal state to initial values. Used between walk-forward folds to
         prevent lookahead bias.
+        
+        Parameters
+        ----------
+        fold_number : int, optional
+            Current fold number for diagnostic tracking
         """
+        # Store fold information
+        self.current_fold = fold_number
+        
         # Reset bandit allocator
         self.bandit_allocator.reset()
         
@@ -958,7 +1032,83 @@ class BanditStrategyWrapper(BaseStrategyWrapper):
         # Reset allocation history
         self.allocation_history = []
         
-        logger.info("BanditStrategyWrapper state reset for walk-forward fold isolation")
+        logger.info(f"BanditStrategyWrapper state reset for fold {fold_number} walk-forward isolation")
+    
+    def get_fold_diagnostics(self, fold_number: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Get fold-specific diagnostic information for walk-forward analysis.
+        
+        Parameters
+        ----------
+        fold_number : int, optional
+            Specific fold number to analyze. If None, returns current state.
+            
+        Returns
+        -------
+        dict
+            Fold-specific diagnostics including:
+            - fold_number: Current fold being processed
+            - learning_progress: Burn-in status and learning activation
+            - allocation_evolution: How allocations changed during the fold
+            - strategy_performance: Per-strategy metrics for the fold
+            - bandit_state: Algorithm state at fold end
+        """
+        # Filter allocation history for this fold if specified
+        if fold_number is not None:
+            fold_allocations = [entry for entry in self.allocation_history 
+                              if entry.get('fold_number') == fold_number]
+        else:
+            fold_allocations = self.allocation_history
+        
+        # Calculate allocation evolution
+        if fold_allocations:
+            allocation_evolution = {
+                'initial_allocation': fold_allocations[0]['allocations'] if fold_allocations else None,
+                'final_allocation': fold_allocations[-1]['allocations'] if fold_allocations else None,
+                'allocation_changes': len([entry for entry in fold_allocations[1:] 
+                                         if not np.allclose(entry['allocations'], fold_allocations[0]['allocations'])]),
+                'total_periods': len(fold_allocations)
+            }
+        else:
+            allocation_evolution = {
+                'initial_allocation': None,
+                'final_allocation': None,
+                'allocation_changes': 0,
+                'total_periods': 0
+            }
+        
+        # Learning progress
+        learning_progress = {
+            'period_count': self.period_count,
+            'burn_in_periods': self.burn_in_periods,
+            'burn_in_complete': self.period_count >= self.burn_in_periods,
+            'bandit_active': self.bandit_active,
+            'bandit_has_learned': self.bandit_has_learned,
+            'transition_periods': min(3, self.burn_in_periods // 4) if self.burn_in_periods > 0 else 0
+        }
+        
+        # Strategy performance for this fold
+        strategy_performance = {}
+        for i, (strategy, tracker) in enumerate(zip(self.child_strategies, self.trackers)):
+            # Get fold-specific returns if available
+            fold_returns = [entry for entry in fold_allocations 
+                          if entry.get('fold_number') == fold_number]
+            
+            strategy_performance[strategy.name] = {
+                'total_observations': len(tracker.returns),
+                'fold_allocations': [entry['allocations'][i] for entry in fold_returns] if fold_returns else [],
+                'final_metrics': tracker.get_recent_metrics(self.reward_lookback),
+                'allocation_volatility': np.std([entry['allocations'][i] for entry in fold_returns]) if fold_returns else 0.0
+            }
+        
+        return {
+            'fold_number': fold_number,
+            'learning_progress': learning_progress,
+            'allocation_evolution': allocation_evolution,
+            'strategy_performance': strategy_performance,
+            'bandit_state': self.bandit_allocator.get_state(),
+            'fold_allocations': fold_allocations
+        }
     
     def get_strategy_info(self) -> Dict[str, Any]:
         """Return strategy metadata."""
