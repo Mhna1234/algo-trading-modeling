@@ -55,9 +55,6 @@ results/
 .env
 .env.example
 
-# Configuration files (may contain API keys)
-config/trading_config.yaml
-
 # OS
 .DS_Store
 Thumbs.db

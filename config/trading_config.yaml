@@ -1,0 +1,101 @@
+api_keys:
+  aws_access_key: ${AWS_ACCESS_KEY_ID}
+  aws_secret_key: ${AWS_SECRET_ACCESS_KEY}
+  fred: ${FRED_API_KEY}
+aws:
+  access_key_env_var: AWS_ACCESS_KEY_ID
+  bucket: data-retrieval-output
+  region: us-east-1
+  secret_key_env_var: AWS_SECRET_ACCESS_KEY
+bandit:
+  burn_in_periods: 12
+  enable_soft_allocation: true
+  exploration_constant: 2.0
+  gamma: 0.07
+  min_allocation: 0.05
+  random_seed: 42
+  reward_lookback: 12
+  reward_type: sharpe
+  type: ucb
+checkpoint:
+  directory: checkpoints
+  enabled: true
+  max_checkpoints: 7
+  use_parquet: true
+data:
+  data_dir: data
+  end_date: '2024-12-31'
+  processed_dir: data/processed
+  raw_dir: data/raw
+  start_date: '2015-01-01'
+  update_if_available: true
+development:
+  enable_debug_mode: false
+  skip_data_validation: false
+  use_cached_data: true
+execution:
+  mode: simulation
+live:
+  data_update_interval: 3600
+  health_check_interval: 300
+  max_retry_attempts: 3
+  retry_delay: 60
+monitoring:
+  cpu_threshold_percent: 50
+  enable_profiling: false
+  log_performance_metrics: true
+  memory_threshold_mb: 2048
+output:
+  log_file: results/dynamic_trading_demo.log
+  log_level: INFO
+  results_dir: results
+  save_metrics: true
+  save_plots: true
+risk_free:
+  api_key_env_var: FRED_API_KEY
+  initial_rate: 0.04
+  maturity: 3M
+  rate_source: fred
+  update_frequency: D
+simulation:
+  pause_between_steps: 0.1
+  speed: 1.0
+strategies:
+  cvar_minimization:
+    alpha: 0.95
+    lookback: 252
+    max_weight: 0.3
+  gmvp:
+    lookback: 252
+    max_weight: 0.5
+  include_risk_free: true
+  inverse_volatility:
+    lookback: 63
+  low_volatility:
+    lookback: 126
+    target_quintile: 1
+  max_decorrelation:
+    lookback: 252
+    max_weight: 0.5
+  max_diversification:
+    lookback: 252
+    max_weight: 0.5
+  mean_reversion:
+    lookback: 21
+  momentum:
+    lookback: 126
+    target_quintile: 5
+  risk_parity:
+    lookback: 252
+    max_weight: 0.4
+  sharpe_maximization:
+    lookback: 252
+    max_weight: 0.3
+  use_bandit_wrapper: true
+trading:
+  drift_threshold: 0.05
+  enable_soft_rebalance: true
+  initial_capital: 100000
+  rebalance_frequency: Q
+  slippage_bps: 1.0
+  transaction_cost_bps: 10.0
