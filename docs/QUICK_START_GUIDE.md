@@ -59,23 +59,23 @@
    ```
    Outputs comprehensive metrics and plots in `results/`.
 
-2. **MAB Comparison Demo** (Compare different bandit algorithms):
+2. **MAB Comparison Demo** (Compare different bandit algorithms with risk-free asset integration):
    ```
    python examples/mab_comparison_demo.py
    ```
-   Shows performance comparison between UCB, Thompson, and EXP3 bandits.
+   Shows performance comparison between UCB, Thompson, and EXP3 bandits. Includes risk-free asset as an additional strategy arm.
 
-3. **Full System Demo** (Unified real-time platform):
+3. **Full System Demo** (Unified real-time platform with risk-free integration):
    ```
    python examples/dynamic_trading_demo.py --mode simulation
    ```
-   Runs simulation mode with checkpoints; check `results/dynamic_trading_api_data.json` for output (e.g., equity curve, Sharpe ratio ~0.82).
+   Runs simulation mode with checkpoints; includes risk-free asset integration. Check `results/dynamic_trading_api_data.json` for output (e.g., equity curve, Sharpe ratio ~0.76).
 
-4. **Dashboard** (Visualization):
+4. **Comprehensive Benchmark Demo** (Walk-forward backtesting with MAB):
    ```
-   streamlit run dashboard.py
+   python examples/comprehensive_benchmark_demo.py
    ```
-   Opens interactive dashboard for results analysis.
+   Runs extensive benchmark testing with walk-forward validation. Note: Some optimization-based strategies may fail and fall back to equal weighting during certain market conditions.
 
 5. **Testing**:
    ```

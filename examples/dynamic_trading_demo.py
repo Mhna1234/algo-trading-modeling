@@ -70,6 +70,7 @@ from src.bandits.exp3 import EXP3Bandit
 from src.checkpoint_manager import CheckpointManager
 from src.daily_trading_engine import DailyTradingEngine
 from src.config_loader import load_trading_config, TradingConfig
+from src.risk_free_asset import RiskFreeAsset, RiskFreeStrategyWrapper
 
 # Configure logging
 logging.basicConfig(
@@ -174,7 +175,18 @@ class DynamicTradingDemo:
             strategy = strategy_class(signal_gen, optimizer)
             self.strategies.append(strategy)
 
-        logger.info(f"Initialized {len(self.strategies)} strategies")
+        # Add risk-free asset as an additional strategy if enabled
+        if self.config.include_risk_free:
+            risk_free_asset = RiskFreeAsset(
+                initial_rate=self.config.risk_free_initial_rate,
+                rate_source=self.config.risk_free_rate_source,
+                maturity=self.config.risk_free_maturity,
+                update_frequency=self.config.risk_free_update_freq
+            )
+            risk_free_wrapper = RiskFreeStrategyWrapper(risk_free_asset)
+            self.strategies.append(risk_free_wrapper)
+
+        logger.info(f"Initialized {len(self.strategies)} strategies{' (including risk-free)' if self.config.include_risk_free else ''}")
 
         # Setup bandit wrapper if enabled
         if self.config.use_bandit_wrapper:
