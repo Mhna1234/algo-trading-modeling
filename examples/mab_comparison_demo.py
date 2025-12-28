@@ -2,7 +2,7 @@
 MAB Comparison Demo - Multi-Armed Bandit Algorithm Comparison
 ===============================================================
 
-This demo compares three MAB algorithms (UCB, Thompson Sampling, EXP3)
+This demo compares four MAB algorithms (UCB, Thompson Sampling, EXP3, Epsilon-Greedy)
 using the 12 benchmark strategies as arms. Each MAB algorithm dynamically
 allocates capital across the strategies based on learned performance.
 
@@ -18,6 +18,7 @@ Algorithms Compared:
 1. UCB (Upper Confidence Bound): Deterministic, balances exploration/exploitation
 2. Thompson Sampling: Bayesian, samples from posterior distributions
 3. EXP3: Adversarial, handles non-stationary environments
+4. Epsilon-Greedy: Simple exploration strategy with fixed exploration rate
 
 Backtesting Approach:
 - Full dataset backtesting (not walk-forward) to allow continuous learning
@@ -73,6 +74,7 @@ from src.strategies.bandit_strategy_wrapper import BanditStrategyWrapper
 from src.bandits.ucb import UCBBandit
 from src.bandits.thompson import ThompsonSamplingBandit
 from src.bandits.exp3 import EXP3Bandit
+from src.bandits.epsilon_greedy import EpsilonGreedy
 from src.config_loader import load_trading_config
 
 # Configure logging
@@ -164,6 +166,11 @@ class MABComparisonDemo:
                 'gamma': 0.1,        # Higher exploration for 12 arms
                 'reward_shift': 0.05,  # Shift negative returns to positive
                 'reward_scale': 0.1,   # Scale to reasonable range
+                'random_seed': 42,
+                'n_arms': len(self.strategies)
+            }),
+            ("Epsilon-Greedy", EpsilonGreedy, {
+                'epsilon': 0.1,      # 10% exploration rate
                 'random_seed': 42,
                 'n_arms': len(self.strategies)
             })
