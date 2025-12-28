@@ -136,7 +136,8 @@ class StrategySignalGenerator:
                  signal_threshold: float = 0.0,
                  volatility_scaling: bool = True,
                  signal_smoothing: bool = True,
-                 smoothing_window: int = 3):
+                 smoothing_window: int = 3,
+                 max_date: Optional[pd.Timestamp] = None):
         """
         Initialize StrategySignalGenerator with price data and configuration.
         
@@ -154,20 +155,47 @@ class StrategySignalGenerator:
             Whether to apply smoothing to signals
         smoothing_window : int
             Window size for signal smoothing
+        max_date : pd.Timestamp, optional
+            Maximum date for data access (for walk-forward backtesting)
         """
-        self.prices = prices
+        self.full_prices = prices  # Store full dataset
         self.risk_free_rate = risk_free_rate
         self.assets = list(prices.columns)
         self.dates = prices.index
         
-        # Calculate returns
-        self.returns = prices.pct_change().fillna(0.0)
+        # Apply max_date filter if specified
+        self.max_date = max_date
+        if max_date is not None:
+            self.prices = prices[prices.index <= max_date].copy()
+            self.returns = self.prices.pct_change().fillna(0.0)
+        else:
+            self.prices = prices
+            self.returns = prices.pct_change().fillna(0.0)
         
         # Signal generation parameters
         self.signal_threshold = signal_threshold
         self.volatility_scaling = volatility_scaling
         self.signal_smoothing = signal_smoothing
         self.smoothing_window = smoothing_window
+    
+    def set_max_date(self, max_date: Optional[pd.Timestamp]) -> None:
+        """
+        Update the maximum date for data access (for walk-forward backtesting).
+        
+        This allows restricting data availability during testing to prevent look-ahead bias.
+        
+        Parameters
+        ----------
+        max_date : pd.Timestamp, optional
+            Maximum date for data access. If None, use full dataset.
+        """
+        self.max_date = max_date
+        if max_date is not None:
+            self.prices = self.full_prices[self.full_prices.index <= max_date].copy()
+            self.returns = self.prices.pct_change().fillna(0.0)
+        else:
+            self.prices = self.full_prices
+            self.returns = self.prices.pct_change().fillna(0.0)
         
     def get_return_matrix(self, start_date: Optional[pd.Timestamp] = None,
                          end_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:

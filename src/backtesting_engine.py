@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 
 from .portfolio_engine import PortfolioEngine, PortfolioResult
 from .strategies import MomentumStrategy, BaseStrategyWrapper
+from .backtesting_methods import WalkForwardFold
 from .utils import (
     TradingConfig, calculate_returns, rebalance_dates, 
     calculate_sharpe_ratio, calculate_max_drawdown, timing_decorator
@@ -851,13 +852,19 @@ class BacktestingMethods:
                              anchored: bool = False) -> BacktestMethodResult:
         """
         Walk-forward analysis with rolling/expanding windows.
-        
-        This method:
-        1. Splits data into train/test periods
-        2. Optimizes strategy on train period
-        3. Tests on out-of-sample test period
-        4. Rolls forward and repeats
-        
+
+        This method implements mathematically correct walk-forward backtesting:
+        1. Splits data into non-overlapping train/test periods
+        2. Restricts strategy data access to training period during testing
+        3. Validates fold boundaries to prevent information leakage
+        4. Rolls forward and repeats with proper temporal isolation
+
+        Mathematical Foundation:
+        - Rolling Window: Train[t-k, t] → Test[t+1, t+m]
+        - Expanding Window: Train[0, t] → Test[t+1, t+m]
+        - No overlap: train_end < test_start
+        - No look-ahead: max_date = train_end during testing
+
         Args:
             strategy: Strategy wrapper to test
             start_date: Start date
@@ -867,50 +874,87 @@ class BacktestingMethods:
             step_months: Step size for rolling window in months
             rebalance_freq: Rebalancing frequency
             anchored: If True, use expanding window; if False, use rolling window
-            
+
         Returns:
             BacktestMethodResult with multiple walk-forward runs
         """
         logger.info(f"Running Walk-Forward Backtest ({'Anchored' if anchored else 'Rolling'})")
-        
+
         # Parse dates
         start = pd.to_datetime(start_date)
         end = pd.to_datetime(end_date) if end_date else self.prices.index[-1]
-        
+
         results = []
-        walk_metadata = []
-        
+        folds = []
+
         current_train_start = start
-        
+
         while True:
             # Define train period
             if anchored:
                 train_start = start  # Expanding window
             else:
                 train_start = current_train_start  # Rolling window
-                
+
             train_end = current_train_start + pd.DateOffset(months=train_window_months)
-            
+
             # Define test period
             test_start = train_end
             test_end = test_start + pd.DateOffset(months=test_window_months)
-            
+
             # Check if we've reached the end
             if test_end > end:
                 break
-            
-            logger.info(f"Walk {len(results) + 1}: Train [{train_start.date()} to {train_end.date()}], "
-                       f"Test [{test_start.date()} to {test_end.date()}]")
-            
+
+            # Create fold object with validation
+            fold = WalkForwardFold(
+                fold_number=len(folds) + 1,
+                train_start=train_start,
+                train_end=train_end,
+                test_start=test_start,
+                test_end=test_end,
+                metadata={
+                    'window_type': 'anchored' if anchored else 'rolling',
+                    'train_window_months': train_window_months,
+                    'test_window_months': test_window_months
+                }
+            )
+
+            # Validate fold boundaries to prevent information leakage
+            if not fold.validate_fold_boundaries():
+                logger.warning(f"Invalid fold boundaries for fold {fold.fold_number}: {fold.get_fold_info()}")
+                # Skip invalid fold
+                current_train_start += pd.DateOffset(months=step_months)
+                continue
+
+            logger.info(f"Fold {fold.fold_number}: {fold.get_fold_info()}")
+            folds.append(fold)
+
+            # Reset strategy state for fold isolation (e.g., MAB reset)
+            if hasattr(strategy, 'reset'):
+                strategy.reset()
+
+            # Set data availability to training period end to prevent look-ahead bias
+            def set_max_date_recursive(strat, max_date):
+                """Recursively set max_date on strategy and any child strategies."""
+                if hasattr(strat, 'strategy') and hasattr(strat.strategy, 'set_max_date'):
+                    strat.strategy.set_max_date(max_date)
+                # For bandit wrappers, also set on child strategies
+                if hasattr(strat, 'child_strategies'):
+                    for child in strat.child_strategies:
+                        set_max_date_recursive(child, max_date)
+
+            set_max_date_recursive(strategy, train_end)
+
             try:
-                # Run backtest on test period (strategy trains on train period internally)
+                # Run backtest on test period with data restriction
                 portfolio = PortfolioEngine(
                     self.prices,
                     initial_capital=self.initial_capital,
                     transaction_cost_bps=self.transaction_cost_bps,
                     slippage_bps=self.slippage_bps
                 )
-                # Note: Strategy should be re-initialized with train period for optimization
+
                 result = portfolio.run_backtest(
                     strategy,
                     start_date=test_start.strftime('%Y-%m-%d'),
@@ -918,28 +962,28 @@ class BacktestingMethods:
                     rebalance_freq=rebalance_freq,
                     soft_rebalance=self.enable_soft_rebalance,
                     drift_threshold=self.drift_threshold,
-                    backtest_method='vanilla'  # Use vanilla backtest for individual runs
+                    backtest_method='vanilla'
                 )
-                
+
                 results.append(result)
-                walk_metadata.append({
-                    'walk_number': len(results),
-                    'train_start': train_start.strftime('%Y-%m-%d'),
-                    'train_end': train_end.strftime('%Y-%m-%d'),
-                    'test_start': test_start.strftime('%Y-%m-%d'),
-                    'test_end': test_end.strftime('%Y-%m-%d')
-                })
-                
+
+                # Store fold information in result metadata
+                if hasattr(result, 'metadata'):
+                    result.metadata.update({
+                        'fold_info': fold.get_fold_info(),
+                        'fold_number': fold.fold_number
+                    })
+
             except Exception as e:
-                logger.warning(f"Walk-forward iteration failed: {e}")
-            
+                logger.warning(f"Fold {fold.fold_number} backtest failed: {e}")
+
             # Roll forward
             current_train_start += pd.DateOffset(months=step_months)
-        
+
         # Aggregate results
         aggregate_metrics = self._aggregate_results(results)
         confidence_intervals = self._calculate_confidence_intervals(results)
-        
+
         method_type = 'Anchored' if anchored else 'Rolling'
         return BacktestMethodResult(
             method_name=f'Walk-Forward Backtest ({method_type})',
@@ -951,353 +995,8 @@ class BacktestingMethods:
                 'test_window_months': test_window_months,
                 'step_months': step_months,
                 'anchored': anchored,
-                'walks': walk_metadata
-            }
-        )
-    
-    def cross_validation_backtest(self,
-                                 strategy: BaseStrategyWrapper,
-                                 start_date: str,
-                                 end_date: Optional[str] = None,
-                                 n_splits: int = 5,
-                                 test_size_months: int = 6,
-                                 rebalance_freq: str = 'M') -> BacktestMethodResult:
-        """
-        Time-series cross-validation backtest.
-        
-        Splits data into k non-overlapping folds while preserving temporal order.
-        Each fold is tested once while others are used for training.
-        
-        Args:
-            strategy: Strategy wrapper to test
-            start_date: Start date
-            end_date: End date (optional)
-            n_splits: Number of CV splits
-            test_size_months: Size of each test fold in months
-            rebalance_freq: Rebalancing frequency
-            
-        Returns:
-            BacktestMethodResult with k-fold results
-        """
-        logger.info(f"Running {n_splits}-Fold Cross-Validation Backtest")
-        
-        # Parse dates
-        start = pd.to_datetime(start_date)
-        end = pd.to_datetime(end_date) if end_date else self.prices.index[-1]
-        
-        # Calculate fold size
-        total_months = (end.year - start.year) * 12 + end.month - start.month
-        fold_size_months = total_months // n_splits
-        
-        results = []
-        fold_metadata = []
-        
-        for fold in range(n_splits):
-            # Calculate test period for this fold
-            test_start = start + pd.DateOffset(months=fold * fold_size_months)
-            test_end = test_start + pd.DateOffset(months=min(test_size_months, fold_size_months))
-            
-            logger.info(f"Fold {fold + 1}/{n_splits}: Test [{test_start.date()} to {test_end.date()}]")
-            
-            try:
-                portfolio = PortfolioEngine(
-                    self.prices,
-                    initial_capital=self.initial_capital,
-                    transaction_cost_bps=self.transaction_cost_bps,
-                    slippage_bps=self.slippage_bps
-                )
-                
-                result = portfolio.run_backtest(
-                    strategy,
-                    start_date=test_start.strftime('%Y-%m-%d'),
-                    end_date=test_end.strftime('%Y-%m-%d'),
-                    rebalance_freq=rebalance_freq,
-                    backtest_method='vanilla'
-                )
-                
-                results.append(result)
-                fold_metadata.append({
-                    'fold': fold + 1,
-                    'test_start': test_start.strftime('%Y-%m-%d'),
-                    'test_end': test_end.strftime('%Y-%m-%d')
-                })
-                
-            except Exception as e:
-                logger.warning(f"Fold {fold + 1} failed: {e}")
-        
-        # Aggregate results
-        aggregate_metrics = self._aggregate_results(results)
-        confidence_intervals = self._calculate_confidence_intervals(results)
-        
-        return BacktestMethodResult(
-            method_name=f'{n_splits}-Fold Cross-Validation Backtest',
-            individual_results=results,
-            aggregate_metrics=aggregate_metrics,
-            confidence_intervals=confidence_intervals,
-            metadata={
-                'n_splits': n_splits,
-                'test_size_months': test_size_months,
-                'folds': fold_metadata
-            }
-        )
-    
-    def monte_carlo_backtest(self,
-                           strategy: BaseStrategyWrapper,
-                           start_date: str,
-                           end_date: Optional[str] = None,
-                           n_simulations: int = 100,
-                           method: str = 'bootstrap',
-                           rebalance_freq: str = 'M',
-                           block_size: int = 20) -> BacktestMethodResult:
-        """
-        Monte Carlo simulation with synthetic data generation.
-        
-        Methods:
-        - 'bootstrap': Block bootstrap resampling of returns
-        - 'parametric': Generate returns from fitted distributions
-        - 'geometric': Geometric Brownian Motion simulation
-        
-        Args:
-            strategy: Strategy wrapper to test
-            start_date: Start date
-            end_date: End date (optional)
-            n_simulations: Number of Monte Carlo runs
-            method: Simulation method ('bootstrap', 'parametric', 'geometric')
-            rebalance_freq: Rebalancing frequency
-            block_size: Block size for block bootstrap
-            
-        Returns:
-            BacktestMethodResult with Monte Carlo results
-        """
-        logger.info(f"Running Monte Carlo Backtest ({method}, {n_simulations} simulations)")
-        
-        # Calculate returns from original prices
-        returns = self.prices.pct_change().dropna()
-        
-        start = pd.to_datetime(start_date)
-        end = pd.to_datetime(end_date) if end_date else self.prices.index[-1]
-        
-        # Filter returns to date range
-        mask = (returns.index >= start) & (returns.index <= end)
-        returns_subset = returns[mask]
-        
-        results = []
-        
-        for sim in tqdm(range(n_simulations), desc="Monte Carlo Simulations"):
-            # Generate synthetic returns
-            if method == 'bootstrap':
-                synthetic_returns = self._block_bootstrap(returns_subset, block_size)
-            elif method == 'parametric':
-                synthetic_returns = self._parametric_simulation(returns_subset)
-            elif method == 'geometric':
-                synthetic_returns = self._geometric_brownian_motion(returns_subset)
-            else:
-                raise ValueError(f"Unknown method: {method}")
-            
-            # Convert returns to prices
-            synthetic_prices = (1 + synthetic_returns).cumprod()
-            # Get the starting price safely
-            start_prices = self.prices.loc[self.prices.index >= start].iloc[0].values
-            synthetic_prices = synthetic_prices * start_prices
-            synthetic_prices.index = returns_subset.index
-            
-            try:
-                # Run backtest on synthetic data
-                portfolio = PortfolioEngine(
-                    synthetic_prices,
-                    initial_capital=self.initial_capital,
-                    transaction_cost_bps=self.transaction_cost_bps,
-                    slippage_bps=self.slippage_bps
-                )
-                
-                result = portfolio.run_backtest(
-                    strategy,
-                    start_date=start_date,
-                    end_date=end_date,
-                    rebalance_freq=rebalance_freq,
-                    backtest_method='vanilla'
-                )
-                
-                results.append(result)
-                
-            except Exception as e:
-                logger.warning(f"Simulation {sim + 1} failed: {e}")
-        
-        # Aggregate results
-        aggregate_metrics = self._aggregate_results(results)
-        confidence_intervals = self._calculate_confidence_intervals(results)
-        
-        return BacktestMethodResult(
-            method_name=f'Monte Carlo Backtest ({method})',
-            individual_results=results,
-            aggregate_metrics=aggregate_metrics,
-            confidence_intervals=confidence_intervals,
-            metadata={
-                'n_simulations': n_simulations,
-                'method': method,
-                'block_size': block_size if method == 'bootstrap' else None
-            }
-        )
-    
-    def randomized_backtest(self,
-                          strategy: BaseStrategyWrapper,
-                          start_date: str,
-                          end_date: Optional[str] = None,
-                          n_trials: int = 50,
-                          randomization_type: str = 'start_date',
-                          rebalance_freq: str = 'M',
-                          window_months: int = 24) -> BacktestMethodResult:
-        """
-        Randomized backtest with multiple starting points or permutations.
-        
-        Types:
-        - 'start_date': Random starting dates within valid range
-        - 'permutation': Permute returns while preserving distribution
-        - 'subperiod': Random subperiods of specified length
-        
-        Args:
-            strategy: Strategy wrapper to test
-            start_date: Earliest start date
-            end_date: Latest end date (optional)
-            n_trials: Number of randomized trials
-            randomization_type: Type of randomization
-            rebalance_freq: Rebalancing frequency
-            window_months: Window size for subperiod sampling
-            
-        Returns:
-            BacktestMethodResult with randomized results
-        """
-        logger.info(f"Running Randomized Backtest ({randomization_type}, {n_trials} trials)")
-        
-        start = pd.to_datetime(start_date)
-        end = pd.to_datetime(end_date) if end_date else self.prices.index[-1]
-        
-        results = []
-        trial_metadata = []
-        
-        for trial in tqdm(range(n_trials), desc="Randomized Trials"):
-            try:
-                if randomization_type == 'start_date':
-                    # Random start date
-                    max_start = end - pd.DateOffset(months=window_months)
-                    days_range = (max_start - start).days
-                    random_days = np.random.randint(0, max(1, days_range))
-                    trial_start = start + pd.Timedelta(days=random_days)
-                    trial_end = trial_start + pd.DateOffset(months=window_months)
-                    
-                    trial_metadata.append({
-                        'trial': trial + 1,
-                        'start': trial_start.strftime('%Y-%m-%d'),
-                        'end': trial_end.strftime('%Y-%m-%d')
-                    })
-                    
-                    # Run backtest
-                    portfolio = PortfolioEngine(
-                        self.prices,
-                        initial_capital=self.initial_capital,
-                        transaction_cost_bps=self.transaction_cost_bps,
-                        slippage_bps=self.slippage_bps
-                    )
-                    
-                    result = portfolio.run_backtest(
-                        strategy,
-                        start_date=trial_start.strftime('%Y-%m-%d'),
-                        end_date=trial_end.strftime('%Y-%m-%d'),
-                        rebalance_freq=rebalance_freq,
-                        backtest_method='vanilla'
-                    )
-                    
-                elif randomization_type == 'permutation':
-                    # Permute returns
-                    returns = self.prices.pct_change().dropna()
-                    mask = (returns.index >= start) & (returns.index <= end)
-                    returns_subset = returns[mask]
-                    
-                    # Randomly permute each column independently
-                    permuted_returns = pd.DataFrame(
-                        {col: np.random.permutation(returns_subset[col].values)
-                         for col in returns_subset.columns},
-                        index=returns_subset.index
-                    )
-                    
-                    # Convert to prices
-                    permuted_prices = (1 + permuted_returns).cumprod()
-                    permuted_prices = permuted_prices * self.prices.loc[start].values
-                    
-                    trial_metadata.append({
-                        'trial': trial + 1,
-                        'type': 'permutation'
-                    })
-                    
-                    # Run backtest
-                    portfolio = PortfolioEngine(
-                        permuted_prices,
-                        initial_capital=self.initial_capital,
-                        transaction_cost_bps=self.transaction_cost_bps,
-                        slippage_bps=self.slippage_bps
-                    )
-                    
-                    result = portfolio.run_backtest(
-                        strategy,
-                        start_date=start_date,
-                        end_date=end_date,
-                        rebalance_freq=rebalance_freq,
-                        backtest_method='vanilla'
-                    )
-                    
-                elif randomization_type == 'subperiod':
-                    # Random subperiod
-                    all_dates = self.prices.index[(self.prices.index >= start) & 
-                                                   (self.prices.index <= end)]
-                    if len(all_dates) < window_months * 21:  # Approx trading days
-                        raise ValueError("Not enough data for subperiod sampling")
-                    
-                    max_idx = len(all_dates) - window_months * 21
-                    start_idx = np.random.randint(0, max(1, max_idx))
-                    trial_start = all_dates[start_idx]
-                    trial_end = trial_start + pd.DateOffset(months=window_months)
-                    
-                    trial_metadata.append({
-                        'trial': trial + 1,
-                        'start': trial_start.strftime('%Y-%m-%d'),
-                        'end': trial_end.strftime('%Y-%m-%d')
-                    })
-                    
-                    # Run backtest
-                    portfolio = PortfolioEngine(
-                        self.prices,
-                        initial_capital=self.initial_capital,
-                        transaction_cost_bps=self.transaction_cost_bps,
-                        slippage_bps=self.slippage_bps
-                    )
-                    
-                    result = portfolio.run_backtest(
-                        strategy,
-                        start_date=trial_start.strftime('%Y-%m-%d'),
-                        end_date=trial_end.strftime('%Y-%m-%d'),
-                        rebalance_freq=rebalance_freq,
-                        backtest_method='vanilla'
-                    )
-                
-                results.append(result)
-                
-            except Exception as e:
-                logger.warning(f"Trial {trial + 1} failed: {e}")
-        
-        # Aggregate results
-        aggregate_metrics = self._aggregate_results(results)
-        confidence_intervals = self._calculate_confidence_intervals(results)
-        
-        return BacktestMethodResult(
-            method_name=f'Randomized Backtest ({randomization_type})',
-            individual_results=results,
-            aggregate_metrics=aggregate_metrics,
-            confidence_intervals=confidence_intervals,
-            metadata={
-                'n_trials': n_trials,
-                'randomization_type': randomization_type,
-                'window_months': window_months,
-                'trials': trial_metadata
+                'num_folds': len(folds),
+                'folds': [fold.get_fold_info() for fold in folds]
             }
         )
     
@@ -1442,8 +1141,8 @@ if __name__ == "__main__":
     print("===========================")
     print("\nAvailable methods:")
     print("1. Vanilla Backtest - Traditional single-run backtest")
-    print("2. Walk-Forward Backtest - Rolling/expanding window analysis")
-    print("3. Cross-Validation Backtest - Time-series k-fold validation")
-    print("4. Monte Carlo Backtest - Synthetic data generation")
-    print("5. Randomized Backtest - Multiple randomized trials")
-    print("\nSee demo_backtesting_methods.py for usage examples")
+    print("2. Walk-Forward Backtest - Rolling/expanding window analysis with proper temporal isolation")
+    print("\nMathematically correct walk-forward backtesting prevents look-ahead bias by:")
+    print("- Restricting strategy data access to training period during testing")
+    print("- Validating fold boundaries to prevent information leakage")
+    print("- Using WalkForwardFold structure for proper temporal separation")

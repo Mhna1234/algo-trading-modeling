@@ -257,8 +257,20 @@ class BacktestingMethods:
             if hasattr(strategy, 'reset'):
                 strategy.reset()
             
+            # Set data availability to training period end to prevent look-ahead bias
+            def set_max_date_recursive(strat, max_date):
+                """Recursively set max_date on strategy and any child strategies."""
+                if hasattr(strat, 'strategy') and hasattr(strat.strategy, 'set_max_date'):
+                    strat.strategy.set_max_date(max_date)
+                # For bandit wrappers, also set on child strategies
+                if hasattr(strat, 'child_strategies'):
+                    for child in strat.child_strategies:
+                        set_max_date_recursive(child, max_date)
+            
+            set_max_date_recursive(strategy, train_end)
+            
             try:
-                # Run backtest on test period (strategy trains on train period internally)
+                # Run backtest on test period (strategy is now restricted to training data)
                 portfolio = PortfolioEngine(
                     self.prices,
                     initial_capital=self.initial_capital,
@@ -266,7 +278,7 @@ class BacktestingMethods:
                     slippage_bps=self.slippage_bps,
                     rebalance_freq=rebalance_freq
                 )
-                # Note: Strategy should be re-initialized with train period for optimization
+                # Note: Strategy parameters are learned from training data but applied to test period
                 result = portfolio.run_backtest(
                     strategy,
                     start_date=test_start.strftime('%Y-%m-%d'),
