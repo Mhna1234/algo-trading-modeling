@@ -71,11 +71,11 @@ class WalkForwardFold:
         Returns True if boundaries are valid (no overlap, proper temporal order).
         """
         # Ensure temporal ordering
-        if not (self.train_start < self.train_end < self.test_start < self.test_end):
+        if not (self.train_start < self.train_end <= self.test_start < self.test_end):
             return False
         
         # Ensure no overlap between train and test periods
-        if self.train_end >= self.test_start:
+        if self.train_end > self.test_start:
             return False
             
         return True
@@ -274,8 +274,11 @@ class BacktestingMethods:
             
             set_max_date_recursive(strategy, train_end)
             
+            # Reset max_date to allow access to test period data
+            set_max_date_recursive(strategy, None)
+            
             try:
-                # Run backtest on test period (strategy is now restricted to training data)
+                # Run backtest on test period (strategy can now access test data)
                 portfolio = PortfolioEngine(
                     self.prices,
                     initial_capital=self.initial_capital,

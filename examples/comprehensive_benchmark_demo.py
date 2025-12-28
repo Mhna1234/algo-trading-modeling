@@ -3,17 +3,15 @@ Comprehensive Strategy Benchmarking Demo
 ==========================================
 
 This demo runs comprehensive backtesting for:
-- All 12 individual benchmark strategies
-- 3 Multi-Armed Bandit algorithms (UCB, Thompson, EXP3)
+- 4 Multi-Armed Bandit algorithms (UCB, Thompson, EXP3, Epsilon-Greedy)
 
-Each strategy follows the quarterly rebalancing algorithm:
-- Soft rebalancing with 5% drift threshold
+Each MAB algorithm allocates across all 12 individual benchmark strategies:
+- Hard allocation (no soft rebalancing)
 - Transaction costs: 0.15% (0.10% commission + 0.05% slippage)
 - Quarterly rebalancing over 10 years (40 quarters)
 - Daily performance tracking during holding periods
 
 Output:
-- Individual strategy performance metrics
 - MAB algorithm performance comparison
 - Comprehensive leaderboard ranked by Sharpe ratio
 - API-ready JSON exports for all results
@@ -59,6 +57,7 @@ from src.strategies.bandit_strategy_wrapper import BanditStrategyWrapper
 from src.bandits.ucb import UCBBandit
 from src.bandits.thompson import ThompsonSamplingBandit
 from src.bandits.exp3 import EXP3Bandit
+from src.bandits.epsilon_greedy import EpsilonGreedy
 from src.config_loader import load_trading_config
 
 # Configure logging
@@ -173,25 +172,26 @@ class ComprehensiveBenchmark:
         logger.info("Running MAB algorithm backtests...")
 
         mab_configs = [
-            ("UCB Bandit", UCBBandit),
-            ("Thompson Sampling", ThompsonSamplingBandit),
-            ("EXP3 Bandit", EXP3Bandit)
+            ("UCB Bandit", UCBBandit, {}),
+            ("Thompson Sampling", ThompsonSamplingBandit, {}),
+            ("EXP3 Bandit", EXP3Bandit, {}),
+            ("Epsilon Greedy", EpsilonGreedy, {'epsilon': 0.1})
         ]
 
-        for mab_name, bandit_class in mab_configs:
+        for mab_name, bandit_class, kwargs in mab_configs:
             logger.info(f"Backtesting: {mab_name}")
 
             try:
-                # Create bandit allocator
-                bandit = bandit_class(n_arms=len(self.individual_strategies))
+                # Create bandit allocator with specific parameters
+                bandit = bandit_class(n_arms=len(self.individual_strategies), **kwargs)
 
-                # Create bandit strategy wrapper
+                # Create bandit strategy wrapper with soft allocation DISABLED
                 bandit_wrapper = BanditStrategyWrapper(
                     child_strategies=[s for _, s in self.individual_strategies],
                     bandit_allocator=bandit,
                     strategy_names=[name for name, _ in self.individual_strategies],
                     burn_in_periods=self.config.burn_in_periods,
-                    enable_soft_allocation=self.config.enable_soft_allocation,
+                    enable_soft_allocation=False,  # DISABLE soft allocation
                     reward_type=self.config.reward_type,
                     exploration_constant=self.config.exploration_constant,
                     min_allocation=self.config.min_allocation
@@ -290,23 +290,7 @@ class ComprehensiveBenchmark:
 
         all_results = []
 
-        # Add individual strategies
-        for strategy_name, result in self.individual_results.items():
-            metrics = self.calculate_comprehensive_metrics(result)
-            if metrics:
-                all_results.append({
-                    'strategy': strategy_name,
-                    'type': 'Individual',
-                    'sharpe_ratio': metrics['sharpe_ratio'],
-                    'total_return': metrics['total_return'],
-                    'max_drawdown': metrics['max_drawdown'],
-                    'win_rate': metrics['win_rate'],
-                    'profit_factor': metrics['profit_factor'],
-                    'avg_turnover': metrics['avg_turnover'],
-                    'final_value': metrics['final_value']
-                })
-
-        # Add MAB algorithms
+        # Add MAB algorithms only
         for mab_name, result in self.mab_results.items():
             metrics = self.calculate_comprehensive_metrics(result)
             if metrics:
@@ -348,25 +332,33 @@ class ComprehensiveBenchmark:
         # Add detailed individual strategy results
         for strategy_name, result in self.individual_results.items():
             metrics = self.calculate_comprehensive_metrics(result)
+            # Ensure turnover_history has datetime index for quarterly grouping
+            turnover_with_dates = result.turnover_history.copy()
+            if not isinstance(turnover_with_dates.index, pd.DatetimeIndex):
+                turnover_with_dates.index = result.equity_curve.index[:len(turnover_with_dates)]
             results_data['individual_strategies'][strategy_name] = {
                 'metrics': metrics,
                 'equity_curve': {
                     'dates': result.equity_curve.index.strftime('%Y-%m-%d').tolist(),
                     'values': result.equity_curve.values.tolist()
                 },
-                'quarterly_turnover': result.turnover_history.groupby(pd.Grouper(freq='Q')).mean().tolist()
+                'quarterly_turnover': turnover_with_dates.groupby(pd.Grouper(freq='Q')).mean().tolist()
             }
 
         # Add detailed MAB results
         for mab_name, result in self.mab_results.items():
             metrics = self.calculate_comprehensive_metrics(result)
+            # Ensure turnover_history has datetime index for quarterly grouping
+            turnover_with_dates = result.turnover_history.copy()
+            if not isinstance(turnover_with_dates.index, pd.DatetimeIndex):
+                turnover_with_dates.index = result.equity_curve.index[:len(turnover_with_dates)]
             results_data['mab_algorithms'][mab_name] = {
                 'metrics': metrics,
                 'equity_curve': {
                     'dates': result.equity_curve.index.strftime('%Y-%m-%d').tolist(),
                     'values': result.equity_curve.values.tolist()
                 },
-                'quarterly_turnover': result.turnover_history.groupby(pd.Grouper(freq='Q')).mean().tolist()
+                'quarterly_turnover': turnover_with_dates.groupby(pd.Grouper(freq='Q')).mean().tolist()
             }
 
         # Export to JSON
@@ -518,7 +510,8 @@ class ComprehensiveBenchmark:
         # 5. MAB Strategy Allocations - Show how MAB allocates across individual strategies
         mab_strategies = [item for item in self.leaderboard if item['type'] == 'MAB']
         if mab_strategies and self.mab_wrappers:
-            fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+            fig, axes = plt.subplots(2, 2, figsize=(18, 12))
+            axes = axes.flatten()
 
             # Get strategy names from the first MAB wrapper
             first_mab_name = mab_strategies[0]['strategy']
@@ -671,13 +664,12 @@ class ComprehensiveBenchmark:
 
 def main():
     """Main execution function."""
-    print("Starting Comprehensive Strategy Benchmark...")
+    print("Starting Comprehensive MAB Strategy Benchmark...")
 
     # Initialize benchmark system
     benchmark = ComprehensiveBenchmark()
 
-    # Run all backtests
-    benchmark.run_individual_strategy_backtests()
+    # Run MAB backtests only (no individual strategy backtests)
     benchmark.run_mab_backtests()
 
     # Generate analysis
@@ -688,7 +680,7 @@ def main():
     # Print summary
     benchmark.print_summary_report()
 
-    print("\n✅ Comprehensive benchmark completed successfully!")
+    print("\n✅ Comprehensive MAB benchmark completed successfully!")
 
 
 if __name__ == "__main__":

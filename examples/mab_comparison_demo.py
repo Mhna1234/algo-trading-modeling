@@ -22,7 +22,7 @@ Algorithms Compared:
 4. Epsilon-Greedy: Simple exploration strategy with fixed exploration rate
 
 Backtesting Approach:
-- Walk-forward backtesting with rolling windows for out-of-sample evaluation
+- Vanilla backtesting over the entire historical period
 - Monthly rebalancing with hard allocation (single strategy selection)
 - Transaction cost awareness
 - Risk-free asset integration
@@ -246,9 +246,8 @@ class MABComparisonDemo:
                     'annual_volatility': result.summary_metrics.get('annual_volatility', 0.0)
                 })
 
-                logger.info(".2f"
-                           ".3f"
-                           ".3f")
+                logger.info(f"Completed {mab_name}: Final Value ${final_value:.2f}, "
+                           f"Total Return {total_return:.3f}, Sharpe {sharpe:.3f}")
 
             except Exception as e:
                 logger.error(f"Failed to run {mab_name}: {e}", exc_info=True)
