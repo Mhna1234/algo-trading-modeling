@@ -1,0 +1,33 @@
+# AWS Lambda Production Dependencies
+# Total size target: <250MB (with layers: ~50-75MB)
+
+# Core AWS
+boto3>=1.26.0
+botocore>=1.29.0
+
+# Data processing (use Lambda Layer for numpy/pandas if possible)
+# For Lambda Layer, pre-compile: https://github.com/keithrozario/Klayers
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+
+# YAML configuration parsing
+pyyaml>=6.0.0
+
+# Financial data (minimal for Lambda - relies on S3 cached data)
+pyarrow>=10.0.0
+
+# Time series analysis (lightweight components only)
+statsmodels>=0.13.0
+
+# Portfolio optimization (required for trading)
+cvxpy>=1.2.0
+PyPortfolioOpt>=1.5.0
+
+# Machine learning (minimal set for Lambda)
+scikit-learn>=1.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.60.0
+pyyaml>=6.0
