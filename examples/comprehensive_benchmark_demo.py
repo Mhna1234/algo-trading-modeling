@@ -290,7 +290,23 @@ class ComprehensiveBenchmark:
 
         all_results = []
 
-        # Add MAB algorithms only
+        # Add individual strategies
+        for strategy_name, result in self.individual_results.items():
+            metrics = self.calculate_comprehensive_metrics(result)
+            if metrics:
+                all_results.append({
+                    'strategy': strategy_name,
+                    'type': 'Individual',
+                    'sharpe_ratio': metrics['sharpe_ratio'],
+                    'total_return': metrics['total_return'],
+                    'max_drawdown': metrics['max_drawdown'],
+                    'win_rate': metrics['win_rate'],
+                    'profit_factor': metrics['profit_factor'],
+                    'avg_turnover': metrics['avg_turnover'],
+                    'final_value': metrics['final_value']
+                })
+
+        # Add MAB algorithms
         for mab_name, result in self.mab_results.items():
             metrics = self.calculate_comprehensive_metrics(result)
             if metrics:
@@ -664,13 +680,13 @@ class ComprehensiveBenchmark:
 
 def main():
     """Main execution function."""
-    print("Starting Comprehensive MAB Strategy Benchmark...")
+    print("Starting Comprehensive Strategy Benchmark (Individual Strategies Only)...")
 
     # Initialize benchmark system
     benchmark = ComprehensiveBenchmark()
 
-    # Run MAB backtests only (no individual strategy backtests)
-    benchmark.run_mab_backtests()
+    # Run individual strategy backtests (no MAB)
+    benchmark.run_individual_strategy_backtests()
 
     # Generate analysis
     benchmark.generate_leaderboard()
@@ -680,7 +696,7 @@ def main():
     # Print summary
     benchmark.print_summary_report()
 
-    print("\n✅ Comprehensive MAB benchmark completed successfully!")
+    print("\n✅ Individual strategies benchmark completed successfully!")
 
 
 if __name__ == "__main__":
