@@ -6,7 +6,8 @@ A comprehensive Python-based algorithmic trading framework featuring advanced po
 
 This project provides a production-ready algorithmic trading system with:
 - **12 validated benchmark strategies** (momentum, mean reversion, optimization-based, etc.)
-- **Multi-Armed Bandit (MAB) strategy allocation** with UCB, Thompson Sampling, and EXP3 algorithms
+- **4 Multi-Armed Bandit (MAB) algorithms** for dynamic strategy allocation (UCB, Thompson Sampling, EXP3, Epsilon-Greedy)
+- **Comprehensive benchmark suite** testing all strategies with quarterly rebalancing over 10 years
 - **5 advanced backtesting methods** (walk-forward, combinatorial, Monte Carlo, etc.)
 - **Real-time trading capabilities** with state persistence and daily updates
 - **Portfolio optimization engine** with risk management and soft rebalancing
@@ -494,7 +495,7 @@ For questions or feedback, please open an issue on GitHub.
 
 ### Version 3.0.0 (December 2025)
 - ✅ Validated and documented 12 benchmark strategies
-- ✅ Implemented Multi-Armed Bandit (UCB, Thompson Sampling, EXP3) for strategy allocation
+- ✅ Implemented Multi-Armed Bandit algorithms (UCB, Thompson Sampling, EXP3, Epsilon-Greedy) for strategy allocation
 - ✅ Added comprehensive reward calculation system (returns, Sharpe, Sortino, drawdown-penalized)
 - ✅ **Real-time trading system with state persistence and daily updates**
 - ✅ **Checkpoint management with 7-day rollback capability**
