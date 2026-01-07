@@ -4,13 +4,14 @@
 
 The `examples/` folder contains the following production-ready demos:
 
-1. **[comprehensive_benchmark_demo.py](comprehensive_benchmark_demo.py)** - Main benchmarking with 12 strategies + 4 MAB algorithms
-2. **[dynamic_trading_demo.py](dynamic_trading_demo.py)** - Real-time/simulation trading platform
-3. **[mab_walk_forward_demo.py](mab_walk_forward_demo.py)** - MAB algorithms with walk-forward validation
-4. **[demo_backtesting_methods.py](demo_backtesting_methods.py)** - All 5 backtesting methodologies
-5. **[demo_soft_rebalancing.py](demo_soft_rebalancing.py)** - Soft vs hard rebalancing comparison
-6. **[demo_rewards.py](demo_rewards.py)** - Reward calculation examples
-7. **[demo_mab_stress_testing.py](demo_mab_stress_testing.py)** - MAB stress testing framework
+1. **[comprehensive_benchmark_demo.py](../examples/comprehensive_benchmark_demo.py)** - Main benchmarking with 12 strategies + 4 MAB algorithms
+2. **[dynamic_trading_demo.py](../examples/dynamic_trading_demo.py)** - Real-time/simulation trading platform with BACKTEST/SIMULATION/LIVE modes
+3. **[mab_walk_forward_demo.py](../examples/mab_walk_forward_demo.py)** - MAB algorithms with walk-forward validation
+4. **[demo_backtesting_methods.py](../examples/demo_backtesting_methods.py)** - All 5 backtesting methodologies
+5. **[demo_soft_rebalancing.py](../examples/demo_soft_rebalancing.py)** - Soft vs hard rebalancing comparison
+6. **[demo_rewards.py](../examples/demo_rewards.py)** - Reward calculation examples
+7. **[demo_mab_stress_testing.py](../examples/demo_mab_stress_testing.py)** - MAB stress testing framework
+8. **[benchmark_strategies_demo.py](../examples/benchmark_strategies_demo.py)** - Individual strategy testing
 
 ## Quick Start: Prepare Data for All Demos
 
@@ -68,10 +69,16 @@ This document explains how data is loaded and processed for the demo scripts in 
 - **Typical Demo Data Loading Pattern:**
   ```python
   from src.data_loader import load_preprocessed_data
+  
+  # Basic loading (recommended for most demos)
   full_data, price_data = load_preprocessed_data()
+  
+  # With automatic updates (checks S3 for new data)
+  full_data, price_data = load_preprocessed_data(update_if_available=True)
   ```
 
 - **Do not** use `src/data_retrieval.py` directly in demos unless you are customizing data acquisition.
+- **Note**: The `update_if_available=True` parameter automatically fetches and integrates new S3 data if available.
 
 ## 4. Code Conflict Check
 

@@ -53,35 +53,29 @@
   - **Live**: Daily updates (requires S3/FRED access) - **implemented and ready for use**.
 
 ## Running Examples
-1. **Basic Demo** (Full 10-year backtest with 12 strategies):
+1. **Comprehensive Benchmark Demo** (12 strategies + 4 MAB algorithms with walk-forward validation):
    ```
-   python examples/demo_12_strategies_full.py
+   python examples/comprehensive_benchmark_demo.py
    ```
-   Outputs comprehensive metrics and plots in `results/`.
+   Outputs comprehensive metrics and JSON exports in `results/`.
 
-3. **MAB Walk-Forward Demo** (Compare bandit algorithms with proper out-of-sample validation):
+2. **MAB Walk-Forward Demo** (Compare bandit algorithms with proper out-of-sample validation):
    ```
    python examples/mab_walk_forward_demo.py
    ```
    Uses walk-forward backtesting with rolling windows for true out-of-sample evaluation of MAB algorithms. Each algorithm runs 30 folds and aggregates performance metrics.
 
-4. **MAB Comparison Demo** (Compare different bandit algorithms with vanilla backtesting):
-   ```
-   python examples/mab_comparison_demo.py
-   ```
-   Shows performance comparison between UCB, Thompson, and EXP3 bandits using vanilla backtesting over the entire historical period. Includes risk-free asset as an additional strategy arm.
-
-3. **Full System Demo** (Unified real-time platform with risk-free integration):
+3. **Dynamic Trading Demo** (Unified real-time platform with BACKTEST/SIMULATION/LIVE modes):
    ```
    python examples/dynamic_trading_demo.py --mode simulation
    ```
    Runs simulation mode with checkpoints; includes risk-free asset integration. Check `results/dynamic_trading_api_data.json` for output (e.g., equity curve, Sharpe ratio ~0.76).
 
-4. **Comprehensive Benchmark Demo** (Walk-forward backtesting with MAB):
+4. **Backtesting Methods Demo** (All 5 validation methodologies):
    ```
-   python examples/comprehensive_benchmark_demo.py
+   python examples/demo_backtesting_methods.py
    ```
-   Runs extensive benchmark testing with walk-forward validation. Note: Some optimization-based strategies may fail and fall back to equal weighting during certain market conditions.
+   Demonstrates vanilla, walk-forward, combinatorial, Monte Carlo, and bootstrap backtesting.
 
 5. **Testing**:
    ```
@@ -95,7 +89,7 @@
 - **Performance**: Full backtests may take 5-10 minutes; use smaller date ranges for testing.
 - **Real-Time Features**: Check `checkpoints/` directory for state persistence; simulation mode works without external APIs.
 - **Configuration**: Validate `config/trading_config.yaml` syntax; use YAML linter if needed.
-- **Documentation**: Read `README.md`, `docs/ARCHITECTURE.md`, `docs/REALTIME_TRADING_IMPLEMENTATION_PLAN.md`, and `src/MODULE_ORGANIZATION.md` for deep dives.
+- **Documentation**: Read [README.md](../README.md), [ARCHITECTURE.md](ARCHITECTURE.md), [EC2_DEPLOYMENT_PLAN.md](EC2_DEPLOYMENT_PLAN.md), and [DATA_LOADING_GUIDE.md](DATA_LOADING_GUIDE.md) for deep dives.
 
 ## Current Implementation Status (December 2025)
 - ✅ **Data Pipeline**: Incremental loading, S3 integration, FRED API, gap detection

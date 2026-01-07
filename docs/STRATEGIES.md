@@ -2,6 +2,36 @@
 
 This guide provides detailed information about the **12 validated benchmark strategies** in the Portfolio Engine.
 
+---
+
+## ⚠️ IMPORTANT: Validated Strategies Only
+
+**This project has 12 fully validated and production-ready strategies** implemented in `src/strategies/benchmark_strategies.py`. All strategies have undergone rigorous testing including:
+- 10-year full backtests (2015-2025)
+- Monthly rebalancing with realistic transaction costs
+- Walk-forward validation
+- Statistical significance testing
+
+**The 12 validated strategies are:**
+1. Buy & Hold
+2. Equal Weight (1/N)
+3. Quintile Momentum
+4. Quintile Low Volatility
+5. Mean Reversion Quintile
+6. Global Minimum Variance (GMVP)
+7. Inverse Volatility
+8. Risk Parity
+9. Maximum Diversification
+10. Maximum Decorrelation
+11. Sharpe Ratio Maximization
+12. CVaR Minimization
+
+**All sections below documenting strategies beyond #12 represent historical development notes or future planned strategies that are NOT currently validated or production-ready.**
+
+For current performance results and implementation details, see the validated performance table below and [src/strategies/benchmark_strategies.py](../src/strategies/benchmark_strategies.py).
+
+---
+
 ## Strategy Overview (12 Validated Benchmark Strategies)
 
 All 12 strategies have been rigorously validated with comprehensive testing including 10-year full backtests (2015-2025) with monthly rebalancing and realistic transaction cost modeling. All strategies are implemented in `src/strategies/benchmark_strategies.py`.
@@ -87,7 +117,13 @@ See [MULTI_ARMED_BANDITS.md](MULTI_ARMED_BANDITS.md) for details.
 
 The sections below (strategies 1-12) document the 12 validated benchmark strategies. Additional strategy documentation (beyond strategy #12) represents historical development work or future planned strategies that are not currently validated.
 
-For the current validated strategy list, see the table above or [VALIDATION_COMPLETE.md](../VALIDATION_COMPLETE.md).
+For the current validated strategy list, see the table above or [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+## Detailed Strategy Documentation
+
+**The following sections provide detailed documentation for each of the 12 validated strategies, plus historical notes on experimental strategies. Focus on strategies 1-12 only for production use.**
 
 ---
 
