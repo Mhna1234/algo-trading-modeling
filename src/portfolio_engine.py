@@ -318,7 +318,7 @@ class PortfolioEngine:
         """
         # Delegate to advanced backtesting methods if specified
         if backtest_method != 'vanilla':
-            from .backtesting_engine import BacktestingMethods
+            from .backtesting_methods import BacktestingMethods
             
             backtester = BacktestingMethods(
                 prices=self._prices,

@@ -97,7 +97,6 @@ from .risk_free_asset import RiskFreeAsset, RiskFreeStrategyWrapper
 from .config_loader import ConfigLoader, TradingConfig as TradingConfigYAML, load_trading_config
 
 # Legacy compatibility (UPDATED)
-from .backtester import Backtester, BacktestResults
 from .evaluator import Evaluator, PerformanceEvaluator, evaluate_performance
 
 # Data and utilities (EXISTING)
@@ -153,8 +152,6 @@ __all__ = [
     'BacktestMethodResult',
     
     # Legacy API (Backward Compatible)
-    'Backtester',
-    'BacktestResults',
     'Evaluator',
     'PerformanceEvaluator',
     'evaluate_performance',

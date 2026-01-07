@@ -1,5 +1,17 @@
 # Data Loading and Processing in Examples
 
+## Available Demos
+
+The `examples/` folder contains the following production-ready demos:
+
+1. **[comprehensive_benchmark_demo.py](comprehensive_benchmark_demo.py)** - Main benchmarking with 12 strategies + 4 MAB algorithms
+2. **[dynamic_trading_demo.py](dynamic_trading_demo.py)** - Real-time/simulation trading platform
+3. **[mab_walk_forward_demo.py](mab_walk_forward_demo.py)** - MAB algorithms with walk-forward validation
+4. **[demo_backtesting_methods.py](demo_backtesting_methods.py)** - All 5 backtesting methodologies
+5. **[demo_soft_rebalancing.py](demo_soft_rebalancing.py)** - Soft vs hard rebalancing comparison
+6. **[demo_rewards.py](demo_rewards.py)** - Reward calculation examples
+7. **[demo_mab_stress_testing.py](demo_mab_stress_testing.py)** - MAB stress testing framework
+
 ## Quick Start: Prepare Data for All Demos
 
 **To prepare all data for the demo scripts, simply run:**
