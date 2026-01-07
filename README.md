@@ -47,7 +47,8 @@ algo-trading-modeling/
 │       ├── base.py              # Abstract bandit interface
 │       ├── ucb.py               # Upper Confidence Bound algorithm
 │       ├── thompson.py          # Thompson Sampling algorithm
-│       └── exp3.py              # EXP3 algorithm (adversarial bandit)
+│       ├── exp3.py              # EXP3 algorithm (adversarial bandit)
+│       └── epsilon_greedy.py    # Epsilon-Greedy algorithm
 │
 ├── config/                      # Configuration files
 │   ├── trading_config.yaml      # Main system configuration (gitignored)
@@ -60,23 +61,14 @@ algo-trading-modeling/
 │   └── raw/                      # Raw market data (CSV)
 │
 ├── examples/                     # Example scripts and demos
-│   ├── DATA_LOADING_GUIDE.md     # Data loading documentation
-│   ├── simple_example.py         # Basic usage example
+│   ├── benchmark_strategies_demo.py  # Quick benchmark comparison
+│   ├── comprehensive_benchmark_demo.py  # Full MAB & strategy benchmarking suite
 │   ├── dynamic_trading_demo.py   # Unified real-time trading platform
-│   ├── demo_12_strategies_fast.py  # Fast 6-month comparison
-│   ├── demo_12_strategies_full.py  # Full 10-year comparison
 │   ├── demo_backtesting_methods.py # Validation methods demo
-│   ├── demo_bandit_strategy_wrapper.py  # MAB strategy allocation demo
-│   ├── demo_bandit_comparison.py     # UCB vs Thompson Sampling comparison
-│   ├── mab_comparison_demo.py        # MAB vanilla backtesting comparison
-│   ├── mab_walk_forward_demo.py      # MAB walk-forward evaluation (NEW)
-│   ├── demo_ucb_bandit.py            # UCB algorithm demo
-│   ├── demo_exp3_bandit.py           # EXP3 algorithm demo
+│   ├── demo_mab_stress_testing.py    # MAB stress testing demo
 │   ├── demo_rewards.py               # Reward calculation demo
 │   ├── demo_soft_rebalancing.py      # Soft rebalancing demo
-│   ├── demo_soft_rebalancing_bandits.py  # Soft rebalancing with bandits
-│   ├── demo_soft_rebalancing_walkforward.py  # Walk-forward soft rebalancing
-│   ├── demo_svm_regime_strategy.py   # SVM regime classification demo
+│   ├── mab_walk_forward_demo.py      # MAB walk-forward evaluation
 │   └── visualizations/               # Output visualization examples
 │
 ├── notebooks/                    # Jupyter notebooks for analysis
@@ -159,9 +151,10 @@ trading:
 
 # Multi-armed bandit settings
 bandit:
-  type: "ucb"  # ucb, thompson, exp3
+  type: "ucb"  # ucb, thompson, exp3, epsilon_greedy
   burn_in_periods: 12
   reward_type: "sharpe"
+  epsilon: 0.1  # For epsilon-greedy algorithm
 
 # Risk-free asset integration
 risk_free:
@@ -214,31 +207,28 @@ print(f"Max Drawdown: {result['max_drawdown']:.2%}")
 ### Run Examples
 
 ```bash
-# Simple example
-python examples/simple_example.py
+# Comprehensive benchmark suite (12 strategies + 4 MAB algorithms)
+python examples/comprehensive_benchmark_demo.py
+
+# Quick benchmark comparison
+python examples/benchmark_strategies_demo.py
 
 # Unified real-time trading platform (BACKTEST/SIMULATION/LIVE modes)
 python examples/dynamic_trading_demo.py --mode backtest
 python examples/dynamic_trading_demo.py --mode simulation
 python examples/dynamic_trading_demo.py --mode live
 
-# Benchmark 12 strategies (fast mode - 6 months, weekly rebalancing)
-python examples/demo_12_strategies_fast.py
-
-# Benchmark 12 strategies (full mode - 10 years, monthly rebalancing)
-python examples/demo_12_strategies_full.py
-
-# Multi-Armed Bandit strategy allocation
-python examples/demo_bandit_strategy_wrapper.py
-
-# Compare UCB vs Thompson Sampling
-python examples/demo_bandit_comparison.py
-
-# Multi-Armed Bandit walk-forward evaluation (NEW)
+# Multi-Armed Bandit walk-forward evaluation
 python examples/mab_walk_forward_demo.py
 
 # Advanced backtesting methods
 python examples/demo_backtesting_methods.py
+
+# MAB stress testing
+python examples/demo_mab_stress_testing.py
+
+# Soft rebalancing demonstration
+python examples/demo_soft_rebalancing.py
 ```
 
 ### Launch Dashboard
@@ -280,6 +270,8 @@ The system includes sophisticated MAB algorithms for dynamic strategy allocation
 ### Algorithms
 - **Upper Confidence Bound (UCB)** - Balance exploration and exploitation with confidence bounds
 - **Thompson Sampling** - Bayesian approach with posterior sampling
+- **EXP3** - Adversarial bandit for non-stationary environments
+- **Epsilon-Greedy** - Simple exploration with ε-greedy policy
 
 ### Features
 - Configurable burn-in period for initial exploration
@@ -412,18 +404,29 @@ pytest --cov=src tests/  # With coverage
 
 Sample performance metrics from validated benchmark strategies (see `results/` directory for complete results):
 
-**Configuration**: 10-year backtest (2015-2024), monthly rebalancing, 0.1% transaction costs
+**Configuration**: 10-year backtest (2015-01-01 to 2024-12-31), quarterly rebalancing, 0.10% transaction costs, 5% soft rebalancing drift threshold
 
-| Strategy | CAGR | Sharpe | Max Drawdown | Volatility |
-|----------|------|--------|--------------|------------|
-| Quintile Momentum | 8.2% | 0.89 | -24.3% | 9.8% |
-| Risk Parity | 6.5% | 0.92 | -18.7% | 7.2% |
-| Global Min Variance | 5.8% | 0.85 | -16.2% | 7.0% |
-| Equal Weight | 7.1% | 0.82 | -21.5% | 9.1% |
+### Top Individual Strategies (by Sharpe Ratio)
 
-**Bandit Performance**: UCB bandit with Sharpe reward typically achieves 10-15% higher risk-adjusted returns by dynamically allocating to top-performing strategies.
+| Rank | Strategy | Sharpe | Total Return | Max Drawdown | Final Value |
+|------|----------|--------|--------------|--------------|-------------|
+| 1 | Low Volatility | 1.94 | +8.7% | -3.1% | $108,737 |
+| 2 | Max Diversification | 1.86 | +6.8% | -3.7% | $106,847 |
+| 3 | Risk Parity | 1.63 | +6.1% | -5.1% | $106,082 |
+| 4 | Global Min Variance | 1.58 | +5.2% | -2.4% | $105,205 |
+| 5 | Inverse Volatility | 1.55 | +5.9% | -5.4% | $105,889 |
+| 6 | Quintile Momentum | 1.50 | +14.5% | -14.3% | $114,536 |
 
-See `visualizations/` for detailed comparison charts and metrics exports.
+### Multi-Armed Bandit Algorithms
+
+All 4 MAB algorithms (UCB, Thompson Sampling, EXP3, Epsilon-Greedy) dynamically allocate across the 12 benchmark strategies, typically achieving enhanced risk-adjusted returns through adaptive strategy selection.
+
+**Key Insights**:
+- Risk-based strategies (Low Vol, Risk Parity, GMVP) deliver superior Sharpe ratios with lower drawdowns
+- Momentum strategy achieves highest absolute returns but with higher volatility
+- MAB algorithms adapt to changing market conditions and exploit top-performing strategies
+
+See `results/comprehensive_benchmark_results.json` and `visualizations/` for complete analysis.
 
 ## 📖 Code Organization
 
@@ -471,9 +474,17 @@ For questions or feedback, please open an issue on GitHub.
 
 ---
 
-**Version**: 3.0.1 | **Last Updated**: December 28, 2025
+**Version**: 3.1.0 | **Last Updated**: January 7, 2026
 
 ## 🎉 Recent Updates
+
+### Version 3.1.0 (January 2026)
+- ✅ **Comprehensive Benchmark Suite** - New unified demo testing all 12 strategies + 4 MAB algorithms
+- ✅ **Epsilon-Greedy Algorithm** - Added 4th MAB algorithm with configurable exploration rate
+- ✅ **Enhanced Visualizations** - Complete dashboard with NAV curves, drawdowns, allocation heatmaps
+- ✅ **Updated Performance Results** - Fresh 10-year backtest (2015-2024) with quarterly rebalancing
+- ✅ **Streamlined Examples** - Consolidated demos for better user experience
+- ✅ **Production-Ready Results** - JSON/CSV exports for API integration and further analysis
 
 ### Version 3.0.1 (December 2025)
 - ✅ **Fixed walk-forward backtesting bug** - Resolved KeyError issues preventing out-of-sample evaluation
