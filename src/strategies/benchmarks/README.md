@@ -1,21 +1,52 @@
-# Benchmark Portfolio Strategies
+# Benchmark Portfolio Strategies - Lambda-Compatible Suite
 
 ## Overview
 
-This module provides mathematically correct implementations of standard portfolio benchmark strategies using **only numpy and numpy.linalg**. All strategies are:
+This module provides **15 production-grade portfolio benchmark strategies** using **only numpy and numpy.linalg**. All strategies are:
 
 - ✅ **Long-only**: All weights `w_i >= 0`
 - ✅ **Fully invested**: Weights sum to exactly 1.0
 - ✅ **Numerically stable**: Proper regularization and safe linear algebra
-- ✅ **Deterministic**: No randomness, reproducible results
+- ✅ **Deterministic**: Reproducible results (except CVaR which uses random search)
 - ✅ **Backtest-safe**: No look-ahead bias
+- ✅ **Lambda-compatible**: ~150MB deployment (fits AWS Lambda 250MB limit)
 - ✅ **Compatible**: Fully compatible with `BaseStrategyWrapper`
 
 **No external optimization libraries** (cvxpy, scipy, sklearn, torch, etc.) are used.
 
+**NEW**: Added 6 strategies for complete 12-benchmark parity with full implementation
+- BuyAndHold (passive)
+- QuintileFactor (momentum)
+- QuintileLowVolatility (defensive)
+- MeanReversion (contrarian)
+- SharpeMaximization (risk-adjusted)
+- CVaRMinimization (tail risk)
+
+📖 **See [LAMBDA_DEPLOYMENT_GUIDE.md](LAMBDA_DEPLOYMENT_GUIDE.md) for detailed comparison with full implementation**
+
 ---
 
 ## Strategy Categories
+
+### 0. Passive Benchmarks
+
+The ultimate passive strategy - invest and hold.
+
+#### Buy and Hold (`BuyAndHoldBenchmark`)
+```python
+w_0 = 1/N  # Initial equal weight
+w_t = w_0  # Never rebalance
+```
+
+**Properties:**
+- Zero rebalancing (weights drift naturally)
+- Minimal transaction costs
+- Pure market exposure
+- Benchmark for active strategies
+
+**Reference:** Sharpe (1991), *Financial Analysts Journal*
+
+---
 
 ### 1. Heuristic Benchmarks
 
@@ -67,6 +98,73 @@ w_i = 1/N
 - Risk-adjusted selection
 - Better than return-only
 - Still ignores correlations
+
+---
+
+#### Quintile Factor - Momentum (`QuintileFactorBenchmark`)
+```python
+1. Compute momentum: m_i = (P_t / P_{t-lookback}) - 1
+2. Sort by momentum (high to low)
+3. Select top quintile (e.g., top 20%)
+4. w_i = 1/K for selected assets
+```
+
+**Parameters:**
+- `lookback`: Momentum window (default: 126 = 6 months)
+- `n_quintiles`: Number of quintiles (default: 5)
+- `target_quintile`: Which quintile to invest in (default: 5 = highest)
+
+**Properties:**
+- Exploits momentum anomaly
+- Factor-based selection
+- Low turnover within quintile
+
+**Reference:** Jegadeesh & Titman (1993), *Journal of Finance*
+
+---
+
+#### Quintile Low Volatility (`QuintileLowVolatilityBenchmark`)
+```python
+1. Compute volatility: σ_i = std(r_i) over lookback
+2. Sort by volatility (low to high)
+3. Select lowest quintile (e.g., bottom 20%)
+4. w_i = 1/K or w_i ∝ 1/σ_i (configurable)
+```
+
+**Parameters:**
+- `lookback`: Volatility window (default: 126 = 6 months)
+- `n_quintiles`: Number of quintiles (default: 5)
+- `target_quintile`: Which quintile (default: 1 = lowest vol)
+- `rebalance_method`: 'equal' or 'inverse_vol'
+
+**Properties:**
+- Exploits low-volatility anomaly
+- Defensive portfolio
+- Lower drawdowns than market
+
+**Reference:** Baker et al. (2011), *Financial Analysts Journal*
+
+---
+
+#### Mean Reversion (`MeanReversionBenchmark`)
+```python
+1. Compute z-scores: z_i = (r_i - mean) / std
+2. Select assets with z < threshold (losers)
+3. w_i ∝ -z_i (higher weight to bigger losers)
+4. Normalize to sum to 1
+```
+
+**Parameters:**
+- `lookback`: Window for returns (default: 20 days)
+- `z_score_threshold`: Buy if z < threshold (default: 0.0)
+- `max_weight`: Position limit (default: 0.3)
+
+**Properties:**
+- Contrarian strategy (buys losers)
+- Exploits mean reversion
+- Opposite of momentum
+
+**Reference:** DeBondt & Thaler (1985), *Journal of Finance*
 
 ---
 
@@ -201,6 +299,65 @@ where σ = [sqrt(Σ_11), ..., sqrt(Σ_NN)]
 - Popular risk-based strategy
 
 **Reference:** Choueifaty & Coignard (2008), *Journal of Portfolio Management*
+
+---
+
+### 4. Optimization Benchmarks
+
+Advanced optimization strategies using numpy-only implementations.
+
+#### Sharpe Maximization (`SharpeMaximizationBenchmark`)
+```python
+maximize: (μ^T w - r_f) / sqrt(w^T Σ w)
+
+Analytical solution (unconstrained):
+w* ∝ Σ^(-1) (μ - r_f · 1)
+```
+
+**Parameters:**
+- `risk_free_rate`: Annual r_f (default: 0.02)
+- `max_weight`: Soft position limit (default: 1.0)
+
+**Properties:**
+- Mean-variance optimization
+- Maximizes risk-adjusted returns
+- Unconstrained (analytical solution)
+- May have concentrated positions
+
+**Note:** This is the unconstrained version. For hard position limits, use the cvxpy version in `benchmark_strategies.py`.
+
+**Reference:** Markowitz (1952), Sharpe (1966)
+
+**Accuracy:** ~90% of constrained optimum (see LAMBDA_DEPLOYMENT_GUIDE.md)
+
+---
+
+#### CVaR Minimization (`CVaRMinimizationBenchmark`)
+```python
+minimize: CVaR_α(w) = E[Loss | Loss > VaR_α]
+
+Heuristic: Historical simulation + iterative search
+1. Generate scenarios from historical returns
+2. Evaluate CVaR for candidate portfolios
+3. Use simulated annealing to find minimum
+```
+
+**Parameters:**
+- `alpha`: Confidence level (default: 0.05 = 95% CVaR)
+- `max_iter`: Iterations (default: 100)
+- `n_scenarios`: Historical scenarios (default: 252)
+
+**Properties:**
+- Tail risk minimization
+- Focuses on downside protection
+- Uses historical simulation
+- Stochastic optimization (heuristic)
+
+**Note:** This is a heuristic approximation. For exact CVaR optimization, use the cvxpy version in `benchmark_strategies.py`.
+
+**Reference:** Rockafellar & Uryasev (2000), *Journal of Risk*
+
+**Accuracy:** ~85-90% CVaR reduction vs optimal (see LAMBDA_DEPLOYMENT_GUIDE.md)
 
 ---
 
