@@ -1,0 +1,40 @@
+# AWS Lambda Requirements - Lightweight Benchmark Deployment
+# Total size: ~150MB (within Lambda 250MB limit)
+#
+# This file contains ONLY the dependencies needed for Lambda deployment.
+# Full development dependencies are in requirements.txt
+
+# Core numerical computing (REQUIRED)
+numpy>=1.21.0,<2.0.0          # ~50MB - Matrix operations
+pandas>=1.3.0,<3.0.0          # ~100MB - Data manipulation
+
+# AWS Integration (REQUIRED)
+boto3>=1.26.0                 # ~15MB - S3 access (usually pre-installed in Lambda)
+pyarrow>=10.0.0               # ~25MB - Parquet file format
+
+# Configuration (REQUIRED)
+pyyaml>=6.0.0                 # ~1MB - YAML config files
+
+# Optional: Risk-free rates (if using FRED API in Lambda)
+# requests>=2.28.0            # ~5MB - HTTP client for FRED API
+
+# TOTAL: ~191MB (within 250MB Lambda limit)
+
+# ============================================================================
+# EXCLUDED from Lambda (use full version on EC2/local for these)
+# ============================================================================
+# scipy               ~150MB  ❌ Too heavy
+# cvxpy               ~100MB  ❌ Too heavy
+# scikit-learn        ~80MB   ❌ Not needed for benchmarks
+# torch               ~500MB  ❌ Way too heavy
+# statsmodels         ~50MB   ❌ Not needed for benchmarks
+# matplotlib          ~40MB   ❌ No visualization in Lambda
+# seaborn             ~20MB   ❌ No visualization
+# plotly              ~30MB   ❌ No visualization
+# streamlit           ~50MB   ❌ No dashboard in Lambda
+# jupyter             ~30MB   ❌ No notebooks in Lambda
+
+# Note: Lambda Python 3.11 runtime includes some packages by default:
+# - boto3, botocore (AWS SDK)
+# - urllib3, requests (HTTP clients)
+# - certifi (SSL certificates)
