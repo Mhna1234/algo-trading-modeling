@@ -54,38 +54,47 @@ __author__ = "AI Assistant"
 from .portfolio_engine import PortfolioEngine, PortfolioState, PortfolioResult
 
 # Strategy wrappers - 12 strategies used in demo
-from .strategies import (
-    BaseStrategyWrapper,
-    # Core strategies
-    EqualWeightStrategy,
-    MomentumStrategy,
-    MeanReversionStrategy,
-    InverseVolatilityStrategy,
-    CVaRMinimizationStrategy,
-    GlobalMinimumVarianceStrategy,
-    # Extended strategies
-    BuyAndHoldStrategy,
-    MaximumDiversificationStrategy,
-    MaximumDecorrelationStrategy,
-    QuintileFactorStrategy,
-    TimeSeriesMomentumStrategy,
-    MovingAverageCrossoverStrategy,
-    MarkowitzMVOStrategy,
-    LinearRegressionStrategy,
-    ARIMAGARCHForecastingStrategy,
-    # Utility functions
-    list_available_strategies,
-    create_strategy,
-    # Meta-strategies
-    BanditStrategyWrapper,
-    StrategyPerformanceTracker
-)
+# Import base wrapper always
+from .strategies import BaseStrategyWrapper, list_available_strategies, create_strategy
+
+# Optional imports for full strategies (may not be available in Lambda)
+try:
+    from .strategies import (
+        # Core strategies
+        EqualWeightStrategy,
+        MomentumStrategy,
+        MeanReversionStrategy,
+        InverseVolatilityStrategy,
+        CVaRMinimizationStrategy,
+        GlobalMinimumVarianceStrategy,
+        # Extended strategies
+        BuyAndHoldStrategy,
+        MaximumDiversificationStrategy,
+        MaximumDecorrelationStrategy,
+        QuintileFactorStrategy,
+        TimeSeriesMomentumStrategy,
+        MovingAverageCrossoverStrategy,
+        MarkowitzMVOStrategy,
+        LinearRegressionStrategy,
+        ARIMAGARCHForecastingStrategy,
+        # Meta-strategies
+        BanditStrategyWrapper,
+        StrategyPerformanceTracker
+    )
+except ImportError:
+    # Skip if not available (e.g., Lambda environment)
+    pass
 
 # Signal generation and forecasting (EXISTING)
 from .signal_generator import StrategySignalGenerator, Strategy, SignalGenerator, generate_signals
 
-# Portfolio optimization (EXISTING)
-from .optimizer import PortfolioOptimizer, optimize_portfolio_forecasted
+# Portfolio optimization (EXISTING) - Optional for Lambda
+try:
+    from .optimizer import PortfolioOptimizer, optimize_portfolio_forecasted
+except ImportError:
+    # Skip if cvxpy not available (Lambda environment)
+    PortfolioOptimizer = None
+    optimize_portfolio_forecasted = None
 
 # Advanced backtesting methods (NEW v2.0)
 from .backtesting_methods import BacktestingMethods, BacktestMethodResult

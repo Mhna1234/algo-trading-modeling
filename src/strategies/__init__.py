@@ -23,37 +23,48 @@ from .base_strategy_wrapper import (
 )
 
 # Import all benchmark strategies for direct access
-from .benchmark_strategies import (
-    BuyAndHoldStrategy,
-    EqualWeightStrategy,
-    QuintileFactorStrategy,
-    QuintileLowVolatilityStrategy,
-    MeanReversionStrategy,
-    GlobalMinimumVarianceStrategy,
-    InverseVolatilityStrategy,
-    RiskParityStrategy,
-    MaximumDiversificationStrategy,
-    MaximumDecorrelationStrategy,
-    SharpeMaximizationStrategy,
-    CVaRMinimizationStrategy
-)
+# Make these optional to support Lambda deployment (which uses benchmarks/ folder)
+try:
+    from .benchmark_strategies import (
+        BuyAndHoldStrategy,
+        EqualWeightStrategy,
+        QuintileFactorStrategy,
+        QuintileLowVolatilityStrategy,
+        MeanReversionStrategy,
+        GlobalMinimumVarianceStrategy,
+        InverseVolatilityStrategy,
+        RiskParityStrategy,
+        MaximumDiversificationStrategy,
+        MaximumDecorrelationStrategy,
+        SharpeMaximizationStrategy,
+        CVaRMinimizationStrategy
+    )
+except ImportError as e:
+    # Skip if scipy/cvxpy not available (Lambda environment)
+    import warnings
+    warnings.warn(f"Full benchmark strategies not available (missing dependencies): {e}")
 
 # Import all advanced strategies for direct access
-from .advanced_strategies import (
-    MomentumStrategy,
-    RegimeSwitchingStrategy,
-    MLRandomForestStrategy,
-    MLGradientBoostingStrategy,
-    ARMAForecastStrategy,
-    MultiFactorMLStrategy,
-    GMRPStrategy,
-    TimeSeriesMomentumStrategy,
-    MovingAverageCrossoverStrategy,
-    MarkowitzMVOStrategy,
-    LinearRegressionStrategy,
-    SVMRegimeStrategy,
-    ARIMAGARCHForecastingStrategy
-)
+try:
+    from .advanced_strategies import (
+        MomentumStrategy,
+        RegimeSwitchingStrategy,
+        MLRandomForestStrategy,
+        MLGradientBoostingStrategy,
+        ARMAForecastStrategy,
+        MultiFactorMLStrategy,
+        GMRPStrategy,
+        TimeSeriesMomentumStrategy,
+        MovingAverageCrossoverStrategy,
+        MarkowitzMVOStrategy,
+        LinearRegressionStrategy,
+        SVMRegimeStrategy,
+        ARIMAGARCHForecastingStrategy
+    )
+except ImportError as e:
+    # Skip if advanced dependencies not available
+    import warnings
+    warnings.warn(f"Advanced strategies not available (missing dependencies): {e}")
 
 # Import bandit strategy wrapper for meta-strategy allocation
 from .bandit_strategy_wrapper import (

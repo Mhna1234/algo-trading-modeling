@@ -28,27 +28,26 @@ import boto3
 import pandas as pd
 import numpy as np
 
-# Lambda-compatible benchmark imports
-from src.strategies.benchmarks import (
-    BuyAndHoldBenchmark,
-    EqualWeightBenchmark,
-    QuintileFactorBenchmark,
-    QuintileLowVolatilityBenchmark,
-    MeanReversionBenchmark,
-    GlobalMinVarianceBenchmark,
-    InverseVolatilityBenchmark,
-    InverseVarianceBenchmark,
-    RiskParityBenchmark,
-    MaxDecorrelationBenchmark,
-    MostDiversifiedBenchmark,
-    SharpeMaximizationBenchmark,
-    CVaRMinimizationBenchmark,
-    TopKReturnBenchmark,
-    TopKSharpeBenchmark,
-)
+# Lambda-compatible benchmark imports (use direct imports to avoid loading scipy/cvxpy)
+from src.strategies.benchmarks.buy_and_hold import BuyAndHoldBenchmark
+from src.strategies.benchmarks.equal_weight import EqualWeightBenchmark
+from src.strategies.benchmarks.quintile_factor import QuintileFactorBenchmark
+from src.strategies.benchmarks.quintile_low_volatility import QuintileLowVolatilityBenchmark
+from src.strategies.benchmarks.mean_reversion import MeanReversionBenchmark
+from src.strategies.benchmarks.global_min_variance import GlobalMinVarianceBenchmark
+from src.strategies.benchmarks.inverse_volatility import InverseVolatilityBenchmark
+from src.strategies.benchmarks.inverse_variance import InverseVarianceBenchmark
+from src.strategies.benchmarks.risk_parity import RiskParityBenchmark
+from src.strategies.benchmarks.max_decorrelation import MaxDecorrelationBenchmark
+from src.strategies.benchmarks.most_diversified import MostDiversifiedBenchmark
+from src.strategies.benchmarks.sharpe_maximization import SharpeMaximizationBenchmark
+from src.strategies.benchmarks.cvar_minimization import CVaRMinimizationBenchmark
+from src.strategies.benchmarks.top_k_return import TopKReturnBenchmark
+from src.strategies.benchmarks.top_k_sharpe import TopKSharpeBenchmark
+
+# Core imports (direct to avoid loading heavy dependencies)
 from src.signal_generator import Strategy
 from src.portfolio_engine import PortfolioEngine
-from src.data_retrieval import load_preprocessed_data
 
 # Setup logging
 logger = logging.getLogger()
@@ -123,11 +122,38 @@ def load_market_data() -> pd.DataFrame:
     logger.info(f"Loading data from S3 bucket: {DATA_BUCKET}")
 
     try:
-        # Use existing data_retrieval module
-        prices = load_preprocessed_data(
-            data_dir='/tmp/market_data',  # Lambda tmp directory
-            update_if_available=True
+        s3_client = boto3.client('s3')
+
+        # Look for preprocessed parquet files in S3
+        # Expected structure: s3://data-retrieval/preprocessed/sp500_YYYY_MM-YYYY_MM.parquet
+        response = s3_client.list_objects_v2(
+            Bucket=DATA_BUCKET,
+            Prefix='preprocessed/'
         )
+
+        if 'Contents' not in response:
+            raise ValueError(f"No preprocessed data found in s3://{DATA_BUCKET}/preprocessed/")
+
+        # Find the latest parquet file
+        parquet_files = [obj['Key'] for obj in response['Contents'] if obj['Key'].endswith('.parquet')]
+
+        if not parquet_files:
+            raise ValueError(f"No parquet files found in s3://{DATA_BUCKET}/preprocessed/")
+
+        # Use the latest file (sorted by name, which includes date)
+        latest_file = sorted(parquet_files)[-1]
+        logger.info(f"Loading file: s3://{DATA_BUCKET}/{latest_file}")
+
+        # Download to Lambda tmp directory
+        local_path = f'/tmp/{os.path.basename(latest_file)}'
+        s3_client.download_file(DATA_BUCKET, latest_file, local_path)
+
+        # Read parquet file
+        prices = pd.read_parquet(local_path)
+
+        # Ensure datetime index
+        if not isinstance(prices.index, pd.DatetimeIndex):
+            prices.index = pd.to_datetime(prices.index)
 
         logger.info(f"Loaded data: {len(prices)} days, {len(prices.columns)} assets")
         logger.info(f"Date range: {prices.index[0]} to {prices.index[-1]}")
@@ -175,32 +201,38 @@ def run_benchmark_backtest(
             rebalance_freq=rebalance_freq
         )
 
-        # Run backtest
+        # Run backtest (use all available data)
+        start_date = prices.index[0].strftime('%Y-%m-%d')
+        end_date = prices.index[-1].strftime('%Y-%m-%d')
+
         result = portfolio.run_backtest(
             strategy_wrapper=strategy,
+            start_date=start_date,
+            end_date=end_date,
             soft_rebalance=True,
-            drift_threshold=0.05
+            drift_threshold=0.05,
+            backtest_method='walk_forward'  # Walk-forward validation for robustness
         )
 
-        # Extract key metrics
+        # Extract key metrics from summary_metrics dict
         metrics = {
-            'total_return': float(result.total_return),
-            'cagr': float(result.cagr),
-            'volatility': float(result.volatility),
-            'sharpe_ratio': float(result.sharpe_ratio),
-            'sortino_ratio': float(result.sortino_ratio),
-            'max_drawdown': float(result.max_drawdown),
-            'calmar_ratio': float(result.calmar_ratio),
-            'win_rate': float(result.win_rate),
-            'avg_turnover': float(result.avg_turnover),
+            'total_return': float(result.summary_metrics.get('total_return', 0.0)),
+            'cagr': float(result.summary_metrics.get('annualized_return', 0.0)),
+            'volatility': float(result.summary_metrics.get('volatility', 0.0)),
+            'sharpe_ratio': float(result.summary_metrics.get('sharpe_ratio', 0.0)),
+            'sortino_ratio': float(result.summary_metrics.get('sortino_ratio', 0.0)),
+            'max_drawdown': float(result.summary_metrics.get('max_drawdown', 0.0)),
+            'calmar_ratio': float(result.summary_metrics.get('calmar_ratio', 0.0)),
+            'win_rate': float(result.summary_metrics.get('win_rate', 0.0)),
+            'avg_turnover': float(result.summary_metrics.get('avg_turnover', 0.0)),
         }
 
         # Extract time series (convert to dict for JSON serialization)
         time_series = {
             'dates': result.equity_curve.index.strftime('%Y-%m-%d').tolist(),
             'equity': result.equity_curve.values.tolist(),
-            'returns': result.returns.values.tolist(),
-            'drawdowns': result.drawdown_curve.values.tolist(),
+            'returns': result.returns_series.values.tolist(),
+            'drawdowns': result.drawdown_series.values.tolist(),
         }
 
         # Extract weights history (last 100 rebalances for dashboard)
