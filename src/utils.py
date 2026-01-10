@@ -24,8 +24,15 @@ from pathlib import Path
 import json
 import yaml
 from dataclasses import dataclass, asdict
-import matplotlib.pyplot as plt
-import seaborn as sns
+
+# Make matplotlib and seaborn optional (not available in Lambda)
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+except ImportError:
+    # Plotting not available - functions using these will need to check
+    plt = None
+    sns = None
 
 # Configuration constants
 TRADING_DAYS_PER_YEAR = 252
@@ -433,15 +440,18 @@ def correlation_matrix_plot(data: pd.DataFrame,
                            save_path: Optional[str] = None) -> None:
     """
     Plot correlation matrix heatmap.
-    
+
     Args:
         data: Data for correlation calculation
         title: Plot title
         figsize: Figure size
         save_path: Optional path to save the plot
     """
+    if plt is None or sns is None:
+        raise ImportError("matplotlib and seaborn are required for plotting. Install them with: pip install matplotlib seaborn")
+
     corr_matrix = data.corr()
-    
+
     plt.figure(figsize=figsize)
     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0,
                 square=True, fmt='.2f', cbar_kws={'shrink': 0.8})
