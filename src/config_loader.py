@@ -15,7 +15,14 @@ from typing import Dict, Any, Optional, Union
 from dataclasses import dataclass, field
 import logging
 import pandas as pd
-from dotenv import load_dotenv
+
+# Make dotenv optional (not available in Lambda)
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    # Provide no-op fallback (Lambda uses environment variables directly)
+    def load_dotenv(*args, **kwargs):
+        pass
 
 logger = logging.getLogger(__name__)
 
