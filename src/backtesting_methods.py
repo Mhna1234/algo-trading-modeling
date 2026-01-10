@@ -25,7 +25,14 @@ import logging
 from datetime import datetime, timedelta
 import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from tqdm import tqdm
+
+# Make tqdm optional (not available in Lambda)
+try:
+    from tqdm import tqdm
+except ImportError:
+    # Fallback: simple pass-through function (no progress bars)
+    def tqdm(iterable, *args, **kwargs):
+        return iterable
 
 from .portfolio_engine import PortfolioEngine, PortfolioResult
 from .strategies import BaseStrategyWrapper
