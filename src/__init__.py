@@ -99,18 +99,37 @@ except ImportError:
 # Advanced backtesting methods (NEW v2.0)
 from .backtesting_methods import BacktestingMethods, BacktestMethodResult
 
-# Risk-free asset (NEW v2.2)
-from .risk_free_asset import RiskFreeAsset, RiskFreeStrategyWrapper
+# Risk-free asset (NEW v2.2) - Optional for Lambda
+try:
+    from .risk_free_asset import RiskFreeAsset, RiskFreeStrategyWrapper
+except ImportError:
+    RiskFreeAsset = None
+    RiskFreeStrategyWrapper = None
 
 # Configuration management (NEW v2.3)
 from .config_loader import ConfigLoader, TradingConfig as TradingConfigYAML, load_trading_config
 
-# Legacy compatibility (UPDATED)
-from .evaluator import Evaluator, PerformanceEvaluator, evaluate_performance
+# Legacy compatibility (UPDATED) - Optional for Lambda (plotting dependencies)
+try:
+    from .evaluator import Evaluator, PerformanceEvaluator, evaluate_performance
+except ImportError:
+    Evaluator = None
+    PerformanceEvaluator = None
+    evaluate_performance = None
 
-# Data and utilities (EXISTING)
-from .data_loader import DataLoader, load_data
-from .feature_engineering import FeatureEngineer, make_features
+# Data and utilities (EXISTING) - Optional for Lambda
+try:
+    from .data_loader import DataLoader, load_data
+except ImportError:
+    DataLoader = None
+    load_data = None
+
+try:
+    from .feature_engineering import FeatureEngineer, make_features
+except ImportError:
+    FeatureEngineer = None
+    make_features = None
+
 # from .forecasting import ARIMAGARCHForecaster, forecast_returns_volatility  # Removed: forecasting module deprecated
 from .utils import TradingConfig, setup_logging
 
