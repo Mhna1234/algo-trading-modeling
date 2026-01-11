@@ -2,16 +2,40 @@
 AWS Lambda Handler for Daily Benchmark Strategy Calculations
 
 This Lambda function runs daily to:
-1. Fetch latest market data from S3 (data-retrieval bucket)
+1. Fetch latest market data from S3 (data-retrieval-output bucket)
 2. Calculate portfolio weights for 15 benchmark strategies
 3. Run backtests with 3 rebalancing frequencies (Daily, Weekly, Monthly)
 4. Output results to S3 (benchmarks-modelling-output bucket)
 
+Data Loading:
+- Uses src.data_retrieval module to load monthly parquet files
+- Data source: s3://data-retrieval-output/history-data/YYYY-MM.parquet
+- Default: loads last 3 years of data for backtesting
+
 Architecture:
 - Numpy-only implementations (no scipy/cvxpy)
-- ~150MB deployment package
+- ~80MB deployment package
 - 15-minute timeout (actual runtime ~3-5 minutes)
 - 3GB memory allocation
+
+Environment Variables:
+- OUTPUT_BUCKET: S3 bucket for results (default: benchmarks-modelling-output)
+- OUTPUT_PREFIX: Directory prefix for organized output (default: benchmarks-output)
+- DATA_YEARS: Years of historical data to load (default: 3)
+
+Output Structure:
+benchmarks-modelling-output/
+├── benchmarks-output/          # All benchmark results (for dashboard)
+│   ├── latest/
+│   │   └── summary.json        # Latest execution summary
+│   ├── history/
+│   │   └── {date}/
+│   │       └── summary.json    # Historical execution summaries
+│   └── strategies/
+│       └── {strategy_name}/
+│           └── {frequency}/
+│               └── {date}.json # Individual strategy results
+└── lambda/                     # Lambda deployment packages
 
 Author: Algo Trading Team
 Date: January 2026
@@ -27,6 +51,9 @@ import traceback
 import boto3
 import pandas as pd
 import numpy as np
+
+# Data retrieval
+from src.data_retrieval import load_date_range, get_latest_available_month
 
 # Lambda-compatible benchmark imports (use direct imports to avoid loading scipy/cvxpy)
 from src.strategies.benchmarks.buy_and_hold import BuyAndHoldBenchmark
@@ -54,9 +81,11 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # S3 Configuration
-DATA_BUCKET = os.environ.get('DATA_BUCKET', 'data-retrieval')
 OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'benchmarks-modelling-output')
-TICKERS_FILE = os.environ.get('TICKERS_FILE', 'sp500_tickers.txt')
+OUTPUT_PREFIX = os.environ.get('OUTPUT_PREFIX', 'benchmarks-output')  # Organized output directory
+
+# Data Range Configuration (default: last 3 years for backtesting)
+DATA_YEARS = int(os.environ.get('DATA_YEARS', '3'))
 
 # Strategy Configuration
 REBALANCE_FREQUENCIES = ['D', 'W', 'M']  # Daily, Weekly, Monthly
@@ -112,56 +141,69 @@ def get_benchmark_strategies(signal_generator: Strategy) -> Dict[str, Any]:
 
 def load_market_data() -> pd.DataFrame:
     """
-    Load latest market data from S3 data-retrieval bucket.
+    Load latest market data from S3 using data_retrieval module.
+
+    Fetches OHLCV data from S3 (data-retrieval-output bucket) and transforms
+    it into a price matrix suitable for backtesting.
 
     Returns
     -------
     pd.DataFrame
-        Price data with DatetimeIndex
+        Price data with DatetimeIndex (rows = dates, columns = tickers)
     """
-    logger.info(f"Loading data from S3 bucket: {DATA_BUCKET}")
+    logger.info("Loading market data from S3 (data-retrieval-output bucket)...")
 
     try:
-        s3_client = boto3.client('s3')
+        # Get the latest available month in S3
+        latest_year, latest_month = get_latest_available_month()
+        logger.info(f"Latest available data: {latest_year:04d}-{latest_month:02d}")
 
-        # Look for preprocessed parquet files in S3
-        # Expected structure: s3://data-retrieval/preprocessed/sp500_YYYY_MM-YYYY_MM.parquet
-        response = s3_client.list_objects_v2(
-            Bucket=DATA_BUCKET,
-            Prefix='preprocessed/'
+        # Calculate start date (DATA_YEARS years back from latest)
+        start_year = latest_year - DATA_YEARS
+        start_month = latest_month
+
+        logger.info(f"Loading data range: {start_year:04d}-{start_month:02d} to {latest_year:04d}-{latest_month:02d}")
+
+        # Load OHLCV data from S3 using data_retrieval module
+        # Returns DataFrame with columns: symbol, date, open, high, low, close, volume
+        ohlcv_data = load_date_range(
+            start_year=start_year,
+            start_month=start_month,
+            end_year=latest_year,
+            end_month=latest_month
         )
 
-        if 'Contents' not in response:
-            raise ValueError(f"No preprocessed data found in s3://{DATA_BUCKET}/preprocessed/")
+        logger.info(f"Loaded {len(ohlcv_data)} rows of OHLCV data")
 
-        # Find the latest parquet file
-        parquet_files = [obj['Key'] for obj in response['Contents'] if obj['Key'].endswith('.parquet')]
-
-        if not parquet_files:
-            raise ValueError(f"No parquet files found in s3://{DATA_BUCKET}/preprocessed/")
-
-        # Use the latest file (sorted by name, which includes date)
-        latest_file = sorted(parquet_files)[-1]
-        logger.info(f"Loading file: s3://{DATA_BUCKET}/{latest_file}")
-
-        # Download to Lambda tmp directory
-        local_path = f'/tmp/{os.path.basename(latest_file)}'
-        s3_client.download_file(DATA_BUCKET, latest_file, local_path)
-
-        # Read parquet file
-        prices = pd.read_parquet(local_path)
+        # Transform to price matrix (rows = dates, columns = tickers)
+        # Use adjusted close prices for backtesting
+        prices = ohlcv_data.pivot(index='date', columns='symbol', values='close')
 
         # Ensure datetime index
         if not isinstance(prices.index, pd.DatetimeIndex):
             prices.index = pd.to_datetime(prices.index)
 
-        logger.info(f"Loaded data: {len(prices)} days, {len(prices.columns)} assets")
-        logger.info(f"Date range: {prices.index[0]} to {prices.index[-1]}")
+        # Sort by date
+        prices = prices.sort_index()
+
+        # Drop any columns with all NaN values (delisted stocks)
+        prices = prices.dropna(axis=1, how='all')
+
+        # Forward fill missing values (up to 5 days) to handle trading halts
+        prices = prices.fillna(method='ffill', limit=5)
+
+        # Drop any rows with remaining NaN values (beginning of data)
+        prices = prices.dropna(how='any')
+
+        logger.info(f"Processed price matrix: {len(prices)} days, {len(prices.columns)} assets")
+        logger.info(f"Date range: {prices.index[0].date()} to {prices.index[-1].date()}")
+        logger.info(f"Sample tickers: {list(prices.columns[:5])}")
 
         return prices
 
     except Exception as e:
         logger.error(f"Error loading data: {str(e)}")
+        logger.error(traceback.format_exc())
         raise
 
 
@@ -211,7 +253,7 @@ def run_benchmark_backtest(
             end_date=end_date,
             soft_rebalance=True,
             drift_threshold=0.05,
-            backtest_method='walk_forward'  # Walk-forward validation for robustness
+            backtest_method='vanilla'  # Simple backtest for daily production runs
         )
 
         # Extract key metrics from summary_metrics dict
@@ -271,9 +313,19 @@ def run_benchmark_backtest(
 
 def save_results_to_s3(results: List[Dict], execution_date: str):
     """
-    Save benchmark results to S3 output bucket.
+    Save benchmark results to S3 output bucket in organized structure.
 
-    Organizes results by strategy and rebalancing frequency for dashboard access.
+    Directory structure:
+        benchmarks-output/
+        ├── latest/
+        │   └── summary.json
+        ├── history/
+        │   └── {date}/
+        │       └── summary.json
+        └── strategies/
+            └── {strategy_name}/
+                └── {frequency}/
+                    └── {date}.json
 
     Parameters
     ----------
@@ -284,15 +336,15 @@ def save_results_to_s3(results: List[Dict], execution_date: str):
     """
     s3_client = boto3.client('s3')
 
-    logger.info(f"Saving results to S3 bucket: {OUTPUT_BUCKET}")
+    logger.info(f"Saving results to s3://{OUTPUT_BUCKET}/{OUTPUT_PREFIX}/")
 
     # Save individual strategy results
     for result in results:
         strategy_name = result['strategy_name']
         rebal_freq = result['rebalance_freq']
 
-        # S3 key structure: {strategy}/{frequency}/{date}.json
-        s3_key = f"{strategy_name}/{rebal_freq}/{execution_date}.json"
+        # Organized S3 key: benchmarks-output/strategies/{strategy}/{frequency}/{date}.json
+        s3_key = f"{OUTPUT_PREFIX}/strategies/{strategy_name}/{rebal_freq}/{execution_date}.json"
 
         try:
             s3_client.put_object(
@@ -319,18 +371,18 @@ def save_results_to_s3(results: List[Dict], execution_date: str):
     }
 
     try:
-        # Latest summary
+        # Latest summary - for dashboard to always get latest results
         s3_client.put_object(
             Bucket=OUTPUT_BUCKET,
-            Key='latest/summary.json',
+            Key=f'{OUTPUT_PREFIX}/latest/summary.json',
             Body=json.dumps(summary, indent=2),
             ContentType='application/json'
         )
 
-        # Dated summary (for history)
+        # Dated summary (for history tracking)
         s3_client.put_object(
             Bucket=OUTPUT_BUCKET,
-            Key=f'history/{execution_date}/summary.json',
+            Key=f'{OUTPUT_PREFIX}/history/{execution_date}/summary.json',
             Body=json.dumps(summary, indent=2),
             ContentType='application/json'
         )
