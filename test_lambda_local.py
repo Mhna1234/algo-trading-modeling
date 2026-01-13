@@ -88,20 +88,21 @@ def test_strategy_initialization():
 
 
 def test_single_backtest():
-    """Test 3: Run a single backtest (EqualWeight)."""
-    print("\n=== Test 3: Single Backtest (EqualWeight/Daily) ===")
+    """Test 3: Run backtests and verify weights are only on rebalance dates."""
+    print("\n=== Test 3: Backtest & Weights Validation ===")
     try:
         from lambda_function import run_benchmark_backtest, get_benchmark_strategies
         from src.signal_generator import Strategy
         import pandas as pd
         import numpy as np
+        from datetime import datetime
 
-        # Create dummy price data (3 years for walk-forward backtesting)
-        dates = pd.date_range('2021-01-01', periods=1000, freq='D')
+        # Create dummy price data
+        dates = pd.date_range('2024-01-01', periods=100, freq='D')
         tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META']
         np.random.seed(42)
         prices = pd.DataFrame(
-            np.random.randn(1000, 5).cumsum(axis=0) + 100,
+            np.random.randn(100, 5).cumsum(axis=0) + 100,
             index=dates,
             columns=tickers
         )
@@ -109,54 +110,70 @@ def test_single_backtest():
         signal_generator = Strategy(prices)
         strategies = get_benchmark_strategies(signal_generator)
 
-        # Test with walk-forward backtest
-        print("Testing with walk-forward backtest method...")
-
-        # Temporarily modify lambda_function to use walk-forward
-        import lambda_function
-        original_code = open('lambda_function.py', 'r').read()
-        modified_code = original_code.replace(
-            "backtest_method='vanilla'",
-            "backtest_method='walk_forward'"
+        # Test Weekly Rebalancing
+        print("\nTesting Weekly Rebalancing...")
+        result_w = run_benchmark_backtest(
+            strategy_name='equal_weight',
+            strategy=strategies['equal_weight'],
+            prices=prices,
+            rebalance_freq='W'
         )
 
-        # Write temporary modification
-        with open('lambda_function.py', 'w') as f:
-            f.write(modified_code)
-
-        # Reload module
-        import importlib
-        importlib.reload(lambda_function)
-        from lambda_function import run_benchmark_backtest
-
-        try:
-            import time
-            start_time = time.time()
-
-            result = run_benchmark_backtest(
-                strategy_name='equal_weight',
-                strategy=strategies['equal_weight'],
-                prices=prices,
-                rebalance_freq='D'
-            )
-
-            elapsed = time.time() - start_time
-            print(f"Walk-forward backtest took {elapsed:.1f} seconds")
-        finally:
-            # Restore original code
-            with open('lambda_function.py', 'w') as f:
-                f.write(original_code)
-
-        if result['status'] == 'success':
-            print("✓ Backtest completed successfully")
-            print(f"  Metrics:")
-            print(f"    Total Return: {result['metrics']['total_return']:.2%}")
-            print(f"    Sharpe Ratio: {result['metrics']['sharpe_ratio']:.2f}")
-            print(f"    Max Drawdown: {result['metrics']['max_drawdown']:.2%}")
-            return True
-        else:
-            print(f"✗ Backtest failed: {result.get('error_message', 'Unknown error')}")
+        if result_w['status'] != 'success':
+            print(f"✗ Weekly backtest failed: {result_w.get('error_message', 'Unknown')}")
             return False
+
+        weights_data_w = result_w['weights']
+        print(f"  Weekly: {len(weights_data_w['dates'])} weight entries")
+
+        # Check that weights are ~7 days apart
+        dates_w = [datetime.strptime(d, '%Y-%m-%d') for d in weights_data_w['dates'][:5]]
+        if len(dates_w) >= 2:
+            gaps_w = [(dates_w[i+1] - dates_w[i]).days for i in range(len(dates_w)-1)]
+            avg_gap_w = sum(gaps_w) / len(gaps_w) if gaps_w else 0
+            print(f"  Days between rebalances: {gaps_w}")
+            print(f"  Average: {avg_gap_w:.1f} days")
+
+            if avg_gap_w < 5 or avg_gap_w > 10:
+                print(f"✗ Weekly rebalancing spacing incorrect (expected ~7 days, got {avg_gap_w:.1f})")
+                return False
+
+        # Test Monthly Rebalancing
+        print("\nTesting Monthly Rebalancing...")
+        result_m = run_benchmark_backtest(
+            strategy_name='equal_weight',
+            strategy=strategies['equal_weight'],
+            prices=prices,
+            rebalance_freq='M'
+        )
+
+        if result_m['status'] != 'success':
+            print(f"✗ Monthly backtest failed: {result_m.get('error_message', 'Unknown')}")
+            return False
+
+        weights_data_m = result_m['weights']
+        print(f"  Monthly: {len(weights_data_m['dates'])} weight entries")
+
+        # Check that weights are ~30 days apart
+        dates_m = [datetime.strptime(d, '%Y-%m-%d') for d in weights_data_m['dates'][:3]]
+        if len(dates_m) >= 2:
+            gaps_m = [(dates_m[i+1] - dates_m[i]).days for i in range(len(dates_m)-1)]
+            avg_gap_m = sum(gaps_m) / len(gaps_m) if gaps_m else 0
+            print(f"  Days between rebalances: {gaps_m}")
+            print(f"  Average: {avg_gap_m:.1f} days")
+
+            if avg_gap_m < 20 or avg_gap_m > 40:
+                print(f"✗ Monthly rebalancing spacing incorrect (expected ~30 days, got {avg_gap_m:.1f})")
+                return False
+
+        print("\n✓ All backtests completed successfully")
+        print("✓ Weights are correctly filtered to rebalance dates only")
+        print(f"\n  Metrics (Weekly):")
+        print(f"    Total Return: {result_w['metrics']['total_return']:.2%}")
+        print(f"    Sharpe Ratio: {result_w['metrics']['sharpe_ratio']:.2f}")
+        print(f"    Max Drawdown: {result_w['metrics']['max_drawdown']:.2%}")
+
+        return True
 
     except Exception as e:
         print(f"✗ Backtest failed: {e}")

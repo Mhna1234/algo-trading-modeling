@@ -84,8 +84,8 @@ logger.setLevel(logging.INFO)
 OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'benchmarks-modelling-output')
 OUTPUT_PREFIX = os.environ.get('OUTPUT_PREFIX', 'benchmarks-output')  # Organized output directory
 
-# Data Range Configuration (default: last 3 years for backtesting)
-DATA_YEARS = int(os.environ.get('DATA_YEARS', '3'))
+# Data Range Configuration (default: last 5 years for walk-forward backtesting)
+DATA_YEARS = int(os.environ.get('DATA_YEARS', '5'))
 
 # Strategy Configuration
 REBALANCE_FREQUENCIES = ['D', 'W', 'M']  # Daily, Weekly, Monthly
@@ -189,10 +189,16 @@ def load_market_data() -> pd.DataFrame:
         # Drop any columns with all NaN values (delisted stocks)
         prices = prices.dropna(axis=1, how='all')
 
+        # Drop stocks with >10% missing data (insufficient history)
+        # This preserves more historical data for walk-forward backtesting
+        missing_pct_per_stock = prices.isna().sum() / len(prices)
+        stocks_with_sufficient_data = missing_pct_per_stock[missing_pct_per_stock < 0.10].index
+        prices = prices[stocks_with_sufficient_data]
+
         # Forward fill missing values (up to 5 days) to handle trading halts
         prices = prices.fillna(method='ffill', limit=5)
 
-        # Drop any rows with remaining NaN values (beginning of data)
+        # Drop any rows with remaining NaN values (after forward fill)
         prices = prices.dropna(how='any')
 
         logger.info(f"Processed price matrix: {len(prices)} days, {len(prices.columns)} assets")
@@ -253,8 +259,12 @@ def run_benchmark_backtest(
             end_date=end_date,
             soft_rebalance=True,
             drift_threshold=0.05,
-            backtest_method='vanilla'  # Simple backtest for daily production runs
+            backtest_method='walk_forward'  # Walk-forward optimization for robust results
         )
+
+        # Check if backtest returned valid results
+        if result is None:
+            raise ValueError("Walk-forward backtest returned None - insufficient data (need 30+ months)")
 
         # Extract key metrics from summary_metrics dict
         metrics = {
@@ -277,11 +287,20 @@ def run_benchmark_backtest(
             'drawdowns': result.drawdown_series.values.tolist(),
         }
 
-        # Extract weights history (last 100 rebalances for dashboard)
-        weights_history = result.weights_history.tail(100)
+        # Extract weights history - ONLY on rebalance dates (when trades occurred)
+        # Filter to only include dates in trades_history (actual rebalance dates)
+        rebalance_dates = result.trades_history.index
+        weights_on_rebalance = result.weights_history.loc[rebalance_dates]
+
+        # Last 100 rebalances for dashboard
+        weights_on_rebalance = weights_on_rebalance.tail(100)
+
+        # Round weights to 6 decimal places to save memory
+        weights_on_rebalance = weights_on_rebalance.round(6)
+
         weights_data = {
-            'dates': weights_history.index.strftime('%Y-%m-%d').tolist(),
-            'weights': weights_history.to_dict(orient='list')
+            'dates': weights_on_rebalance.index.strftime('%Y-%m-%d').tolist(),
+            'weights': weights_on_rebalance.to_dict(orient='list')
         }
 
         return {
@@ -322,10 +341,18 @@ def save_results_to_s3(results: List[Dict], execution_date: str):
         ├── history/
         │   └── {date}/
         │       └── summary.json
-        └── strategies/
+        ├── strategies/
+        │   └── {strategy_name}/
+        │       └── {frequency}/
+        │           └── {date}.json          # Complete results with metrics, time series, weights
+        ├── timeseries/
+        │   └── {strategy_name}/
+        │       └── {frequency}/
+        │           └── {date}.csv            # Equity curve, returns, drawdowns
+        └── weights/
             └── {strategy_name}/
                 └── {frequency}/
-                    └── {date}.json
+                    └── {date}.csv            # Portfolio weights on rebalance dates
 
     Parameters
     ----------
@@ -335,6 +362,7 @@ def save_results_to_s3(results: List[Dict], execution_date: str):
         Date string (YYYY-MM-DD) for versioning
     """
     s3_client = boto3.client('s3')
+    from io import StringIO
 
     logger.info(f"Saving results to s3://{OUTPUT_BUCKET}/{OUTPUT_PREFIX}/")
 
@@ -343,20 +371,76 @@ def save_results_to_s3(results: List[Dict], execution_date: str):
         strategy_name = result['strategy_name']
         rebal_freq = result['rebalance_freq']
 
-        # Organized S3 key: benchmarks-output/strategies/{strategy}/{frequency}/{date}.json
-        s3_key = f"{OUTPUT_PREFIX}/strategies/{strategy_name}/{rebal_freq}/{execution_date}.json"
+        # Save JSON file
+        s3_key_json = f"{OUTPUT_PREFIX}/strategies/{strategy_name}/{rebal_freq}/{execution_date}.json"
 
         try:
             s3_client.put_object(
                 Bucket=OUTPUT_BUCKET,
-                Key=s3_key,
+                Key=s3_key_json,
                 Body=json.dumps(result, indent=2),
                 ContentType='application/json'
             )
-            logger.info(f"Saved: s3://{OUTPUT_BUCKET}/{s3_key}")
+            logger.info(f"Saved JSON: s3://{OUTPUT_BUCKET}/{s3_key_json}")
 
         except Exception as e:
-            logger.error(f"Error saving {s3_key}: {str(e)}")
+            logger.error(f"Error saving {s3_key_json}: {str(e)}")
+
+        # Save CSV time series (if backtest was successful)
+        if result['status'] == 'success' and 'time_series' in result:
+            try:
+                # Create DataFrame from time series data
+                ts = result['time_series']
+                df_timeseries = pd.DataFrame({
+                    'date': ts['dates'],
+                    'equity': ts['equity'],
+                    'returns': ts['returns'],
+                    'drawdowns': ts['drawdowns']
+                })
+
+                # Convert to CSV
+                csv_buffer = StringIO()
+                df_timeseries.to_csv(csv_buffer, index=False)
+                csv_content = csv_buffer.getvalue()
+
+                # Save CSV file
+                s3_key_csv = f"{OUTPUT_PREFIX}/timeseries/{strategy_name}/{rebal_freq}/{execution_date}.csv"
+                s3_client.put_object(
+                    Bucket=OUTPUT_BUCKET,
+                    Key=s3_key_csv,
+                    Body=csv_content,
+                    ContentType='text/csv'
+                )
+                logger.info(f"Saved CSV: s3://{OUTPUT_BUCKET}/{s3_key_csv}")
+
+            except Exception as e:
+                logger.error(f"Error saving CSV for {strategy_name}/{rebal_freq}: {str(e)}")
+
+        # Save weights as CSV (if available)
+        if result['status'] == 'success' and 'weights' in result:
+            try:
+                # Create DataFrame from weights data
+                weights = result['weights']
+                df_weights = pd.DataFrame(weights['weights'])
+                df_weights.insert(0, 'date', weights['dates'])
+
+                # Convert to CSV
+                csv_buffer = StringIO()
+                df_weights.to_csv(csv_buffer, index=False)
+                csv_content = csv_buffer.getvalue()
+
+                # Save weights CSV file
+                s3_key_weights = f"{OUTPUT_PREFIX}/weights/{strategy_name}/{rebal_freq}/{execution_date}.csv"
+                s3_client.put_object(
+                    Bucket=OUTPUT_BUCKET,
+                    Key=s3_key_weights,
+                    Body=csv_content,
+                    ContentType='text/csv'
+                )
+                logger.info(f"Saved weights CSV: s3://{OUTPUT_BUCKET}/{s3_key_weights}")
+
+            except Exception as e:
+                logger.error(f"Error saving weights CSV for {strategy_name}/{rebal_freq}: {str(e)}")
 
     # Save summary file (latest results for all strategies)
     summary = {
