@@ -188,7 +188,7 @@ print(f"Successful: {summary['successful']}/{summary['total_backtests']}")
 
 ## 📁 Documentation
 
-- **[S3_OUTPUT_STRUCTURE.md](S3_OUTPUT_STRUCTURE.md):** Complete S3 structure documentation
+- **[DASHBOARD_DATA_GUIDE.md](DASHBOARD_DATA_GUIDE.md):** Complete S3 structure and integration guide
 - **[deploy_lambda.sh](deploy_lambda.sh):** Deployment script for updates
 - **[setup_daily_schedule.sh](setup_daily_schedule.sh):** EventBridge schedule setup
 - **[lambda_function.py](lambda_function.py):** Lambda handler with inline documentation

@@ -85,7 +85,7 @@
 1. **Walk-Forward Fix**: Changed data cleaning from aggressive `dropna(how='any')` to smart filtering (drop stocks with >10% missing)
    - Before: 362 days (12 months) - insufficient for walk-forward
    - After: 1,099 days (36 months) - perfect for walk-forward
-   - See [WALK_FORWARD_FIX.md](WALK_FORWARD_FIX.md) for details
+   - Result: Walk-forward backtesting now works with 24-month train + 6-month test windows
 
 2. **Weights Correction**: Filter weights to rebalance dates only
    - Weekly: ~52 entries/year (every 7 days)
@@ -96,10 +96,8 @@
    - Smaller file sizes (time series: 30KB, weights: 200KB vs JSON: 1MB)
    - Direct DataFrame loading - no JSON parsing needed
 
-4. **Documentation**: Comprehensive guides for dashboard team
-   - [DASHBOARD_DATA_GUIDE.md](DASHBOARD_DATA_GUIDE.md) - Integration guide
-   - [S3_OUTPUT_STRUCTURE.md](S3_OUTPUT_STRUCTURE.md) - Bucket structure
-   - [WALK_FORWARD_FIX.md](WALK_FORWARD_FIX.md) - Technical details
+4. **Documentation**: Comprehensive guide for dashboard team
+   - [DASHBOARD_DATA_GUIDE.md](DASHBOARD_DATA_GUIDE.md) - Complete integration guide with S3 structure and examples
 
 ---
 

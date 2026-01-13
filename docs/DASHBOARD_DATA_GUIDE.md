@@ -373,9 +373,8 @@ plt.legend()
 ## Need Help?
 
 **For Questions:**
-- Data structure: See [S3_OUTPUT_STRUCTURE.md](S3_OUTPUT_STRUCTURE.md)
-- Walk-forward methodology: See [WALK_FORWARD_FIX.md](WALK_FORWARD_FIX.md)
-- Lambda status: See [LAMBDA_DEPLOYMENT_STATUS.md](LAMBDA_DEPLOYMENT_STATUS.md)
+- Lambda deployment status: See [LAMBDA_DEPLOYMENT_STATUS.md](LAMBDA_DEPLOYMENT_STATUS.md)
+- Implementation details: See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)
 
 **Common Issues:**
 1. **"Weights file too small"** → This is correct! Weights only on rebalance dates
