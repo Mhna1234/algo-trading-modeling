@@ -97,12 +97,12 @@ def test_single_backtest():
         import numpy as np
         from datetime import datetime
 
-        # Create dummy price data
-        dates = pd.date_range('2024-01-01', periods=100, freq='D')
+        # Create dummy price data (3 years for walk-forward testing)
+        dates = pd.date_range('2022-01-01', periods=1100, freq='D')  # ~3 years
         tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META']
         np.random.seed(42)
         prices = pd.DataFrame(
-            np.random.randn(100, 5).cumsum(axis=0) + 100,
+            np.random.randn(1100, 5).cumsum(axis=0) + 100,
             index=dates,
             columns=tickers
         )
