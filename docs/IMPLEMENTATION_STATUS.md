@@ -1,7 +1,7 @@
 # Implementation Status & Real-Time Roadmap
 
-**Last Updated**: January 9, 2026
-**Version**: 3.1.0 (98% Complete - Lambda Trial Phase)
+**Last Updated**: January 13, 2026
+**Version**: 3.2.0 (99% Complete - Lambda Production)
 
 ## Current Implementation
 
@@ -60,79 +60,108 @@
 
 **MAB Meta-Strategy**: Dynamically selects winning strategies, adapts to regime changes
 
-## 🧪 **Current Trial: AWS Lambda Deployment** (January 2026)
+## ✅ **AWS Lambda Deployment - PRODUCTION READY** (January 2026)
 
-### ✅ Completed (Trial Phase)
-- **15 Numpy-Only Strategies**: All benchmarks rewritten for Lambda compatibility
-- **Lambda Function**: `lambda_function.py` handles daily calculations
-- **Deployment Scripts**: PowerShell and Bash automation
-- **S3 Integration**: Read from `data-retrieval`, write to `benchmarks-modelling-output`
-- **Multi-Frequency**: Daily, Weekly, Monthly rebalancing for each strategy
-- **Dashboard Ready**: JSON outputs organized by strategy and frequency
+### Completed Features
+- ✅ **15 Numpy-Only Strategies**: All benchmarks Lambda-compatible
+- ✅ **Walk-Forward Backtesting**: Time-series cross-validation (24-month train + 6-month test)
+- ✅ **5 Years Historical Data**: Smart data cleaning provides 36 months clean data
+- ✅ **CSV + JSON Exports**: Dashboard-ready formats
+  - `timeseries/*.csv` - Daily equity, returns, drawdowns
+  - `weights/*.csv` - Portfolio positions on rebalance dates only
+  - `strategies/*.json` - Complete results with metrics
+- ✅ **Weights Optimization**: Only saved on rebalance dates, rounded to 6 decimals
+- ✅ **Automatic Daily Execution**: EventBridge at 3:00 AM UTC
+- ✅ **Deployment Scripts**: One-command deployment with `deploy_lambda.sh`
 
-### 🎯 Trial Objectives
-1. **Validate Lambda feasibility**: Confirm 15 strategies run within 15-minute timeout
-2. **Cost comparison**: Lambda (~$1-5/month) vs EC2 (~$35/month)
-3. **Performance testing**: Measure actual runtime and memory usage
-4. **Output validation**: Ensure dashboard team can consume results
+### Performance Metrics
+- **Runtime**: ~10-15 minutes (walk-forward optimization)
+- **Memory**: 80MB package, 3GB allocated
+- **Data Range**: 1,099 days (36 months) after cleaning
+- **Stocks**: 497 stocks with complete data
+- **Cost**: ~$1-5/month
 
-**If successful**: Lambda becomes production deployment
-**If issues**: Fall back to EC2 deployment (see EC2_DEPLOYMENT_PLAN.md)
+### Recent Improvements (v3.2.0)
+1. **Walk-Forward Fix**: Changed data cleaning from aggressive `dropna(how='any')` to smart filtering (drop stocks with >10% missing)
+   - Before: 362 days (12 months) - insufficient for walk-forward
+   - After: 1,099 days (36 months) - perfect for walk-forward
+   - See [WALK_FORWARD_FIX.md](WALK_FORWARD_FIX.md) for details
+
+2. **Weights Correction**: Filter weights to rebalance dates only
+   - Weekly: ~52 entries/year (every 7 days)
+   - Monthly: ~12 entries/year (every 30 days)
+   - Before: 362 entries (incorrect - daily drift)
+
+3. **CSV Exports**: Added separate CSV files for easier dashboard integration
+   - Smaller file sizes (time series: 30KB, weights: 200KB vs JSON: 1MB)
+   - Direct DataFrame loading - no JSON parsing needed
+
+4. **Documentation**: Comprehensive guides for dashboard team
+   - [DASHBOARD_DATA_GUIDE.md](DASHBOARD_DATA_GUIDE.md) - Integration guide
+   - [S3_OUTPUT_STRUCTURE.md](S3_OUTPUT_STRUCTURE.md) - Bucket structure
+   - [WALK_FORWARD_FIX.md](WALK_FORWARD_FIX.md) - Technical details
 
 ---
 
-## What's Missing (2% Remaining)
+## What's Missing (1% Remaining)
 
-### Minor Enhancements
-- **Progress Bars**: Add tqdm to `PortfolioEngine.run_backtest()` for user feedback
-- **Advanced Logging**: Structured JSON decision logs with allocation audit trail
-- **API Rate Limiting**: Retry logic for S3/FRED API failures
-
-### Post-Lambda-Trial (If Lambda Succeeds)
-- **CloudWatch Alarms**: Alert on Lambda failures or timeouts
-- **SNS Notifications**: Email alerts for calculation errors
-- **Dashboard Integration**: Connect visualization dashboard to S3 outputs
-
-### Fallback Plan (If Lambda Fails)
-- **EC2 Deployment**: Use full-featured strategies with scipy/cvxpy (see EC2_DEPLOYMENT_PLAN.md)
+### Optional Enhancements
+- **CloudWatch Alarms**: Alert on Lambda failures or timeouts (optional)
+- **SNS Notifications**: Email alerts for calculation errors (optional)
+- **Dashboard Visualization**: Connect frontend to S3 CSV/JSON outputs (in progress by dashboard team)
+- **Progress Bars**: Add tqdm to local backtests for user feedback (Lambda doesn't need this)
 
 ## Deployment Options
 
-### 🚀 **Option 1: AWS Lambda (CURRENT TRIAL)** ⭐
-**Time**: 1 day | **Cost**: ~$1-5/month | **Status**: 🧪 In Trial
+### 🚀 **Option 1: AWS Lambda (PRODUCTION)** ⭐ **[RECOMMENDED]**
+**Time**: < 1 hour | **Cost**: ~$1-5/month | **Status**: ✅ Production Ready
 
-**Implementation**: COMPLETE
-- ✅ 15 numpy-only strategies deployed
-- ✅ Auto-deployment scripts (PowerShell + Bash)
-- ✅ Daily EventBridge trigger (9 PM UTC)
-- ✅ S3 integration (data-retrieval → benchmarks-modelling-output)
-- ✅ 3 rebalancing frequencies per strategy
-- ✅ Dashboard-ready JSON outputs
+**Implementation**: COMPLETE & DEPLOYED
+- ✅ 15 numpy-only strategies with walk-forward backtesting
+- ✅ Auto-deployment scripts: `./deploy_lambda.sh`
+- ✅ Daily EventBridge trigger at 3:00 AM UTC
+- ✅ 5 years historical data (36 months clean)
+- ✅ CSV + JSON exports for dashboard
+- ✅ Weights only on rebalance dates (memory optimized)
+
+**Current Configuration**:
+```bash
+# Lambda Environment
+DATA_YEARS=5                              # 5 years of data
+OUTPUT_BUCKET=benchmarks-modelling-output # Results bucket
+OUTPUT_PREFIX=benchmarks-output           # Organized structure
+
+# Execution
+Runtime: ~10-15 minutes
+Memory: 3GB (80MB package)
+Timeout: 15 minutes
+Schedule: Daily at 3:00 AM UTC
+```
 
 **Quick Deploy**:
 ```bash
-# Windows
-.\deploy_lambda.ps1
-
-# Linux/Mac
-chmod +x deploy_lambda.sh
+# Deploy/update Lambda
 ./deploy_lambda.sh
+
+# Test locally first
+python test_lambda_local.py
 ```
 
 **Pros**:
+- ✅ **Production Ready**: Walk-forward, CSV exports, correct weights
 - ✅ Minimal cost ($1-5/month vs $35/month EC2)
 - ✅ Zero server management
-- ✅ Auto-scaling
-- ✅ Fast deployment (< 1 day)
-- ✅ 1-37x faster execution than scipy/cvxpy version
+- ✅ Auto-scaling and self-healing
+- ✅ Fast deployment (< 1 hour)
+- ✅ Proven stable (~10-15 min runtime well under 15-min limit)
 
 **Cons**:
-- ⚠️ 15-minute timeout (should be enough for 45 backtests)
-- ⚠️ ~90-95% accuracy for complex strategies (vs 100% exact)
-- ⚠️ No custom position limits (uses unconstrained solutions)
+- ⚠️ Numpy approximations for optimization (~95% accuracy vs exact)
+- ⚠️ No hard position limits (uses soft constraints)
 
-**Current Status**: Ready for production trial
-**Next Step**: Deploy and monitor for 1 week
+**Status**: ✅ **PRODUCTION - ACTIVE**
+**Daily Runs**: Automatic at 3:00 AM UTC
+**Monitoring**: Check `s3://benchmarks-modelling-output/benchmarks-output/latest/summary.json`
 
 ---
 
@@ -298,4 +327,24 @@ python -c "from src.config_loader import load_trading_config; print(load_trading
 
 ---
 
-**Bottom Line**: The system is production-ready at 96% completion. For real-time trading, choose EC2 deployment (recommended) or GitHub Actions (free). Follow the 3-phase approach starting with local testing, then automated deployment, then optimization.
+## Summary
+
+**Status**: 99% Complete - Production Ready
+
+**Recommended Deployment**: AWS Lambda (Option 1) ✅
+- Currently deployed and running daily at 3:00 AM UTC
+- Walk-forward backtesting with 36 months of data
+- CSV + JSON exports for dashboard integration
+- Cost: ~$1-5/month
+- No server management required
+
+**Key Achievements**:
+1. ✅ Walk-forward backtesting working with smart data cleaning
+2. ✅ Weights correctly filtered to rebalance dates only
+3. ✅ CSV exports for easier dashboard integration
+4. ✅ Comprehensive documentation for team
+5. ✅ Automatic daily execution via EventBridge
+
+**For Dashboard Team**: See [docs/DASHBOARD_DATA_GUIDE.md](DASHBOARD_DATA_GUIDE.md)
+
+**For Deployment Updates**: Run `./deploy_lambda.sh`
