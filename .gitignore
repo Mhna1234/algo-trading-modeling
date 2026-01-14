@@ -58,3 +58,13 @@ results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Lambda deployment artifacts
+lambda/lambda_deployment*.zip
+lambda/lambda_package/
+
+# Temporary files
+response*.json
+debug_*.csv
+docs/tmpclaude*
+.claude/

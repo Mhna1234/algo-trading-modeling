@@ -689,12 +689,14 @@ class PortfolioEngine:
         # Calculate weight drift for each asset
         weight_drift = (target_weights - current_asset_weights).abs()
         
-        # Identify assets that need rebalancing
-        # Use epsilon comparison to handle floating point precision errors
-        needs_rebalancing = weight_drift >= (drift_threshold - 1e-9)
+        # Calculate TOTAL portfolio drift (turnover required to reach target)
+        # This is L1 norm / 2. ranges from 0 to 1.0 (100% turnover)
+        total_drift = weight_drift.sum() / 2.0
         
-        if not needs_rebalancing.any():
-            # No trades needed - all weights within tolerance
+        # Check if rebalancing is needed based on Total Drift
+        # This handles cases where many small drifts add up (e.g. diversified portfolio initialization)
+        if total_drift < drift_threshold:
+            # No trades needed - portfolio is close enough
             self._turnover_history.loc[date] = 0.0
             self._transaction_costs_series.loc[date] = 0.0
             self._slippage_costs_series.loc[date] = 0.0

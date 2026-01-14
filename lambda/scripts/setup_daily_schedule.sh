@@ -18,8 +18,8 @@ echo "Function: $FUNCTION_NAME"
 echo "Schedule: Daily at $SCHEDULE_HOUR:00 UTC"
 echo "          (Runs 2 hours after data retrieval)"
 echo ""
-echo "To change the time, run: ./setup_daily_schedule.sh <hour>"
-echo "Example for 5 AM UTC: ./setup_daily_schedule.sh 5"
+echo "To change the time, run: ./lambda/scripts/setup_daily_schedule.sh <hour>"
+echo "Example for 5 AM UTC: ./lambda/scripts/setup_daily_schedule.sh 5"
 echo ""
 
 # Get Lambda ARN

@@ -1,0 +1,22 @@
+============================================================
+S3 VERIFICATION REPORT - 2026-01-14 21:01:43
+============================================================
+Report saved to: c:\Users\Admin\Desktop\data_hack\algo-trading-modeling\lambda\tests\verification_report.txt
+Looking for latest execution in s3://benchmarks-modelling-output/benchmarks-output...
+Verifying outputs for date: 2026-01-14
+
+Checking buy_and_hold (M)...
+  ✓ Timeseries data: 124 rows
+  ✓ Weights data: 7 rows
+  ✗ Timeseries: Equity curve is constant (flatline).
+  ✗ Logic Error (B&H): Too many rebalance events for Buy & Hold: 7 (Expected <= 5)
+
+Checking equal_weight (M)...
+  ✓ Timeseries data: 124 rows
+  ✓ Weights data: 7 rows
+  ✗ Timeseries: Equity curve is constant (flatline).
+  ✗ Suspiciously low rebalance count for Monthly strategy: 7
+
+==============================
+SUMMARY: 0 Passed, 2 Failed
+==============================

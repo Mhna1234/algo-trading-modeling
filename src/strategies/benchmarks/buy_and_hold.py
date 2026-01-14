@@ -87,13 +87,16 @@ class BuyAndHoldBenchmark(BenchmarkStrategy):
         current_asset_weights = portfolio_state.current_weights.reindex(
             self.strategy.assets, fill_value=0.0
         )
-
+        
         # If we have actual allocations in risky assets, use them (no rebalancing)
         if current_asset_weights.sum() > 1e-6:
             return current_asset_weights
 
         # Initial allocation: equal weight across all risky assets
         n = len(self.strategy.assets)
+        if n == 0:
+            return Series(dtype=float)
+            
         return Series(1.0 / n, index=self.strategy.assets)
 
     def compute_weights(

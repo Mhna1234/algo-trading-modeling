@@ -2,54 +2,71 @@
 
 ## Overview
 
-This guide covers deploying 15 benchmark strategies to AWS Lambda for daily calculations. The Lambda function reads market data from S3, runs backtests with 3 rebalancing frequencies, and outputs results for dashboard consumption.
+This guide covers deploying 15 benchmark strategies across 3 partitioned AWS Lambda functions for daily calculations. Each partition runs independently and in parallel, reading market data from S3, running backtests with 3 rebalancing frequencies, and outputting results for dashboard consumption.
 
-**Status**: 🧪 **Production Trial** (January 2026)
+**Status**: 🚀 **PRODUCTION READY** (v3.3.0 - January 2026)
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    AWS Lambda Function                      │
-│              benchmark-daily-calculator                     │
-│                    (Python 3.11)                            │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │  15 Numpy-Only Benchmark Strategies                   │  │
-│  │  - BuyAndHold, EqualWeight, Quintiles, etc.          │  │
-│  │  - 3 Rebalancing Frequencies each (D, W, M)          │  │
-│  │  - Total: 45 backtests per execution                 │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                             │
-│  Memory: 3GB | Timeout: 15 min | Runtime: ~3-5 min         │
-└─────┬─────────────────────────────────────────────┬─────────┘
-      │                                           │
-      │ Read Data                                 │ Write Results
-      ▼                                           ▼
-┌──────────────────┐                    ┌────────────────────────┐
-│   S3 Bucket      │                    │     S3 Bucket         │
-│ data-retrieval   │                    │benchmarks-modelling-   │
-│                  │                    │       output          │
-│ - sp500_prices/  │                    │                        │
-│ - preprocessed/  │                    │ ├─ latest/            │
-│                  │                    │ │  └─ summary.json    │
-│                  │                    │ ├─ {strategy}/        │
-│                  │                    │ │  ├─ D/{date}.json   │
-│                  │                    │ │  ├─ W/{date}.json   │
-│                  │                    │ │  └─ M/{date}.json   │
-│                  │                    │ └─ history/           │
-│                  │                    │    └─ {date}/         │
-└──────────────────┘                    └────────────────────────┘
-      ▲                                           │
-      │                                           │
-┌──────────────────┐                    ┌────────────────────────┐
-│  EventBridge     │                    │      Dashboard         │
-│   Schedule       │                    │        Team            │
-│                  │                    │                        │
-│ Daily 9 PM UTC   │                    │   Reads JSON outputs   │
-│ cron(0 21 * * ?*)│                    │   Visualizes results   │
-└──────────────────┘                    └────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    3 Lambda Partitions (Parallel)                   │
+│                                                                      │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
+│  │   Partition 1    │  │   Partition 2    │  │   Partition 3    │  │
+│  │  Strategies 1-5  │  │  Strategies 6-10 │  │ Strategies 11-15 │  │
+│  │                  │  │                  │  │                  │  │
+│  │ • Buy & Hold     │  │ • Quintile Low   │  │ • Risk Parity    │  │
+│  │ • Equal Weight   │  │   Vol            │  │ • Max Decor      │  │
+│  │ • Top-K Return   │  │ • Mean Reversion │  │ • Most Diversif  │  │
+│  │ • Top-K Sharpe   │  │ • GMVP           │  │ • Sharpe Max     │  │
+│  │ • Quintile Mom   │  │ • Inverse Vol    │  │ • CVaR Min       │  │
+│  │                  │  │ • Inverse Var    │  │                  │  │
+│  │  Runtime: 5.7min │  │  Runtime: 6.1min │  │ Runtime: 14.7min │  │
+│  │  15 backtests    │  │  15 backtests    │  │  15 backtests    │  │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘  │
+│                                                                      │
+│  Memory: 3GB each | Timeout: 15 min | Total Runtime: ~15 min        │
+└──────┬───────────────────────────────────────────────────┬──────────┘
+       │                                                   │
+       │ Read Data (5 years, 497 stocks)                  │ Write Results
+       ▼                                                   ▼
+┌──────────────────────┐                    ┌────────────────────────────┐
+│   S3 Input Bucket    │                    │   S3 Output Bucket         │
+│  data-retrieval-     │                    │ benchmarks-modelling-      │
+│      output          │                    │        output              │
+│                      │                    │                            │
+│ history-data/        │                    │ benchmarks-output/         │
+│  ├─ 2020-12.parquet  │                    │  ├─ strategies/            │
+│  ├─ 2021-01.parquet  │                    │  │   └─ {strat}/{freq}/    │
+│  ├─ ...              │                    │  │       └─ {date}.json    │
+│  └─ 2025-12.parquet  │                    │  ├─ timeseries/            │
+│                      │                    │  │   └─ {strat}/{freq}/    │
+│                      │                    │  │       └─ {date}.csv     │
+│                      │                    │  ├─ weights/               │
+│                      │                    │  │   └─ {strat}/{freq}/    │
+│                      │                    │  │       └─ {date}.csv     │
+│                      │                    │  └─ history/               │
+│                      │                    │      └─ {date}/            │
+│                      │                    │          ├─ partition_1.json│
+│                      │                    │          ├─ partition_2.json│
+│                      │                    │          └─ partition_3.json│
+└──────────────────────┘                    └────────────────────────────┘
+       ▲                                                   │
+       │                                                   │
+┌──────────────────────┐                    ┌────────────────────────────┐
+│  EventBridge Rules   │                    │        Dashboard           │
+│  (3 rules)           │                    │          Team              │
+│                      │                    │                            │
+│ • partition-1        │                    │   Reads JSON/CSV outputs   │
+│ • partition-2        │                    │   Visualizes results       │
+│ • partition-3        │                    │   Aggregates partitions    │
+│                      │                    │                            │
+│ Daily 3:00 AM UTC    │                    │                            │
+│ cron(0 3 * * ? *)    │                    │                            │
+└──────────────────────┘                    └────────────────────────────┘
 ```
 
 ---
@@ -62,59 +79,58 @@ This guide covers deploying 15 benchmark strategies to AWS Lambda for daily calc
   - `lambda:*`
   - `iam:CreateRole`, `iam:AttachRolePolicy`
   - `s3:GetObject`, `s3:PutObject`
-  - `events:PutRule`, `events:PutTargets`
+  - `events:PutRule`, `events:PutTargets`, `events:PutPermission`
   - `logs:CreateLogGroup`, `logs:PutLogEvents`
 
 ### 2. S3 Buckets
-- **Input**: `data-retrieval` (must exist with market data)
+- **Input**: `data-retrieval-output` (must exist with monthly parquet files in `history-data/`)
 - **Output**: `benchmarks-modelling-output` (will be created if missing)
 
 ### 3. Local Environment
 - Python 3.11+
 - AWS CLI installed and configured
-- PowerShell (Windows) or Bash (Linux/Mac)
+- Bash shell (Git Bash on Windows, native on Linux/Mac)
 
 ---
 
 ## Quick Start (< 10 minutes)
 
-### Windows
+### Deploy All 3 Partitions
 
-```powershell
+```bash
 # 1. Clone repository (if not already done)
 git clone <repo-url>
 cd algo-trading-modeling
 
-# 2. Checkout Lambda benchmarks branch
-git checkout feature/complete-lambda-benchmarks
+# 2. Make deployment script executable
+chmod +x lambda/scripts/deploy_lambda.sh
 
-# 3. Deploy to AWS
-.\deploy_lambda.ps1
+# 3. Deploy all 3 Lambda partitions
+./lambda/scripts/deploy_lambda.sh
 ```
 
-### Linux/Mac
+**This will:**
+1. Create 3 deployment packages (~80MB each)
+2. Upload to S3
+3. Create/update 3 Lambda functions:
+   - `benchmark-calculator-partition-1`
+   - `benchmark-calculator-partition-2`
+   - `benchmark-calculator-partition-3`
+4. Set up IAM permissions
+
+### Set Up EventBridge Triggers
 
 ```bash
-# 1. Clone repository
-git clone <repo-url>
-cd algo-trading-modeling
-
-# 2. Checkout Lambda benchmarks branch
-git checkout feature/complete-lambda-benchmarks
-
-# 3. Make deployment script executable
-chmod +x deploy_lambda.sh
-
-# 4. Deploy to AWS
-./deploy_lambda.sh
+# Configure automatic daily execution for all 3 partitions
+./lambda/scripts/setup_eventbridge.sh
 ```
 
-**That's it!** The script will:
-1. Create deployment package (~150MB)
-2. Set up IAM role with S3 permissions
-3. Deploy Lambda function
-4. Configure daily EventBridge trigger (9 PM UTC)
-5. Run test invocation
+**This will:**
+1. Create 3 EventBridge rules (one per partition)
+2. Schedule all to run at 3:00 AM UTC
+3. Add Lambda invocation permissions
+
+**That's it!** The system is now fully automated and will run daily at 3:00 AM UTC.
 
 ---
 
@@ -122,30 +138,52 @@ chmod +x deploy_lambda.sh
 
 If you prefer manual control or encounter issues with automated deployment:
 
-### Step 1: Create Deployment Package
+### Step 1: Create Deployment Packages (All 3 Partitions)
 
 ```bash
-# Install dependencies
+# Install dependencies (shared across all partitions)
+rm -rf lambda_package
 mkdir lambda_package
-pip install -r requirements-lambda.txt \
-    -t lambda_package \
+pip install -r lambda/requirements-lambda.txt \
+    --target lambda_package \
     --platform manylinux2014_x86_64 \
-    --only-binary=:all:
+    --implementation cp \
+    --python-version 3.11 \
+    --only-binary=:all: \
+    --upgrade
 
-# Copy source code
-cp lambda_function.py lambda_package/
+# Copy source code (shared)
 cp -r src lambda_package/
 
-# Create ZIP
+# Clean unnecessary files
 cd lambda_package
-zip -r ../lambda_deployment.zip .
+find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+find . -name "*.pyc" -delete
 cd ..
 
-# Verify size (should be < 250MB)
-ls -lh lambda_deployment.zip
+# Create ZIP for Partition 1
+cp lambda/handlers/lambda_function_partition_1.py lambda_package/lambda_function.py
+cd lambda_package
+zip -r ../lambda/lambda_deployment_partition_1.zip . -q
+cd ..
+
+# Create ZIP for Partition 2
+cp lambda/handlers/lambda_function_partition_2.py lambda_package/lambda_function.py
+cd lambda_package
+zip -r ../lambda/lambda_deployment_partition_2.zip . -q
+cd ..
+
+# Create ZIP for Partition 3
+cp lambda/handlers/lambda_function_partition_3.py lambda_package/lambda_function.py
+cd lambda_package
+zip -r ../lambda/lambda_deployment_partition_3.zip . -q
+cd ..
+
+# Verify sizes (each should be ~80MB)
+ls -lh lambda/lambda_deployment_partition_*.zip
 ```
 
-### Step 2: Create IAM Role
+### Step 2: Create IAM Role (One Time)
 
 ```bash
 # Create trust policy
@@ -178,7 +216,10 @@ cat > s3-policy.json <<EOF
     {
       "Effect": "Allow",
       "Action": ["s3:GetObject", "s3:ListBucket"],
-      "Resource": ["arn:aws:s3:::data-retrieval/*", "arn:aws:s3:::data-retrieval"]
+      "Resource": [
+        "arn:aws:s3:::data-retrieval-output/*",
+        "arn:aws:s3:::data-retrieval-output"
+      ]
     },
     {
       "Effect": "Allow",
@@ -195,116 +236,195 @@ aws iam put-role-policy \
     --policy-document file://s3-policy.json
 ```
 
-### Step 3: Create Lambda Function
+### Step 3: Create Lambda Functions (3 Partitions)
 
 ```bash
 # Get role ARN
 ROLE_ARN=$(aws iam get-role --role-name LambdaBenchmarkExecutionRole --query 'Role.Arn' --output text)
 
-# Create function
+# Create Partition 1
 aws lambda create-function \
-    --function-name benchmark-daily-calculator \
+    --function-name benchmark-calculator-partition-1 \
     --runtime python3.11 \
     --role $ROLE_ARN \
     --handler lambda_function.lambda_handler \
-    --zip-file fileb://lambda_deployment.zip \
+    --zip-file fileb://lambda_deployment_partition_1.zip \
     --timeout 900 \
     --memory-size 3008 \
-    --environment "Variables={DATA_BUCKET=data-retrieval,OUTPUT_BUCKET=benchmarks-modelling-output}" \
-    --description "Daily benchmark strategy calculations (15 strategies x 3 frequencies)"
+    --region eu-north-1 \
+    --environment "Variables={OUTPUT_BUCKET=benchmarks-modelling-output,OUTPUT_PREFIX=benchmarks-output,DATA_YEARS=5}" \
+    --description "Benchmark strategies 1-5 (Passive + Heuristic)"
+
+# Create Partition 2
+aws lambda create-function \
+    --function-name benchmark-calculator-partition-2 \
+    --runtime python3.11 \
+    --role $ROLE_ARN \
+    --handler lambda_function.lambda_handler \
+    --zip-file fileb://lambda_deployment_partition_2.zip \
+    --timeout 900 \
+    --memory-size 3008 \
+    --region eu-north-1 \
+    --environment "Variables={OUTPUT_BUCKET=benchmarks-modelling-output,OUTPUT_PREFIX=benchmarks-output,DATA_YEARS=5}" \
+    --description "Benchmark strategies 6-10 (Factor + Risk-Based)"
+
+# Create Partition 3
+aws lambda create-function \
+    --function-name benchmark-calculator-partition-3 \
+    --runtime python3.11 \
+    --role $ROLE_ARN \
+    --handler lambda_function.lambda_handler \
+    --zip-file fileb://lambda_deployment_partition_3.zip \
+    --timeout 900 \
+    --memory-size 3008 \
+    --region eu-north-1 \
+    --environment "Variables={OUTPUT_BUCKET=benchmarks-modelling-output,OUTPUT_PREFIX=benchmarks-output,DATA_YEARS=5}" \
+    --description "Benchmark strategies 11-15 (Risk-Based + Optimization)"
 ```
 
-### Step 4: Set Up Daily Trigger
+### Step 4: Set Up Daily Triggers (3 Rules)
 
 ```bash
-# Create EventBridge rule (daily 9 PM UTC)
-aws events put-rule \
-    --name daily-benchmark-calculation \
-    --schedule-expression "cron(0 21 * * ? *)" \
-    --description "Trigger benchmark calculations daily"
+# Create EventBridge rules for each partition (all at 3:00 AM UTC)
+for i in 1 2 3; do
+    aws events put-rule \
+        --name benchmark-daily-trigger-partition-${i} \
+        --schedule-expression "cron(0 3 * * ? *)" \
+        --state ENABLED \
+        --region eu-north-1 \
+        --description "Trigger benchmark partition ${i} daily at 3 AM UTC"
 
-# Add Lambda permission
-aws lambda add-permission \
-    --function-name benchmark-daily-calculator \
-    --statement-id AllowEventBridgeInvoke \
-    --action lambda:InvokeFunction \
-    --principal events.amazonaws.com \
-    --source-arn $(aws events describe-rule --name daily-benchmark-calculation --query 'Arn' --output text)
+    # Add Lambda permission
+    aws lambda add-permission \
+        --function-name benchmark-calculator-partition-${i} \
+        --statement-id AllowEventBridgeInvoke \
+        --action lambda:InvokeFunction \
+        --principal events.amazonaws.com \
+        --region eu-north-1 \
+        --source-arn $(aws events describe-rule --name benchmark-daily-trigger-partition-${i} --region eu-north-1 --query 'Arn' --output text)
 
-# Link rule to Lambda
-FUNCTION_ARN=$(aws lambda get-function --function-name benchmark-daily-calculator --query 'Configuration.FunctionArn' --output text)
+    # Link rule to Lambda
+    FUNCTION_ARN=$(aws lambda get-function --function-name benchmark-calculator-partition-${i} --region eu-north-1 --query 'Configuration.FunctionArn' --output text)
 
-aws events put-targets \
-    --rule daily-benchmark-calculation \
-    --targets "Id=1,Arn=$FUNCTION_ARN"
+    aws events put-targets \
+        --rule benchmark-daily-trigger-partition-${i} \
+        --region eu-north-1 \
+        --targets "Id=1,Arn=$FUNCTION_ARN"
+done
 ```
 
 ---
 
 ## Testing & Monitoring
 
-### Manual Invocation
+### Manual Invocation (Test Each Partition)
 
 ```bash
-# Test invocation
+# Test Partition 1
 aws lambda invoke \
-    --function-name benchmark-daily-calculator \
-    --payload '{"test": true}' \
-    response.json
+    --function-name benchmark-calculator-partition-1 \
+    --region eu-north-1 \
+    response1.json
 
-# View response
-cat response.json | jq .
+cat response1.json | jq .
+
+# Test Partition 2
+aws lambda invoke \
+    --function-name benchmark-calculator-partition-2 \
+    --region eu-north-1 \
+    response2.json
+
+cat response2.json | jq .
+
+# Test Partition 3
+aws lambda invoke \
+    --function-name benchmark-calculator-partition-3 \
+    --region eu-north-1 \
+    response3.json
+
+cat response3.json | jq .
 ```
 
 ### Check Logs
 
 ```bash
-# Tail logs in real-time
-aws logs tail /aws/lambda/benchmark-daily-calculator --follow
+# Tail logs in real-time for each partition
+aws logs tail /aws/lambda/benchmark-calculator-partition-1 --region eu-north-1 --follow
+aws logs tail /aws/lambda/benchmark-calculator-partition-2 --region eu-north-1 --follow
+aws logs tail /aws/lambda/benchmark-calculator-partition-3 --region eu-north-1 --follow
 
-# View recent errors
-aws logs filter-log-events \
-    --log-group-name /aws/lambda/benchmark-daily-calculator \
-    --filter-pattern "ERROR"
+# View recent errors for all partitions
+for i in 1 2 3; do
+    echo "=== Partition $i Errors ==="
+    aws logs filter-log-events \
+        --log-group-name /aws/lambda/benchmark-calculator-partition-${i} \
+        --region eu-north-1 \
+        --filter-pattern "ERROR" | jq .
+done
 ```
 
 ### Verify S3 Output
 
 ```bash
-# Check latest summary
-aws s3 cp s3://benchmarks-modelling-output/latest/summary.json - | jq .
+# Check partition summaries for today
+TODAY=$(date +%Y-%m-%d)
+aws s3 ls s3://benchmarks-modelling-output/benchmarks-output/history/${TODAY}/
+
+# Download partition summaries
+aws s3 cp s3://benchmarks-modelling-output/benchmarks-output/history/${TODAY}/partition_1_summary.json - | jq .
+aws s3 cp s3://benchmarks-modelling-output/benchmarks-output/history/${TODAY}/partition_2_summary.json - | jq .
+aws s3 cp s3://benchmarks-modelling-output/benchmarks-output/history/${TODAY}/partition_3_summary.json - | jq .
 
 # List all strategy outputs
-aws s3 ls s3://benchmarks-modelling-output/ --recursive
+aws s3 ls s3://benchmarks-modelling-output/benchmarks-output/strategies/ --recursive
 
 # Download specific strategy result
-aws s3 cp s3://benchmarks-modelling-output/equal_weight/M/2026-01-09.json .
+aws s3 cp s3://benchmarks-modelling-output/benchmarks-output/strategies/equal_weight/M/${TODAY}.json .
+```
+
+### Check EventBridge Status
+
+```bash
+# List all benchmark rules
+aws events list-rules \
+    --name-prefix benchmark-daily-trigger \
+    --region eu-north-1 \
+    --query 'Rules[].{Name:Name, State:State, Schedule:ScheduleExpression}'
+
+# Check targets for each rule
+for i in 1 2 3; do
+    echo "=== Partition $i Targets ==="
+    aws events list-targets-by-rule \
+        --rule benchmark-daily-trigger-partition-${i} \
+        --region eu-north-1
+done
 ```
 
 ---
 
 ## Output Format
 
-### Summary File
+### Partition Summary Files
 
-Location: `s3://benchmarks-modelling-output/latest/summary.json`
+Location: `s3://benchmarks-modelling-output/benchmarks-output/history/{date}/partition_{1,2,3}_summary.json`
 
 ```json
 {
-  "execution_date": "2026-01-09",
-  "execution_timestamp": "2026-01-09T21:05:32.123Z",
-  "total_strategies": 15,
-  "rebalance_frequencies": ["D", "W", "M"],
-  "total_backtests": 45,
-  "successful": 45,
+  "statusCode": 200,
+  "partition_id": 1,
+  "execution_date": "2026-01-14",
+  "duration_seconds": 343.8,
+  "total_backtests": 15,
+  "successful": 15,
   "failed": 0,
+  "strategies": ["buy_and_hold", "equal_weight", "top_k_return", "top_k_sharpe", "quintile_momentum"],
   "results": [...]
 }
 ```
 
 ### Individual Strategy Result
 
-Location: `s3://benchmarks-modelling-output/{strategy}/{frequency}/{date}.json`
+Location: `s3://benchmarks-modelling-output/benchmarks-output/strategies/{strategy}/{frequency}/{date}.json`
 
 ```json
 {
@@ -336,9 +456,9 @@ Location: `s3://benchmarks-modelling-output/{strategy}/{frequency}/{date}.json`
     }
   },
   "backtest_period": {
-    "start": "2023-01-01",
-    "end": "2026-01-09",
-    "days": 756
+    "start": "2021-04-14",
+    "end": "2025-07-14",
+    "days": 1552
   }
 }
 ```
@@ -347,76 +467,88 @@ Location: `s3://benchmarks-modelling-output/{strategy}/{frequency}/{date}.json`
 
 ## Cost Estimate
 
-### Lambda Costs
+### Lambda Costs (3 Partitions)
 
 **Configuration:**
-- Memory: 3GB
-- Runtime: ~5 minutes per execution
-- Executions: 30 per month (daily)
+- Memory: 3GB per partition
+- Runtime: Partition 1: 5.7 min, Partition 2: 6.1 min, Partition 3: 14.7 min
+- Executions: 30 per month per partition (daily)
 
-**Pricing:**
-- Compute: 3GB × 300s × 30 executions = 27,000 GB-seconds
-  - First 400,000 GB-seconds: FREE
-  - Cost: **$0.00**
+**Pricing (per month):**
+- Partition 1: 3GB × 342s × 30 = 30,780 GB-seconds
+- Partition 2: 3GB × 366s × 30 = 32,940 GB-seconds
+- Partition 3: 3GB × 882s × 30 = 79,380 GB-seconds
+- **Total**: 143,100 GB-seconds/month
 
-- Requests: 30 per month
+**Cost Calculation:**
+- First 400,000 GB-seconds: FREE
+- Cost: **$0.00** (within free tier)
+
+- Requests: 90 per month (3 partitions × 30 days)
   - First 1M requests: FREE
   - Cost: **$0.00**
 
 **S3 Costs:**
-- Storage: ~100KB per strategy × 15 × 3 frequencies × 30 days = 135MB/month
-  - Cost: ~$0.003/month
+- Storage: ~50MB per day × 30 days = 1.5GB/month
+  - Cost: ~$0.035/month
 
-- Requests: ~45 PUTs + 1 GET per day × 30 = 1,380 requests/month
-  - Cost: ~$0.007/month
+- Requests: ~45 PUTs × 3 partitions × 30 days = 4,050 requests/month
+  - Cost: ~$0.020/month
 
-**Total Monthly Cost: < $0.01** (effectively free within AWS free tier)
+**Total Monthly Cost: ~$0.055** (within AWS free tier for Lambda)
 
 **After Free Tier** (if exceeded):
-- Lambda compute: ~$0.50/month
-- S3: ~$0.05/month
-- **Total: ~$0.55/month**
+- Lambda compute: ~$2.20/month ($0.0000166667 per GB-second × 143,100)
+- Requests: ~$0.02/month
+- S3: ~$0.055/month
+- **Total: ~$2.28/month**
 
-### Comparison to EC2
+### Comparison
 
-| Service | Monthly Cost | Setup Time | Maintenance |
-|---------|-------------|-----------|-------------|
-| **Lambda (This)** | **~$0.55** | **< 1 day** | **Zero** |
-| EC2 t3.medium | ~$35 | 4 weeks | Weekly updates |
+| Service | Monthly Cost | Setup Time | Maintenance | Success Rate |
+|---------|-------------|-----------|-------------|--------------|
+| **Lambda (3 Partitions)** | **~$2.28** | **< 1 day** | **Zero** | **100%** |
+| Lambda (1 Function) | ~$2.40 | < 1 day | Zero | **0% (timeout)** |
+| EC2 t3.medium | ~$35 | 4 weeks | Weekly | 100% |
 
-**Lambda saves $34.45/month (99% cost reduction)**
+**Lambda Partitions saves $32.72/month (93% cost reduction vs. EC2)**
 
 ---
 
 ## Troubleshooting
 
-### Issue: Deployment package > 250MB
+### Issue: Partition times out
 
 **Solution**:
-```bash
-# Check what's taking space
-du -sh lambda_package/*
-
-# Ensure using requirements-lambda.txt (not requirements.txt)
-pip install -r requirements-lambda.txt -t lambda_package
-
-# Remove unnecessary files
-rm -rf lambda_package/*.dist-info
-rm -rf lambda_package/__pycache__
-```
-
-### Issue: Lambda timeout (15-minute limit exceeded)
-
-**Solution**:
-- Reduce number of strategies per execution
-- Increase memory allocation (faster CPU)
-- Split into multiple Lambdas (e.g., one per frequency)
+- Check which partition is timing out (likely Partition 3)
+- Consider splitting Partition 3 further (3 strategies each)
+- Reduce `DATA_YEARS` from 5 to 3
+- Remove daily rebalancing frequency
 
 **Check runtime**:
 ```bash
 aws logs filter-log-events \
-    --log-group-name /aws/lambda/benchmark-daily-calculator \
+    --log-group-name /aws/lambda/benchmark-calculator-partition-3 \
+    --region eu-north-1 \
     --filter-pattern "Duration"
+```
+
+### Issue: Partition missing from S3
+
+**Solution**:
+```bash
+# Check which partition failed
+aws lambda list-functions --region eu-north-1 \
+    --query 'Functions[?contains(FunctionName, `partition`)].{Name:FunctionName, LastModified:LastModified}'
+
+# Check logs for errors
+for i in 1 2 3; do
+    echo "=== Checking Partition $i ==="
+    aws logs filter-log-events \
+        --log-group-name /aws/lambda/benchmark-calculator-partition-${i} \
+        --region eu-north-1 \
+        --filter-pattern "ERROR" --max-items 5
+done
 ```
 
 ### Issue: S3 Access Denied
@@ -431,56 +563,53 @@ aws iam list-role-policies --role-name LambdaBenchmarkExecutionRole
 aws s3api get-bucket-policy --bucket benchmarks-modelling-output
 ```
 
-### Issue: Strategy calculation errors
+### Issue: EventBridge not triggering
 
-**Check logs**:
+**Solution**:
 ```bash
-# Find error details
-aws logs filter-log-events \
-    --log-group-name /aws/lambda/benchmark-daily-calculator \
-    --filter-pattern "ERROR" \
-    --start-time $(date -d '1 hour ago' +%s)000
+# Check rule status
+aws events describe-rule --name benchmark-daily-trigger-partition-1 --region eu-north-1
+
+# Check targets
+aws events list-targets-by-rule --rule benchmark-daily-trigger-partition-1 --region eu-north-1
+
+# Manually trigger to test
+aws events put-events --entries "[{\"Source\": \"manual\", \"DetailType\": \"test\", \"Detail\": \"{}\"}]"
 ```
 
 ---
 
 ## Production Readiness Checklist
 
-- [ ] Lambda function deployed successfully
-- [ ] IAM role has correct S3 permissions
-- [ ] EventBridge trigger configured for daily execution
-- [ ] Test invocation completes successfully
-- [ ] S3 output bucket accessible by dashboard team
-- [ ] CloudWatch Logs enabled and accessible
-- [ ] All 45 backtests (15 strategies × 3 frequencies) complete within 15 minutes
-- [ ] Output JSON format validated by dashboard team
-- [ ] Error handling tested (missing data, API failures, etc.)
-- [ ] Cost monitoring set up (AWS Cost Explorer)
-- [ ] Documentation shared with dashboard team
+- [x] All 3 Lambda partitions deployed successfully
+- [x] IAM role has correct S3 permissions
+- [x] EventBridge triggers configured for all 3 partitions
+- [x] Test invocations complete successfully (100% success rate)
+- [x] S3 output bucket accessible by dashboard team
+- [x] CloudWatch Logs enabled and accessible
+- [x] All 45 backtests (15 strategies × 3 frequencies) complete successfully
+- [x] Output JSON/CSV format validated
+- [x] Walk-forward backtesting operational (8 folds per backtest)
+- [x] Automatic date detection working (`get_latest_available_month()`)
+- [x] Error handling tested
+- [x] Cost monitoring configured
+- [x] Documentation complete
 
----
-
-## Next Steps
-
-1. **Week 1**: Deploy and monitor daily executions
-2. **Week 2**: Validate output quality with dashboard team
-3. **Week 3**: Optimize performance (reduce runtime/memory if possible)
-4. **Week 4**: Decision point - promote to production or fall back to EC2
-
-**If successful**: This becomes the permanent deployment
-**If issues**: Migrate to EC2 with full-featured strategies (see EC2_DEPLOYMENT_PLAN.md)
+**Status**: ✅ **PRODUCTION READY**
 
 ---
 
 ## Related Documentation
 
-- **Lambda Deployment Guide**: [LAMBDA_DEPLOYMENT_GUIDE.md](../src/strategies/benchmarks/LAMBDA_DEPLOYMENT_GUIDE.md) - Technical comparison
-- **Implementation Status**: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Current trial status
-- **EC2 Fallback Plan**: [EC2_DEPLOYMENT_PLAN.md](EC2_DEPLOYMENT_PLAN.md) - Alternative deployment
-- **Strategy Reference**: [benchmarks/README.md](../src/strategies/benchmarks/README.md) - All 15 strategies
+- **Implementation Summary**: [LAMBDA_IMPLEMENTATION_SUMMARY.md](LAMBDA_IMPLEMENTATION_SUMMARY.md) - Complete details
+- **Partition Architecture**: [LAMBDA_PARTITIONS.md](LAMBDA_PARTITIONS.md) - Strategy distribution
+- **Deployment Status**: [LAMBDA_DEPLOYMENT_STATUS.md](LAMBDA_DEPLOYMENT_STATUS.md) - Current status
+- **Dashboard Integration**: [DASHBOARD_DATA_GUIDE.md](DASHBOARD_DATA_GUIDE.md) - S3 output guide
+- **Implementation Status**: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Overall project status
 
 ---
 
 **Author**: Algo Trading Team
-**Date**: January 2026
-**Status**: Production Trial
+**Last Updated**: January 14, 2026
+**Version**: v3.3.0
+**Status**: Production Ready

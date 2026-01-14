@@ -25,30 +25,30 @@ Write-Host ""
 Write-Host "Step 1/5: Creating deployment package..." -ForegroundColor Green
 
 # Clean previous build
-if (Test-Path "lambda_package") {
-    Remove-Item -Recurse -Force lambda_package
+if (Test-Path "lambda/lambda_package") {
+    Remove-Item -Recurse -Force lambda/lambda_package
 }
 if (Test-Path "lambda_deployment.zip") {
     Remove-Item -Force lambda_deployment.zip
 }
 
 # Create package directory
-New-Item -ItemType Directory -Path lambda_package | Out-Null
+New-Item -ItemType Directory -Path lambda/lambda_package | Out-Null
 
 # Install dependencies
 Write-Host "Installing Lambda dependencies..." -ForegroundColor Yellow
-pip install -r requirements-lambda.txt -t lambda_package --upgrade --platform manylinux2014_x86_64 --only-binary=:all:
+pip install -r lambda/requirements-lambda.txt -t lambda/lambda_package --upgrade --platform manylinux2014_x86_64 --only-binary=:all:
 
 # Copy source code
 Write-Host "Copying source code..." -ForegroundColor Yellow
-Copy-Item lambda_function.py lambda_package/
-Copy-Item -Recurse src lambda_package/
+Copy-Item lambda/handlers/lambda_function.py lambda/lambda_package/
+Copy-Item -Recurse src lambda/lambda_package/
 
 # Create ZIP file
 Write-Host "Creating deployment ZIP..." -ForegroundColor Yellow
-Compress-Archive -Path lambda_package/* -DestinationPath lambda_deployment.zip -Force
+Compress-Archive -Path lambda/lambda_package/* -DestinationPath lambda/lambda_deployment.zip -Force
 
-$zipSize = (Get-Item lambda_deployment.zip).Length / 1MB
+$zipSize = (Get-Item lambda/lambda_deployment.zip).Length / 1MB
 Write-Host "Package size: $([math]::Round($zipSize, 2)) MB" -ForegroundColor Yellow
 
 if ($zipSize -gt 250) {
@@ -150,7 +150,7 @@ if ($LASTEXITCODE -ne 0) {
         --runtime $Runtime `
         --role $roleArn `
         --handler lambda_function.lambda_handler `
-        --zip-file fileb://lambda_deployment.zip `
+        --zip-file fileb://lambda/lambda_deployment.zip `
         --timeout $Timeout `
         --memory-size $MemorySize `
         --environment "Variables={DATA_BUCKET=data-retrieval,OUTPUT_BUCKET=benchmarks-modelling-output}" `
@@ -161,7 +161,7 @@ if ($LASTEXITCODE -ne 0) {
 
     aws lambda update-function-code `
         --function-name $FunctionName `
-        --zip-file fileb://lambda_deployment.zip
+        --zip-file fileb://lambda/lambda_deployment.zip
 
     Start-Sleep -Seconds 2
 
@@ -249,7 +249,7 @@ if ($LASTEXITCODE -eq 0) {
 Remove-Item test-event.json, response.json
 
 # Cleanup
-Remove-Item -Recurse -Force lambda_package
+Remove-Item -Recurse -Force lambda/lambda_package
 # Keep lambda_deployment.zip for manual uploads if needed
 
 Write-Host ""

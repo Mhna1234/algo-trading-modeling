@@ -56,7 +56,7 @@ Strategies:
 
 ### Step 1: Deploy all 3 Lambda functions
 ```bash
-./deploy_lambda.sh
+./lambda/scripts/deploy_lambda.sh
 ```
 
 This will:
@@ -69,7 +69,7 @@ This will:
 
 ### Step 2: Set up EventBridge triggers
 ```bash
-./setup_eventbridge.sh
+./lambda/scripts/setup_eventbridge.sh
 ```
 
 This will:
