@@ -56,8 +56,11 @@ echo "5. Cleaning unnecessary files..."
 cd lambda/lambda_package
 find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 find . -name "*.pyc" -delete
-find . -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
-    cd ../..
+# Remove test directories only for pandas and pyarrow (keep numpy/tests intact)
+rm -rf pandas/tests pyarrow/tests 2>/dev/null || true
+# Remove conftest.py that breaks numpy import (makes numpy think it's in source dir)
+rm -f numpy/conftest.py
+cd ../..
 
 # Deploy each partition
 for i in "${!PARTITIONS[@]}"; do
@@ -75,7 +78,7 @@ for i in "${!PARTITIONS[@]}"; do
     # Create ZIP for this partition
     echo "  7.$PARTITION. Creating deployment ZIP..."
     cd lambda/lambda_package
-    python3 -c "
+    python -c "
 import zipfile
 import os
 
@@ -86,7 +89,7 @@ with zipfile.ZipFile('../../${ZIP_FILE}', 'w', zipfile.ZIP_DEFLATED) as zipf:
             arcname = os.path.relpath(file_path, '.')
             zipf.write(file_path, arcname)
 "
-        cd ../..
+    cd ../..
 
     # Show package size
     echo "  8.$PARTITION. Package created:"
@@ -140,7 +143,7 @@ with zipfile.ZipFile('../../${ZIP_FILE}', 'w', zipfile.ZIP_DEFLATED) as zipf:
         --output text > /dev/null
 
     echo "  13.$PARTITION. Waiting for config update..."
-    sleep 3
+    aws.exe lambda wait function-updated --function-name ${FUNCTION_NAME} --region ${AWS_REGION}
 
     echo "  ✓ Partition $PARTITION deployed!"
 done
