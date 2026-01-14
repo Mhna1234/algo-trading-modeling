@@ -98,22 +98,27 @@
    - After: 3 partitions completing in 5.7, 6.1, and 14.7 minutes
    - Result: 100% success rate, no timeouts
 
-2. **Data Loading Fix**: Automatic latest month detection
+2. **Numpy Import Fix**: Removed `conftest.py` that caused import errors
+   - Error: "you should not try to import numpy from its source directory"
+   - Fix: Deployment script now removes `numpy/conftest.py` from package
+   - Result: Clean Lambda initialization, no import errors
+
+3. **Data Loading Fix**: Automatic latest month detection
    - Added `get_latest_available_month()` to avoid loading future months
    - Proper OHLCV pivot operation: `pivot(index='date', columns='symbol', values='close')`
    - Result: Consistent data loading, no S3 key errors
 
-3. **Portfolio Engine Fix**: Corrected initialization parameters
+4. **Portfolio Engine Fix**: Corrected initialization parameters
    - Changed from `commission_rate`/`slippage_rate` to `transaction_cost_bps`
    - Added `prices` parameter requirement
    - Result: Proper transaction cost modeling
 
-4. **Result Format Consistency**: Unified key naming across all partitions
+5. **Result Format Consistency**: Unified key naming across all partitions
    - Standardized on `rebalance_freq` (was inconsistently `rebalance_frequency`)
    - All 3 partitions use identical `run_benchmark_backtest()` implementation
    - Result: S3 output format consistency
 
-5. **Documentation**: Comprehensive deployment and implementation guides
+6. **Documentation**: Comprehensive deployment and implementation guides
    - [LAMBDA_IMPLEMENTATION_SUMMARY.md](LAMBDA_IMPLEMENTATION_SUMMARY.md) - Complete summary
    - [LAMBDA_PARTITIONS.md](LAMBDA_PARTITIONS.md) - Architecture details
    - [LAMBDA_DEPLOYMENT_STATUS.md](LAMBDA_DEPLOYMENT_STATUS.md) - Current status
@@ -157,11 +162,14 @@ Schedule: Daily at 3:00 AM UTC
 
 **Quick Deploy**:
 ```bash
-# Deploy/update Lambda
-./deploy_lambda.sh
+# Deploy/update Lambda (from project root)
+./lambda/scripts/deploy_lambda.sh
+
+# Trigger all partitions manually
+./lambda/scripts/trigger_all.sh
 
 # Test locally first
-python test_lambda_local.py
+python lambda/tests/test_lambda_local.py
 ```
 
 **Pros**:
@@ -364,4 +372,4 @@ python -c "from src.config_loader import load_trading_config; print(load_trading
 
 **For Dashboard Team**: See [docs/DASHBOARD_DATA_GUIDE.md](DASHBOARD_DATA_GUIDE.md)
 
-**For Deployment Updates**: Run `./deploy_lambda.sh`
+**For Deployment Updates**: Run `./lambda/scripts/deploy_lambda.sh`

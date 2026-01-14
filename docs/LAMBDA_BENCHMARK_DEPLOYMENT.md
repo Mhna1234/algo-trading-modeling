@@ -159,6 +159,10 @@ cp -r src lambda_package/
 cd lambda_package
 find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 find . -name "*.pyc" -delete
+# Remove test directories (pandas/pyarrow only, keep numpy/tests)
+rm -rf pandas/tests pyarrow/tests 2>/dev/null || true
+# IMPORTANT: Remove conftest.py to prevent numpy import error
+rm -f numpy/conftest.py
 cd ..
 
 # Create ZIP for Partition 1
@@ -575,6 +579,24 @@ aws events list-targets-by-rule --rule benchmark-daily-trigger-partition-1 --reg
 
 # Manually trigger to test
 aws events put-events --entries "[{\"Source\": \"manual\", \"DetailType\": \"test\", \"Detail\": \"{}\"}]"
+```
+
+### Issue: numpy import error "importing from source directory"
+
+This error occurs when `numpy/conftest.py` is included in the deployment package:
+```
+Runtime.ImportModuleError: Unable to import module 'lambda_function':
+numpy: Error importing numpy: you should not try to import numpy from its source directory
+```
+
+**Solution**:
+```bash
+# The deploy_lambda.sh script handles this automatically
+# If you see this error, re-run deployment:
+./lambda/scripts/deploy_lambda.sh
+
+# Or manually remove the file from lambda_package before zipping:
+rm -f lambda_package/numpy/conftest.py
 ```
 
 ---

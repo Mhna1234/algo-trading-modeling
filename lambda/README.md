@@ -12,8 +12,8 @@ lambda/
 │   ├── lambda_function_partition_2.py # Partition 2: Strategies 6-10
 │   └── lambda_function_partition_3.py # Partition 3: Strategies 11-15
 ├── scripts/                            # Deployment and setup scripts
-│   ├── deploy_lambda.sh               # Main deployment script
-│   ├── deploy_lambda.ps1              # PowerShell deployment (Windows)
+│   ├── deploy_lambda.sh               # Main deployment script (bash)
+│   ├── trigger_all.sh                 # Trigger all partitions manually
 │   └── setup_eventbridge.sh           # EventBridge trigger setup
 ├── tests/                              # Test files
 │   ├── test_lambda_local.py           # Local testing (original function)
@@ -200,6 +200,9 @@ cd /path/to/algo-trading-modeling
 # Deploy all Lambda partitions
 ./lambda/scripts/deploy_lambda.sh
 
+# Trigger all partitions manually
+./lambda/scripts/trigger_all.sh
+
 # Setup EventBridge triggers
 ./lambda/scripts/setup_eventbridge.sh
 
@@ -208,6 +211,14 @@ cd /path/to/algo-trading-modeling
 
 # Setup custom daily schedule
 ./lambda/scripts/setup_daily_schedule.sh 5  # for 5 AM UTC
+```
+
+### Import error: numpy "importing from source directory"
+
+This error occurs when `numpy/conftest.py` is included in the deployment package. The deployment script automatically removes this file. If you see this error:
+```bash
+# Re-run deployment to rebuild package with fix
+./lambda/scripts/deploy_lambda.sh
 ```
 
 ### Package size > 250MB

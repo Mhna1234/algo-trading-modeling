@@ -63,25 +63,30 @@ Successfully implemented and deployed a **3-partition Lambda architecture** to r
    - All partitions trigger simultaneously for parallel execution
 
 ### Today's Bug Fixes & Testing
-1. **Fixed Data Loading Issues**
+1. **Fixed Numpy Import Error**
+   - Error: "you should not try to import numpy from its source directory"
+   - Cause: `numpy/conftest.py` in deployment package makes numpy think it's in source
+   - Fix: Deployment script now removes `numpy/conftest.py` from package
+
+2. **Fixed Data Loading Issues**
    - Updated `load_market_data()` to use `get_latest_available_month()` for automatic date detection
    - Added proper OHLCV data pivot operation: `ohlcv_data.pivot(index='date', columns='symbol', values='close')`
    - Fixed incorrect date range calculation (was trying to load future months like 2026-01)
 
-2. **Fixed Portfolio Engine Initialization**
+3. **Fixed Portfolio Engine Initialization**
    - Changed from incorrect params `commission_rate`, `slippage_rate`
    - To correct params: `prices`, `transaction_cost_bps`, `rebalance_freq`
 
-3. **Fixed Result Format Inconsistencies**
+4. **Fixed Result Format Inconsistencies**
    - Unified key naming: `rebalance_freq` (was inconsistently `rebalance_frequency`)
    - Ensured all 3 partitions use identical function signatures
 
-4. **Aligned with Original Lambda**
+5. **Aligned with Original Lambda**
    - Copied exact `run_benchmark_backtest()` implementation from original
    - Verified function signatures match across all partitions
    - Ensured S3 output structure remains backward compatible
 
-5. **Comprehensive Testing**
+6. **Comprehensive Testing**
    - Local testing with `test_lambda_partition.py`
    - AWS deployment and live testing
    - All 3 partitions tested successfully with 100% success rate
