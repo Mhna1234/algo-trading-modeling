@@ -6,11 +6,11 @@ This guide explains the S3 data structure and file formats for integrating bench
 
 ```
 s3://benchmarks-modelling-output/benchmarks-output/
-├── latest/
-│   └── summary.json                    # Latest execution (all 45 results)
 ├── history/
 │   └── {date}/
-│       └── summary.json                # Historical execution summaries
+│       ├── partition_1_summary.json    # Partition 1 results (strategies 1-5)
+│       ├── partition_2_summary.json    # Partition 2 results (strategies 6-10)
+│       └── partition_3_summary.json    # Partition 3 results (strategies 11-15)
 ├── strategies/
 │   └── {strategy_name}/
 │       └── {frequency}/
@@ -27,30 +27,34 @@ s3://benchmarks-modelling-output/benchmarks-output/
 
 ## File Formats
 
-### 1. **summary.json** - All Strategies Overview
+### 1. **Partition Summary JSON** - Results by Partition
 
-**Location:** `benchmarks-output/latest/summary.json`
+**Location:** `benchmarks-output/history/{date}/partition_{1,2,3}_summary.json`
 
-**Use Case:** Get latest results for all 45 backtests at once
+**Use Case:** Get results for each partition's strategies (15 backtests per partition)
 
 **Structure:**
 ```json
 {
-  "execution_date": "2026-01-13",
-  "execution_timestamp": "2026-01-13T22:00:00.000000",
-  "total_strategies": 15,
-  "rebalance_frequencies": ["D", "W", "M"],
-  "total_backtests": 45,
-  "successful": 45,
+  "partition_id": 1,
+  "execution_date": "2026-01-14",
+  "timestamp": "2026-01-14T03:05:42.123456",
+  "total_backtests": 15,
+  "successful": 15,
   "failed": 0,
+  "strategies": ["buy_and_hold", "equal_weight", "top_k_return", "top_k_sharpe", "quintile_momentum"],
   "results": [
     {
-      "strategy_name": "equal_weight",
-      "rebalance_freq": "W",
+      "strategy": "buy_and_hold",
+      "frequency": "D",
       "status": "success",
-      "metrics": { ... },
-      "time_series": { ... },
-      "weights": { ... }
+      "metrics": {
+        "total_return": 1.2345,
+        "sharpe_ratio": 0.535,
+        "max_drawdown": -0.2341,
+        ...
+      },
+      "error": null
     },
     ...
   ]
@@ -61,16 +65,26 @@ s3://benchmarks-modelling-output/benchmarks-output/
 ```python
 import boto3
 import json
+from datetime import datetime
 
 s3 = boto3.client('s3')
-obj = s3.get_object(Bucket='benchmarks-modelling-output',
-                    Key='benchmarks-output/latest/summary.json')
-data = json.loads(obj['Body'].read())
+today = datetime.now().strftime('%Y-%m-%d')
 
-# Get all successful strategies
-for result in data['results']:
+# Get all 3 partition summaries
+all_results = []
+for partition_id in [1, 2, 3]:
+    obj = s3.get_object(
+        Bucket='benchmarks-modelling-output',
+        Key=f'benchmarks-output/history/{today}/partition_{partition_id}_summary.json'
+    )
+    data = json.loads(obj['Body'].read())
+    all_results.extend(data['results'])
+    print(f"Partition {partition_id}: {data['successful']}/{data['total_backtests']} successful")
+
+# Show all successful strategies
+for result in all_results:
     if result['status'] == 'success':
-        print(f"{result['strategy_name']} ({result['rebalance_freq']}): "
+        print(f"{result['strategy']} ({result['frequency']}): "
               f"Return={result['metrics']['total_return']:.2%}")
 ```
 
@@ -248,20 +262,31 @@ print(top_holdings)
 
 ### 1. **Show Latest Performance for All Strategies**
 
-**Recommended:** Use `latest/summary.json`
+**Recommended:** Use `history/{date}/partition_*_summary.json` (3 files)
 
-**Why:** Single file contains all 45 results
+**Why:** Each partition contains 15 backtests (5 strategies × 3 frequencies)
 
 ```python
-# Fetch latest summary
+import boto3
+import json
+from datetime import datetime
+
 s3 = boto3.client('s3')
-obj = s3.get_object(Bucket='benchmarks-modelling-output',
-                    Key='benchmarks-output/latest/summary.json')
-summary = json.loads(obj['Body'].read())
+today = datetime.now().strftime('%Y-%m-%d')
+
+# Fetch all 3 partition summaries
+all_results = []
+for partition_id in [1, 2, 3]:
+    obj = s3.get_object(
+        Bucket='benchmarks-modelling-output',
+        Key=f'benchmarks-output/history/{today}/partition_{partition_id}_summary.json'
+    )
+    data = json.loads(obj['Body'].read())
+    all_results.extend(data['results'])
 
 # Create performance table
-for result in summary['results']:
-    print(f"{result['strategy_name']:25} {result['rebalance_freq']:3} "
+for result in all_results:
+    print(f"{result['strategy']:25} {result['frequency']:3} "
           f"Return: {result['metrics']['total_return']:7.2%}  "
           f"Sharpe: {result['metrics']['sharpe_ratio']:5.2f}")
 ```
@@ -380,3 +405,17 @@ plt.legend()
 1. **"Weights file too small"** → This is correct! Weights only on rebalance dates
 2. **"Missing weights for some days"** → Use previous rebalance date's weights
 3. **"Different results each day"** → Walk-forward uses rolling windows, slight variations are normal
+
+---
+
+## Partition Strategy Mapping
+
+| Partition | Strategies |
+|-----------|------------|
+| **Partition 1** | buy_and_hold, equal_weight, top_k_return, top_k_sharpe, quintile_momentum |
+| **Partition 2** | quintile_low_vol, mean_reversion, global_min_variance, inverse_volatility, inverse_variance |
+| **Partition 3** | risk_parity, max_decorrelation, most_diversified, sharpe_maximization, cvar_minimization |
+
+---
+
+**Last Updated:** January 15, 2026
