@@ -3,144 +3,216 @@
 ## TL;DR
 
 **One-time setup:**
-```powershell
+```bash
 python scripts/prepare_data.py
 ```
 
 **Run main demos:**
-```powershell
-# Benchmark 12 strategies
-python examples/demo_12_strategies_fast.py    # 6 months, weekly rebalancing
-python examples/demo_12_strategies_full.py    # 10 years, monthly rebalancing
+```bash
+# Comprehensive benchmark (12 strategies + 4 MAB algorithms)
+python examples/comprehensive_benchmark_demo.py
 
-# Multi-Armed Bandit demos
-python examples/demo_bandit_strategy_wrapper.py  # MAB allocation
-python examples/demo_bandit_comparison.py        # UCB vs Thompson
+# Quick benchmark comparison
+python examples/benchmark_strategies_demo.py
 
-# Other demos
-python examples/demo_backtesting_methods.py   # Advanced backtesting
-python examples/demo_rewards.py               # Reward calculation
-python examples/simple_example.py             # Quick start
+# Real-time trading platform
+python examples/dynamic_trading_demo.py --mode backtest
 ```
 
-## Project Status (v3.0.0)
+**Launch dashboard:**
+```bash
+streamlit run dashboard.py
+```
 
-### ✅ Implemented
-- **12 Validated Benchmark Strategies** - All production-ready
-- **Multi-Armed Bandit System** - UCB and Thompson Sampling
-- **Comprehensive Reward System** - Returns, Sharpe, Sortino
-- **Optimized Rebalancing** - Monthly frequency for realistic costs
-- **Enhanced Visualizations** - NAV curves, metrics, heatmaps
-- **Data Workflow** - Centralized preprocessing pipeline
-- **Complete Documentation** - All features documented
-- **Full Test Coverage** - All components tested
+---
 
-### 🎯 Key Features
-- Monthly rebalancing (realistic transaction costs)
-- 10-year backtests with real market data
-- Dynamic strategy allocation with MAB
-- Comprehensive performance metrics
-- JSON/CSV export for all results
+## Project Status (v3.3.0)
 
-## File Changes
+### Current State: Production Ready
 
-| File | Change |
-|------|--------|
-| `scripts/prepare_data.py` | **NEW** - Downloads & processes S3 data |
-| `src/data_loader.py` | Added `load_preprocessed_data()` function |
-| All demo files | Changed to use `load_preprocessed_data()` |
-| `data/raw/*` | Deleted old files |
-| `data/processed/*` | Deleted old files |
-| `visualizations/*.csv` | Deleted old results |
-| `visualizations/*.png` | Deleted old results |
+| Component | Status |
+|-----------|--------|
+| Lambda Deployment | **Operational** - 3 partitions running daily |
+| Benchmark Strategies | 15 strategies validated |
+| MAB Algorithms | 4 algorithms (UCB, Thompson, EXP3, Epsilon-Greedy) |
+| Walk-Forward Backtesting | Implemented (24-mo train, 6-mo test) |
+| EventBridge Scheduling | Active (3:00 AM UTC daily) |
+| S3 Integration | Input + Output pipelines working |
+
+### Lambda Test Results (January 14, 2026)
+- **Partition 1:** 15/15 backtests successful (5.7 min)
+- **Partition 2:** 15/15 backtests successful (6.1 min)
+- **Partition 3:** 15/15 backtests successful (14.7 min)
+- **Total:** 45/45 backtests, 100% success rate
+
+---
 
 ## Commands
 
-### Prepare Data (First Time)
-```powershell
-# Downloads from S3 (2015-11 to 2025-11) and processes
+### Data Preparation
+```bash
+# Download and process S3 data (2015-2025)
 python scripts/prepare_data.py
+
+# Load specific month range
+python scripts/load_s3_data.py --start-year 2020 --start-month 1 --end-year 2025 --end-month 12
 ```
 
-### Run Main Demos
-```powershell
-# 12 Benchmark Strategies
-python examples/demo_12_strategies_fast.py    # Fast: 6 months, weekly rebalancing
-python examples/demo_12_strategies_full.py    # Full: 10 years, monthly rebalancing
+### Run Demos
+```bash
+# Comprehensive benchmark suite (all strategies + MAB)
+python examples/comprehensive_benchmark_demo.py
 
-# Multi-Armed Bandit Allocation
-python examples/demo_bandit_strategy_wrapper.py   # MAB strategy allocation
-python examples/demo_bandit_comparison.py         # Compare UCB vs Thompson
-python examples/demo_ucb_bandit.py                # UCB algorithm demo
+# Quick benchmark comparison
+python examples/benchmark_strategies_demo.py
 
-# Other Demos
-python examples/demo_backtesting_methods.py   # Advanced backtesting methods
-python examples/demo_rewards.py               # Reward calculation
-python examples/demo_svm_regime_strategy.py   # SVM regime classification
-python examples/simple_example.py             # Quick start example
+# Real-time trading platform
+python examples/dynamic_trading_demo.py --mode backtest
+python examples/dynamic_trading_demo.py --mode simulation
+python examples/dynamic_trading_demo.py --mode live
+
+# MAB walk-forward evaluation
+python examples/mab_walk_forward_demo.py
+
+# Advanced backtesting methods
+python examples/demo_backtesting_methods.py
+
+# Other demos
+python examples/demo_mab_stress_testing.py
+python examples/demo_rewards.py
+python examples/demo_soft_rebalancing.py
 ```
 
 ### Validate Strategies
-```powershell
-# Validate all 12 benchmark strategies
+```bash
 python scripts/validate_12_benchmark_strategies.py
 ```
 
-### Alternative: Load Specific S3 Months
-```powershell
-# Load a single month
-python scripts/load_s3_data.py --year 2020 --month 1
-
-# Load full range
-python scripts/load_s3_data.py --start-year 2015 --start-month 11 --end-year 2025 --end-month 11
+### Launch Dashboard
+```bash
+streamlit run dashboard.py
 ```
+
+---
+
+## AWS Lambda Commands
+
+### Manual Invocation
+```bash
+# Test individual partitions
+aws lambda invoke --function-name benchmark-calculator-partition-1 \
+  --region eu-north-1 response1.json
+
+aws lambda invoke --function-name benchmark-calculator-partition-2 \
+  --region eu-north-1 response2.json
+
+aws lambda invoke --function-name benchmark-calculator-partition-3 \
+  --region eu-north-1 response3.json
+```
+
+### Check Status
+```bash
+# View EventBridge rules
+aws events list-rules --name-prefix benchmark-daily-trigger --region eu-north-1
+
+# View Lambda logs
+aws logs tail /aws/lambda/benchmark-calculator-partition-1 --since 1h --region eu-north-1
+```
+
+### Download Results
+```bash
+# Sync all results to local
+aws s3 sync s3://benchmarks-modelling-output/benchmarks-output/ ./dashboard-data/
+
+# Download specific partition summary
+aws s3 cp s3://benchmarks-modelling-output/benchmarks-output/history/2026-01-14/partition_1_summary.json ./
+```
+
+---
+
+## 15 Benchmark Strategies
+
+### Partition 1: Passive & Heuristic
+1. Buy & Hold
+2. Equal Weight (1/N)
+3. Top-K Return
+4. Top-K Sharpe
+5. Quintile Momentum
+
+### Partition 2: Factor & Risk-Based
+6. Quintile Low Volatility
+7. Mean Reversion
+8. Global Minimum Variance
+9. Inverse Volatility
+10. Inverse Variance
+
+### Partition 3: Optimization
+11. Risk Parity
+12. Max Decorrelation
+13. Most Diversified
+14. Sharpe Maximization
+15. CVaR Minimization
+
+---
+
+## Multi-Armed Bandit Algorithms
+
+| Algorithm | Description | Best For |
+|-----------|-------------|----------|
+| **UCB** | Upper Confidence Bound | Balanced exploration/exploitation |
+| **Thompson Sampling** | Bayesian posterior sampling | Stationary environments |
+| **EXP3** | Adversarial bandit | Non-stationary markets |
+| **Epsilon-Greedy** | Simple ε-exploration | Quick testing |
+
+---
 
 ## Configuration
 
-### Change Tickers
-Edit `scripts/prepare_data.py`:
-```python
-DEFAULT_TICKERS = [
-    'AAPL', 'MSFT', 'GOOGL',  # Your tickers here
-]
+### Setup Config File
+```bash
+cp config/trading_config.yaml.example config/trading_config.yaml
 ```
 
-### Change Demo Date Range
-Edit demo file:
-```python
-start_date = '2020-01-01'  # Your date range
-end_date = '2023-12-31'
+### Key Configuration Options
+```yaml
+execution:
+  mode: "simulation"  # backtest, simulation, or live
+
+trading:
+  initial_capital: 100000
+  transaction_cost_bps: 10.0
+  rebalance_frequency: "M"  # D, W, M, or Q
+
+bandit:
+  type: "ucb"  # ucb, thompson, exp3, epsilon_greedy
+  burn_in_periods: 12
+  reward_type: "sharpe"
 ```
 
-## Key Highlights
+### Environment Variables
+```bash
+# AWS credentials
+export AWS_ACCESS_KEY_ID=your_key
+export AWS_SECRET_ACCESS_KEY=your_secret
+export AWS_DEFAULT_REGION=eu-north-1
 
-### 12 Benchmark Strategies
-1. Buy & Hold (Market Benchmark)
-2. Equal Weight (1/N)
-3. Quintile Momentum
-4. Quintile Low Volatility
-5. Mean Reversion Quintile
-6. Global Minimum Variance
-7. Inverse Volatility
-8. Risk Parity
-9. Maximum Diversification
-10. Maximum Decorrelation
-11. Sharpe Maximization
-12. CVaR Minimization
+# FRED API (optional)
+export FRED_API_KEY=your_fred_key
+```
 
-### Multi-Armed Bandit Features
-- **UCB Algorithm**: Upper Confidence Bound with exploration bonus
-- **Thompson Sampling**: Bayesian posterior sampling
-- **Reward Functions**: Returns, Sharpe ratio, Sortino ratio
-- **Soft Allocation**: Probabilistic strategy allocation
-- **Burn-in Period**: Initial exploration phase
+---
 
-### Performance Benefits
-- ⚡ **Optimized Costs** - Monthly rebalancing reduces costs by 90%
-- 🔄 **Consistent Data** - Same data across all demos
-- 💰 **Realistic Modeling** - Transaction costs, slippage, realistic rebalancing
-- 📴 **Offline-ready** - Work without internet after setup
-- 🎯 **Production-ready** - Validated, tested, documented
+## S3 Output Structure
+
+```
+s3://benchmarks-modelling-output/benchmarks-output/
+├── strategies/{strategy}/{freq}/{date}.json  # Complete metrics & time series
+├── timeseries/{strategy}/{freq}/{date}.csv   # Equity curve, returns, drawdowns
+├── weights/{strategy}/{freq}/{date}.csv      # Portfolio weights
+└── history/{date}/partition_*.json           # Execution summaries
+```
+
+---
 
 ## Troubleshooting
 
@@ -148,13 +220,26 @@ end_date = '2023-12-31'
 → Run `python scripts/prepare_data.py`
 
 **AWS credentials error**
-→ See `QUICKSTART_S3.md` for setup
+→ Set environment variables or check ~/.aws/credentials
+
+**Lambda timeout**
+→ Partition 3 runs ~15 min. Check CloudWatch logs for errors.
 
 **Missing ticker**
 → Add to `DEFAULT_TICKERS` in `prepare_data.py` and re-run
 
-## Documentation
+---
 
-- `DATA_WORKFLOW.md` - Detailed workflow guide
-- `CHANGES_SUMMARY.md` - Complete list of changes
-- `QUICKSTART_S3.md` - AWS setup guide
+## Key Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [README.md](README.md) | Project overview |
+| [LAMBDA_DEPLOYMENT_STATUS.md](docs/LAMBDA_DEPLOYMENT_STATUS.md) | Lambda status & test results |
+| [STRATEGIES.md](docs/STRATEGIES.md) | Strategy descriptions |
+| [MULTI_ARMED_BANDITS.md](docs/MULTI_ARMED_BANDITS.md) | MAB algorithms |
+| [DASHBOARD_DATA_GUIDE.md](docs/DASHBOARD_DATA_GUIDE.md) | S3 output format |
+
+---
+
+**Version:** 3.3.0 | **Last Updated:** January 15, 2026

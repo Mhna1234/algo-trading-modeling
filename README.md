@@ -1,18 +1,18 @@
 # Algorithmic Trading & Portfolio Management System
 
-A comprehensive Python-based algorithmic trading framework featuring advanced portfolio optimization, multiple trading strategies, multi-armed bandit allocation, and robust backtesting capabilities with AWS S3 integration for market data.
+A production-ready Python-based algorithmic trading framework featuring advanced portfolio optimization, 15 benchmark strategies, multi-armed bandit allocation, and AWS Lambda deployment for automated daily calculations.
 
 ## 🎯 Overview
 
 This project provides a production-ready algorithmic trading system with:
-- **12 validated benchmark strategies** (momentum, mean reversion, optimization-based, etc.)
+- **15 validated benchmark strategies** deployed to AWS Lambda for daily automated calculations
 - **4 Multi-Armed Bandit (MAB) algorithms** for dynamic strategy allocation (UCB, Thompson Sampling, EXP3, Epsilon-Greedy)
-- **Comprehensive benchmark suite** testing all strategies with quarterly rebalancing over 10 years
+- **AWS Lambda deployment** with 3 partitions running daily at 3:00 AM UTC
+- **Walk-forward backtesting** for robust out-of-sample validation
 - **5 advanced backtesting methods** (walk-forward, combinatorial, Monte Carlo, etc.)
 - **Real-time trading capabilities** with state persistence and daily updates
 - **Portfolio optimization engine** with risk management and soft rebalancing
-- **Real-time performance metrics** and comprehensive evaluation
-- **AWS S3 data integration** for scalable market data retrieval
+- **AWS S3 integration** for scalable market data retrieval and results storage
 - **Interactive dashboard** for strategy visualization and analysis
 - **Complete state persistence** with checkpoint management and rollback capabilities
 
@@ -21,8 +21,9 @@ This project provides a production-ready algorithmic trading system with:
 ```
 algo-trading-modeling/
 ├── src/                          # Core source code
-│   ├── MODULE_ORGANIZATION.md   # 📖 Module organization guide (READ THIS!)
-│   ├── backtester.py            # Legacy backtesting wrapper
+│   ├── portfolio_engine.py      # Core portfolio management system
+│   ├── signal_generator.py      # Signal generation & data container
+│   ├── optimizer.py             # Portfolio optimization algorithms
 │   ├── backtesting_methods.py   # Advanced validation methods
 │   ├── checkpoint_manager.py    # State persistence for real-time trading
 │   ├── daily_trading_engine.py  # Real-time trading orchestration
@@ -30,19 +31,16 @@ algo-trading-modeling/
 │   ├── data_retrieval.py        # Market data fetching (S3/yfinance)
 │   ├── evaluator.py             # Performance metrics calculation
 │   ├── feature_engineering.py   # Technical indicators (RSI, MACD, etc.)
-│   ├── signal_generator.py      # Signal generation & data container
-│   ├── optimizer.py             # Portfolio optimization algorithms
-│   ├── portfolio_engine.py      # Core portfolio management system
 │   ├── rewards.py               # Reward calculation for bandits
 │   ├── risk_free_asset.py       # Risk-free rate integration (FRED API)
 │   ├── transaction_cost_model.py # Realistic trading cost modeling
 │   ├── rebalancing_scheduler.py # Rebalancing logic and scheduling
-│   ├── utils.py                 # Helper functions
 │   ├── config_loader.py         # YAML configuration management
-│   ├── strategies/              # 25 trading strategies (organized)
+│   ├── utils.py                 # Helper functions
+│   ├── strategies/              # Trading strategies
 │   │   ├── base_strategy_wrapper.py    # Abstract base class
 │   │   ├── benchmark_strategies.py     # 12 validated strategies
-│   │   ├── advanced_strategies.py      # 13 experimental strategies
+│   │   ├── advanced_strategies.py      # Experimental strategies
 │   │   └── bandit_strategy_wrapper.py  # MAB meta-strategy
 │   └── bandits/                 # Multi-Armed Bandit implementations
 │       ├── base.py              # Abstract bandit interface
@@ -51,52 +49,49 @@ algo-trading-modeling/
 │       ├── exp3.py              # EXP3 algorithm (adversarial bandit)
 │       └── epsilon_greedy.py    # Epsilon-Greedy algorithm
 │
-├── config/                      # Configuration files
-│   ├── trading_config.yaml      # Main system configuration (gitignored)
-│   └── trading_config.yaml.example  # Configuration template
+├── lambda/                       # AWS Lambda deployment
+│   ├── handlers/                 # Lambda function handlers
+│   │   ├── lambda_function_partition_1.py  # Strategies 1-5
+│   │   ├── lambda_function_partition_2.py  # Strategies 6-10
+│   │   └── lambda_function_partition_3.py  # Strategies 11-15
+│   ├── scripts/                  # Deployment scripts
+│   │   ├── deploy_lambda.sh      # Deploy all partitions
+│   │   └── setup_eventbridge.sh  # Configure daily schedule
+│   ├── tests/                    # Lambda testing utilities
+│   └── lambda_package/           # Bundled dependencies
 │
-├── checkpoints/                 # State persistence for real-time trading
+├── config/                       # Configuration files
+│   ├── trading_config.yaml       # Main system configuration (gitignored)
+│   └── trading_config.yaml.example  # Configuration template
 │
 ├── data/                         # Data storage
 │   ├── processed/                # Processed data (CSV)
 │   └── raw/                      # Raw market data (CSV)
 │
 ├── examples/                     # Example scripts and demos
-│   ├── benchmark_strategies_demo.py  # Quick benchmark comparison
-│   ├── comprehensive_benchmark_demo.py  # Full MAB & strategy benchmarking suite
-│   ├── dynamic_trading_demo.py   # Unified real-time trading platform
-│   ├── demo_backtesting_methods.py # Validation methods demo
-│   ├── demo_mab_stress_testing.py    # MAB stress testing demo
-│   ├── demo_rewards.py               # Reward calculation demo
-│   ├── demo_soft_rebalancing.py      # Soft rebalancing demo
-│   ├── mab_walk_forward_demo.py      # MAB walk-forward evaluation
-│   └── visualizations/               # Output visualization examples
-│
-├── notebooks/                    # Jupyter notebooks for analysis
-│   └── exploratory_analysis.ipynb
+│   ├── comprehensive_benchmark_demo.py  # Full MAB & strategy suite
+│   ├── benchmark_strategies_demo.py     # Quick benchmark comparison
+│   ├── dynamic_trading_demo.py          # Real-time trading platform
+│   ├── mab_walk_forward_demo.py         # MAB walk-forward evaluation
+│   ├── demo_backtesting_methods.py      # Validation methods demo
+│   ├── demo_mab_stress_testing.py       # MAB stress testing
+│   ├── demo_rewards.py                  # Reward calculation demo
+│   └── demo_soft_rebalancing.py         # Soft rebalancing demo
 │
 ├── scripts/                      # Utility scripts
-│   ├── load_s3_data.py          # AWS S3 data loading
-│   ├── prepare_data.py          # Data preparation pipeline
+│   ├── load_s3_data.py           # AWS S3 data loading
+│   ├── prepare_data.py           # Data preparation pipeline
 │   └── validate_12_benchmark_strategies.py  # Strategy validation
 │
-├── docs/                         # Documentation
-│   ├── ARCHITECTURE.md          # System architecture
-│   ├── STRATEGIES.md            # Strategy descriptions
-│   ├── BACKTESTING_METHODS.md   # Validation methods with results
-│   ├── BACKTESTING_STRATEGIES.md # Backtesting methodology guide
-│   ├── REALTIME_TRADING_IMPLEMENTATION_PLAN.md # Real-time trading implementation
-│   ├── S3_DATA_RETRIEVAL.md     # AWS S3 setup guide
-│   ├── TRADING_FUNDAMENTALS.md  # Trading concepts
-│   ├── MAB_IMPLEMENTATION_PLAN.md # MAB implementation (completed)
-│   ├── MULTI_ARMED_BANDITS.md   # MAB theory and algorithms
-│   ├── RISK_FREE_ASSET_INTEGRATION.md # Risk-free rate integration
-│   └── TASK_TRACKER.md          # Development roadmap
-│   ├── TASKS.md                 # Development roadmap
-│   ├── TASK_TRACKER.md          # Task tracking
-│   └── MULTI_ARMED_BANDITS.md   # MAB theory
+├── docs/                         # Documentation (19 files)
+│   ├── ARCHITECTURE.md           # System architecture
+│   ├── STRATEGIES.md             # Strategy descriptions
+│   ├── LAMBDA_DEPLOYMENT_STATUS.md  # Lambda deployment status
+│   ├── LAMBDA_IMPLEMENTATION_SUMMARY.md  # Lambda implementation details
+│   └── ...                       # Additional documentation
 │
 ├── tests/                        # Unit tests
+├── checkpoints/                  # State persistence for real-time trading
 ├── visualizations/               # Output visualizations & results
 ├── dashboard.py                  # Streamlit dashboard
 └── requirements.txt              # Python dependencies
@@ -238,31 +233,32 @@ python examples/demo_soft_rebalancing.py
 streamlit run dashboard.py
 ```
 
-## 📊 Validated Benchmark Strategies
+## 📊 Benchmark Strategies
 
-The system includes **12 validated benchmark strategies** that cover all major portfolio construction approaches:
+The system includes **15 validated benchmark strategies** deployed to AWS Lambda, organized into 3 partitions:
 
-### Passive/Baseline Strategies
+### Partition 1: Passive & Heuristic Strategies
 1. **Buy & Hold** - Market cap weighted benchmark
 2. **Equal Weight (1/N)** - Naive diversification baseline
+3. **Top-K Return** - Top performers by past return
+4. **Top-K Sharpe** - Top performers by risk-adjusted return
+5. **Quintile Momentum** - Cross-sectional momentum (top 20%)
 
-### Factor-Based Strategies
-3. **Quintile Momentum** - Cross-sectional momentum (top 20%)
-4. **Quintile Low Volatility** - Low volatility factor (bottom 20%)
-5. **Mean Reversion Quintile** - Contrarian strategy
+### Partition 2: Factor & Risk-Based Strategies
+6. **Quintile Low Volatility** - Low volatility factor (bottom 20%)
+7. **Mean Reversion** - Contrarian strategy
+8. **Global Minimum Variance (GMVP)** - Minimum portfolio volatility
+9. **Inverse Volatility** - Weight inversely proportional to volatility
+10. **Inverse Variance** - Weight inversely proportional to variance
 
-### Risk-Based Optimization
-6. **Global Minimum Variance Portfolio (GMVP)** - Minimum portfolio volatility
-7. **Inverse Volatility** - Weight inversely proportional to volatility
-8. **Risk Parity** - Equal risk contribution across assets
-9. **Maximum Diversification** - Maximize diversification ratio
-10. **Maximum Decorrelation** - Minimize average correlation
+### Partition 3: Optimization Strategies
+11. **Risk Parity** - Equal risk contribution across assets
+12. **Maximum Decorrelation** - Minimize average correlation
+13. **Most Diversified** - Maximize diversification ratio
+14. **Sharpe Maximization** - Mean-variance optimization
+15. **CVaR Minimization** - Conditional Value-at-Risk minimization
 
-### Return-Based Optimization
-11. **Sharpe Ratio Maximization** - Mean-variance optimization
-12. **CVaR Minimization** - Conditional Value-at-Risk minimization
-
-All strategies are validated for mathematical correctness, integration, and performance. See [BACKTESTING_METHODS.md](docs/BACKTESTING_METHODS.md) for detailed validation results.
+All strategies use walk-forward backtesting with 24-month training and 6-month test windows. See [LAMBDA_DEPLOYMENT_STATUS.md](docs/LAMBDA_DEPLOYMENT_STATUS.md) for deployment details.
 
 ## 🎰 Multi-Armed Bandit (MAB) Allocation
 
@@ -281,6 +277,44 @@ The system includes sophisticated MAB algorithms for dynamic strategy allocation
 - Built-in persistence and state management
 
 See [MULTI_ARMED_BANDITS.md](docs/MULTI_ARMED_BANDITS.md) for detailed MAB methodology.
+
+## ☁️ AWS Lambda Deployment
+
+The system includes production-ready AWS Lambda deployment for automated daily benchmark calculations.
+
+### Architecture
+- **3 Lambda Functions** running in parallel (one per partition)
+- **15 strategies × 3 frequencies** = 45 backtests per execution
+- **Walk-forward optimization** with rolling windows for robust validation
+- **Automatic scheduling** via EventBridge (daily at 3:00 AM UTC)
+
+### Lambda Configuration
+| Property | Value |
+|----------|-------|
+| Runtime | Python 3.11 |
+| Memory | 3 GB per function |
+| Timeout | 15 minutes |
+| Region | eu-north-1 |
+| Trigger | EventBridge (daily) |
+
+### S3 Data Flow
+```
+Input:  s3://data-retrieval-output/history-data/     (5 years OHLCV data)
+Output: s3://benchmarks-modelling-output/benchmarks-output/
+        ├── strategies/{strategy}/{freq}/{date}.json  # Complete metrics
+        ├── timeseries/{strategy}/{freq}/{date}.csv   # Equity curves
+        ├── weights/{strategy}/{freq}/{date}.csv      # Portfolio weights
+        └── history/{date}/partition_*.json           # Execution summaries
+```
+
+### Manual Lambda Invocation
+```bash
+# Test any partition manually
+aws lambda invoke --function-name benchmark-calculator-partition-1 \
+  --region eu-north-1 response.json
+```
+
+See [LAMBDA_DEPLOYMENT_STATUS.md](docs/LAMBDA_DEPLOYMENT_STATUS.md) for complete deployment documentation.
 
 ## 🔬 Backtesting Methods
 
@@ -382,16 +416,20 @@ All reward functions handle NaN inputs gracefully and use clipping to prevent ex
 ### Core Documentation
 - **[README.md](README.md)** - This file: project overview and quick start
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design
-- **[STRATEGIES.md](docs/STRATEGIES.md)** - Complete strategy guide (25 strategies)
+- **[STRATEGIES.md](docs/STRATEGIES.md)** - Complete strategy guide
 - **[BACKTESTING_METHODS.md](docs/BACKTESTING_METHODS.md)** - Validation methods with results
 - **[MULTI_ARMED_BANDITS.md](docs/MULTI_ARMED_BANDITS.md)** - MAB theory and implementation
-- **[TASK_TRACKER.md](docs/TASK_TRACKER.md)** - Development roadmap and status
+
+### AWS Lambda Documentation
+- **[LAMBDA_DEPLOYMENT_STATUS.md](docs/LAMBDA_DEPLOYMENT_STATUS.md)** - Current deployment status and test results
+- **[LAMBDA_IMPLEMENTATION_SUMMARY.md](docs/LAMBDA_IMPLEMENTATION_SUMMARY.md)** - Implementation details
+- **[LAMBDA_PARTITIONS.md](docs/LAMBDA_PARTITIONS.md)** - Partition architecture
+- **[DASHBOARD_DATA_GUIDE.md](docs/DASHBOARD_DATA_GUIDE.md)** - S3 output structure for dashboard
 
 ### Additional Documentation
-- **[BACKTESTING_STRATEGIES.md](docs/BACKTESTING_STRATEGIES.md)** - Backtesting methodology concepts
-- **[TRADING_FUNDAMENTALS.md](docs/TRADING_FUNDAMENTALS.md)** - Trading and finance fundamentals
 - **[S3_DATA_RETRIEVAL.md](docs/S3_DATA_RETRIEVAL.md)** - AWS S3 data integration guide
-- **[MAB_IMPLEMENTATION_PLAN.md](docs/MAB_IMPLEMENTATION_PLAN.md)** - MAB implementation details
+- **[TRADING_FUNDAMENTALS.md](docs/TRADING_FUNDAMENTALS.md)** - Trading and finance fundamentals
+- **[RISK_FREE_ASSET_INTEGRATION.md](docs/RISK_FREE_ASSET_INTEGRATION.md)** - FRED API integration
 
 ## 🧪 Testing
 
@@ -475,38 +513,27 @@ For questions or feedback, please open an issue on GitHub.
 
 ---
 
-**Version**: 3.1.0 | **Last Updated**: January 7, 2026
+**Version**: 3.3.0 | **Last Updated**: January 15, 2026
 
 ## 🎉 Recent Updates
 
+### Version 3.3.0 (January 2026) - Lambda Production Release
+- ✅ **AWS Lambda Deployment** - 3 partitions running daily at 3:00 AM UTC
+- ✅ **15 Benchmark Strategies** - Extended from 12 to 15 strategies (added Top-K Return, Top-K Sharpe, Inverse Variance)
+- ✅ **Walk-Forward Backtesting** - Rolling 24-month training, 6-month test windows, 8 folds
+- ✅ **EventBridge Automation** - Automatic daily execution with no manual intervention
+- ✅ **S3 Results Pipeline** - Organized output structure for dashboard consumption
+- ✅ **100% Success Rate** - All 45 backtests (15 strategies × 3 frequencies) passing
+- ✅ **Lambda optimizations** - numpy-only implementations for Lambda compatibility
+
 ### Version 3.1.0 (January 2026)
-- ✅ **Comprehensive Benchmark Suite** - New unified demo testing all 12 strategies + 4 MAB algorithms
+- ✅ **Comprehensive Benchmark Suite** - Unified demo testing all strategies + 4 MAB algorithms
 - ✅ **Epsilon-Greedy Algorithm** - Added 4th MAB algorithm with configurable exploration rate
 - ✅ **Enhanced Visualizations** - Complete dashboard with NAV curves, drawdowns, allocation heatmaps
-- ✅ **Updated Performance Results** - Fresh 10-year backtest (2015-2024) with quarterly rebalancing
-- ✅ **Streamlined Examples** - Consolidated demos for better user experience
-- ✅ **Production-Ready Results** - JSON/CSV exports for API integration and further analysis
-
-### Version 3.0.1 (December 2025)
-- ✅ **Fixed walk-forward backtesting bug** - Resolved KeyError issues preventing out-of-sample evaluation
-- ✅ **Added MAB walk-forward demo** - New `mab_walk_forward_demo.py` for proper out-of-sample MAB validation
-- ✅ **Cleaned up logging in demos** - Fixed placeholder logging statements with proper f-string formatting
-- ✅ **Updated documentation** - Corrected docstrings and added new demo to project structure
 
 ### Version 3.0.0 (December 2025)
 - ✅ Validated and documented 12 benchmark strategies
-- ✅ Implemented Multi-Armed Bandit algorithms (UCB, Thompson Sampling, EXP3, Epsilon-Greedy) for strategy allocation
-- ✅ Added comprehensive reward calculation system (returns, Sharpe, Sortino, drawdown-penalized)
-- ✅ **Real-time trading system with state persistence and daily updates**
-- ✅ **Checkpoint management with 7-day rollback capability**
-- ✅ **Daily trading engine for incremental portfolio updates**
-- ✅ **Dynamic trading demo supporting BACKTEST/SIMULATION/LIVE modes**
-- ✅ **FRED API integration for dynamic risk-free rate updates**
-- ✅ **Enhanced configuration system with YAML validation**
-- ✅ Optimized rebalancing frequencies (monthly, quarterly, with soft rebalancing)
-- ✅ **Soft rebalancing and drift threshold logic implemented in portfolio engine**
-- ✅ Enhanced visualization and reporting capabilities
-- ✅ Streamlined data workflow with pre-processing pipeline
-- ✅ Complete test coverage for bandit implementations
+- ✅ Implemented Multi-Armed Bandit algorithms (UCB, Thompson Sampling, EXP3, Epsilon-Greedy)
+- ✅ Real-time trading system with state persistence and checkpoint management
+- ✅ FRED API integration for dynamic risk-free rate updates
 - ✅ Production-ready codebase with full documentation
-- ✅ **Enhanced config validation with comprehensive parameter checking and environment variable support**
